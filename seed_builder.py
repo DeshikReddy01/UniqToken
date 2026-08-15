@@ -30,6 +30,7 @@ class SeedVocabularyBuilder:
         "<|unk|>",
         "<|bos|>",
         "<|eos|>",
+        "<|endoftext|>",
         "<|user|>",
         "<|assistant|>",
         "<|system|>",
@@ -45,6 +46,16 @@ class SeedVocabularyBuilder:
         special_tokens: List[str] | None = None,
         ranking_strategy: str = "char_savings",
     ):
+        if target_vocab_size <= 0:
+            raise ValueError("target_vocab_size must be greater than zero")
+        if seed_multiplier <= 0:
+            raise ValueError("seed_multiplier must be greater than zero")
+        if max_ngram_length < 1:
+            raise ValueError("max_ngram_length must be at least one")
+        if min_frequency < 1:
+            raise ValueError("min_frequency must be at least one")
+        if ranking_strategy not in {"char_savings", "frequency"}:
+            raise ValueError("ranking_strategy must be 'char_savings' or 'frequency'")
         self.target_vocab_size = target_vocab_size
         self.seed_multiplier = seed_multiplier
         self.seed_vocab_size = int(target_vocab_size * seed_multiplier)

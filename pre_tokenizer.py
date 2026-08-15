@@ -40,6 +40,8 @@ class Normalizer:
 
     # Explicit mapping for common non-standard Unicode whitespaces
     UNICODE_SPACES = " \u00A0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200A\u202F\u205F\u3000"
+    _ESCAPE_PREFIX = "\uE000"
+    _ESCAPED_METASPACE = "\uE001"
 
     def __init__(
         self,
@@ -51,6 +53,10 @@ class Normalizer:
         collapse_whitespaces: bool = False,
         strip_whitespace: bool = False,
     ):
+        if len(space_char) != 1 or space_char.isspace():
+            raise ValueError("space_char must be a single, non-whitespace character")
+        if space_char in {self._ESCAPE_PREFIX, self._ESCAPED_METASPACE}:
+            raise ValueError("space_char uses a reserved normalization escape character")
         self.space_char = space_char
         self.lowercase = lowercase
         self.normalize_unicode = normalize_unicode
@@ -62,6 +68,26 @@ class Normalizer:
     def normalize(self, text: str) -> str:
         norm_text, _ = self.normalize_with_alignment(text)
         return norm_text
+
+    def restore_escaped_metaspace(self, text: str) -> str:
+        """Restore literal metaspaces and escape prefixes after token decoding."""
+        output: List[str] = []
+        index = 0
+        while index < len(text):
+            char = text[index]
+            if char == self._ESCAPE_PREFIX and index + 1 < len(text):
+                escaped = text[index + 1]
+                if escaped == self._ESCAPE_PREFIX:
+                    output.append(self._ESCAPE_PREFIX)
+                    index += 2
+                    continue
+                if escaped == self._ESCAPED_METASPACE:
+                    output.append(self.space_char)
+                    index += 2
+                    continue
+            output.append(char)
+            index += 1
+        return "".join(output)
 
     @staticmethod
     def _is_hangul_jamo(char: str) -> bool:
@@ -205,10 +231,19 @@ class Normalizer:
             normalized_chars = normalized_chars[start:end]
             alignment_map = alignment_map[start:end]
 
+        def encode_metaspace(char: str) -> str:
+            if char == self._ESCAPE_PREFIX:
+                return self._ESCAPE_PREFIX + self._ESCAPE_PREFIX
+            if char == self.space_char:
+                return self._ESCAPE_PREFIX + self._ESCAPED_METASPACE
+            if char == " ":
+                return self.space_char
+            return char
+
         normalized_chars, alignment_map = self._replace_characters(
             normalized_chars,
             alignment_map,
-            lambda char: self.space_char if char == " " else char,
+            encode_metaspace,
         )
         return "".join(normalized_chars), alignment_map
 
@@ -236,6 +271,7 @@ class RegexPreTokenizer:
         self.split_digits = split_digits
         self.split_punctuation = split_punctuation
         self.keep_special_tokens = keep_special_tokens
+        self.special_token_pattern = special_token_pattern
 
         escaped_space = re.escape(self.space_char)
 
@@ -244,13 +280,13 @@ class RegexPreTokenizer:
 
         # 2. URLs: RFC-compliant matching that strictly terminates on alphanumeric/slash (excludes trailing . , ; ! ? )
         url = (
-            rf"https?://[a-zA-Z0-9][-a-zA-Z0-9@:%._\+~#=]{{1,256}}"
-            rf"\.[a-zA-Z0-9()]{{1,6}}\b"
-            rf"(?:[-a-zA-Z0-9()@:%_\+.~#?&/=]*[a-zA-Z0-9/])?"
+            r"https?://[a-zA-Z0-9][-a-zA-Z0-9@:%._\+~#=]{1,256}"
+            r"\.[a-zA-Z0-9()]{1,6}\b"
+            r"(?:[-a-zA-Z0-9()@:%_\+.~#?&/=]*[a-zA-Z0-9/])?"
         )
 
         # 3. Emails
-        email = rf"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+"
+        email = r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+"
 
         # 4. Social Tags
         hashtag = r"#\w+"
