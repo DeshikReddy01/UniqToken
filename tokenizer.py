@@ -3,9 +3,12 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Set, Tuple, Union
 
-from pre_tokenizer import Normalizer, RegexPreTokenizer
+from indentation_compressor import IndentationCompressor
+from pre_tokenizer import Normalizer, PreToken, RegexPreTokenizer
+from security_shield import SecurityShield
+from streaming_decoder import StreamingDecoder
 from unigram_trainer import UnigramModel, UnigramTrainer
 
 
@@ -22,12 +25,6 @@ class Token:
 class CustomTokenizer:
     """
     Production-Grade Byte-Fallback Unigram Custom Tokenizer.
-    
-    Complete Pipeline:
-    1. Unicode & Metaspace Normalization with Raw-to-Normalized Character Alignment.
-    2. Offset-Preserving Regex Pre-Tokenization (Script, Digit, and URL Isolation).
-    3. Unigram Lattice Viterbi Segmentation with UTF-8 Byte Fallback.
-    4. Deterministic Token-to-ID Encoding and Reversible Decoding of normalized text.
     """
 
     def __init__(
@@ -39,6 +36,7 @@ class CustomTokenizer:
         self.normalizer = normalizer
         self.pre_tokenizer = pre_tokenizer
         self.model = model
+        self.security = SecurityShield(special_tokens=self.model.special_tokens)
 
     @classmethod
     def train_from_corpus(
@@ -51,16 +49,22 @@ class CustomTokenizer:
         byte_fallback: bool = True,
         split_digits: bool = False,
         special_tokens: Optional[List[str]] = None,
+        compress_indents: bool = False,
         verbose: bool = True,
     ) -> CustomTokenizer:
-        """
-        Trains a new CustomTokenizer directly from an iterable of raw text documents.
-        """
         normalizer = Normalizer()
         pre_tokenizer = RegexPreTokenizer(split_digits=split_digits)
 
+        combined_special = list(special_tokens or [])
+        if compress_indents:
+            for it in IndentationCompressor.INDENT_SPECIAL_TOKENS:
+                if it not in combined_special:
+                    combined_special.append(it)
+
         chunks: List[str] = []
         for doc in corpus:
+            if compress_indents:
+                doc = IndentationCompressor.compress_indents(doc)
             norm = normalizer.normalize(doc)
             chunks.extend(pre_tokenizer.pre_tokenize(norm))
 
@@ -70,20 +74,28 @@ class CustomTokenizer:
             max_ngram_length=max_ngram_length,
             min_frequency=min_frequency,
             byte_fallback=byte_fallback,
-            special_tokens=special_tokens,
+            special_tokens=combined_special if combined_special else None,
         )
 
         model = trainer.train(chunks, verbose=verbose)
         return cls(normalizer=normalizer, pre_tokenizer=pre_tokenizer, model=model)
 
-    def encode(self, text: str) -> List[str]:
-        """
-        Encodes raw text into a flat list of subword and byte fallback token strings using Viterbi (1-best).
-        """
+    def encode(
+        self,
+        text: str,
+        allowed_special: Union[str, Set[str], List[str]] = "none",
+        disallowed_special_action: str = "escape",
+    ) -> List[str]:
         if not text:
             return []
 
-        norm = self.normalizer.normalize(text)
+        sanitized_text = self.security.sanitize(
+            text,
+            allowed_special=allowed_special,
+            disallowed_special_action=disallowed_special_action,
+        )
+
+        norm = self.normalizer.normalize(sanitized_text)
         chunks = self.pre_tokenizer.pre_tokenize(norm)
 
         all_tokens: List[str] = []
@@ -95,15 +107,17 @@ class CustomTokenizer:
 
         return all_tokens
 
-    def sample(self, text: str, alpha: float = 0.5) -> List[str]:
-        """
-        Subword Regularization: Samples a stochastic segmentation from the lattice distribution.
-        Used during LLM training to eliminate character-blindness and build typo/noise robustness.
-        """
+    def sample(
+        self,
+        text: str,
+        alpha: float = 0.5,
+        allowed_special: Union[str, Set[str], List[str]] = "none",
+    ) -> List[str]:
         if not text:
             return []
 
-        norm = self.normalizer.normalize(text)
+        sanitized_text = self.security.sanitize(text, allowed_special=allowed_special)
+        norm = self.normalizer.normalize(sanitized_text)
         chunks = self.pre_tokenizer.pre_tokenize(norm)
 
         all_tokens: List[str] = []
@@ -115,31 +129,40 @@ class CustomTokenizer:
 
         return all_tokens
 
-    def encode_to_ids(self, text: str) -> List[int]:
-        """
-        Encodes raw text into a list of vocabulary integer IDs using Viterbi (1-best).
-        """
-        tokens = self.encode(text)
+    def encode_to_ids(
+        self,
+        text: str,
+        allowed_special: Union[str, Set[str], List[str]] = "none",
+        disallowed_special_action: str = "escape",
+    ) -> List[int]:
+        tokens = self.encode(
+            text,
+            allowed_special=allowed_special,
+            disallowed_special_action=disallowed_special_action,
+        )
         unk_id = self.model.token_to_id.get("<|unk|>", 0)
         return [self.model.token_to_id.get(t, unk_id) for t in tokens]
 
-    def sample_to_ids(self, text: str, alpha: float = 0.5) -> List[int]:
-        """
-        Stochastically samples a sequence of token IDs from the lattice distribution.
-        """
-        tokens = self.sample(text, alpha=alpha)
+    def sample_to_ids(
+        self,
+        text: str,
+        alpha: float = 0.5,
+        allowed_special: Union[str, Set[str], List[str]] = "none",
+    ) -> List[int]:
+        tokens = self.sample(text, alpha=alpha, allowed_special=allowed_special)
         unk_id = self.model.token_to_id.get("<|unk|>", 0)
         return [self.model.token_to_id.get(t, unk_id) for t in tokens]
 
-    def encode_with_offsets(self, text: str) -> List[Token]:
-        """
-        Encodes raw text into Token objects containing text, integer ID, and exact
-        source-document character spans (raw_span) for QA/NER.
-        """
+    def encode_with_offsets(
+        self,
+        text: str,
+        allowed_special: Union[str, Set[str], List[str]] = "none",
+    ) -> List[Token]:
         if not text:
             return []
 
-        norm, alignment = self.normalizer.normalize_with_alignment(text)
+        sanitized_text = self.security.sanitize(text, allowed_special=allowed_special)
+        norm, alignment = self.normalizer.normalize_with_alignment(sanitized_text)
         pre_tokens = self.pre_tokenizer.pre_tokenize_with_offsets(norm, alignment)
 
         result: List[Token] = []
@@ -157,26 +180,27 @@ class CustomTokenizer:
                     norm_end = pt.norm_span[0] + end
                     source_spans = alignment[norm_start:norm_end]
                     raw_span = (
-                        min(span[0] for span in source_spans),
-                        max(span[1] for span in source_spans),
+                        min(span[0] if isinstance(span, tuple) else span for span in source_spans),
+                        max(span[1] if isinstance(span, tuple) else span + 1 for span in source_spans),
                     )
                     result.append(Token(text=st, id=t_id, raw_span=raw_span))
 
         return result
 
     def decode(self, token_ids: List[int]) -> str:
-        """
-        Decodes integer token IDs back to the normalized source representation.
-
-        NFKC or configured normalization changes are intentionally not reversed.
-        """
         decoded = self.model.decode(token_ids, space_char=self.normalizer.space_char)
-        return self.normalizer.restore_escaped_metaspace(decoded)
+        decompressed = IndentationCompressor.decompress_indents(decoded)
+        return self.normalizer.restore_escaped_metaspace(decompressed)
+
+    def get_streaming_decoder(self, skip_special_tokens: bool = True) -> StreamingDecoder:
+        return StreamingDecoder(
+            id_to_token=self.model.id_to_token,
+            space_char=self.normalizer.space_char,
+            skip_special_tokens=skip_special_tokens,
+            special_tokens=self.model.special_tokens,
+        )
 
     def save(self, directory: Union[str, Path]) -> None:
-        """
-        Serializes the trained tokenizer to disk.
-        """
         dir_path = Path(directory)
         dir_path.mkdir(parents=True, exist_ok=True)
 
@@ -211,9 +235,6 @@ class CustomTokenizer:
 
     @classmethod
     def load(cls, directory: Union[str, Path]) -> CustomTokenizer:
-        """
-        Loads a serialized tokenizer from disk.
-        """
         dir_path = Path(directory)
         with open(dir_path / "tokenizer.json", "r", encoding="utf-8") as f:
             config = json.load(f)
