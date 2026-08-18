@@ -24,22 +24,27 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-          cache: "pip"
-          cache-dependency-path: "pyproject.toml"
 
-      - name: Install Dependencies
+      - name: Install Build & Test Tooling
         run: |
-          python -m pip install --upgrade pip setuptools wheel build ruff mypy pytest coverage
-          python -m pip install -e ".[test,bench,huggingface]"
+          python -m pip install --upgrade pip setuptools wheel build
+          python -m pip install ruff mypy pytest coverage tokenizers transformers sentencepiece
 
-      - name: Lint
-        run: python -m ruff check .
+      - name: Install Caliper Tokenizer (Editable)
+        run: |
+          python -m pip install -e .
 
-      - name: Verify Formatting
-        run: python -m ruff format --check .
+      - name: Lint (Ruff)
+        run: |
+          python -m ruff check .
 
-      - name: Type Check
-        run: python -m mypy .
+      - name: Formatting (Ruff)
+        run: |
+          python -m ruff format --check .
+
+      - name: Type Check (Mypy)
+        run: |
+          python -m mypy .
 
       - name: Run Full Test Suite (Unit & Property Fuzzing)
         run: |
