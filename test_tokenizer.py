@@ -1,5 +1,6 @@
-import unittest
+import json
 import math
+import unittest
 from math import log
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -411,8 +412,6 @@ class LatticeFastPathTests(unittest.TestCase):
 
 class HuggingFaceExportTests(unittest.TestCase):
     def test_hf_export_generates_valid_schema(self):
-        import json
-
         vocab = {"tok": log(0.5), "en": log(0.3), "<|unk|>": log(0.2)}
         token_to_id = {token: index for index, token in enumerate(vocab)}
         model = UnigramModel(
