@@ -9,10 +9,11 @@ from typing import Dict, Iterable, List, Set
 class SeedToken:
     """
     Represents a token in the seed vocabulary.
-    
+
     is_required: True for special tokens, byte fallbacks, and the base alphabet.
                  These tokens are IMMUNE to pruning during Unigram EM iterations.
     """
+
     token: str
     frequency: int
     is_required: bool
@@ -128,7 +129,9 @@ class SeedVocabularyBuilder:
         max_len = self.max_ngram_length
 
         for chunk, chunk_freq in chunk_counts.items():
-            if chunk in self.special_tokens or (chunk.startswith("<|") and chunk.endswith("|>")):
+            if chunk in self.special_tokens or (
+                chunk.startswith("<|") and chunk.endswith("|>")
+            ):
                 continue
 
             chunk_len = len(chunk)
@@ -141,9 +144,7 @@ class SeedVocabularyBuilder:
         return ngram_counts
 
     def filter_candidates(
-        self,
-        ngram_counts: Counter[str],
-        protected_tokens: Set[str]
+        self, ngram_counts: Counter[str], protected_tokens: Set[str]
     ) -> Dict[str, int]:
         filtered: Dict[str, int] = {}
         for token, count in ngram_counts.items():
@@ -178,9 +179,7 @@ class SeedVocabularyBuilder:
             )
 
     def build_seed_vocab(
-        self,
-        pre_tokenized_chunks: Iterable[str],
-        enforce_target_floor: bool = True
+        self, pre_tokenized_chunks: Iterable[str], enforce_target_floor: bool = True
     ) -> List[SeedToken]:
         """
         Assembles the complete Seed Vocabulary pool.

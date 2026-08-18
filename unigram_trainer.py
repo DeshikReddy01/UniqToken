@@ -3,10 +3,12 @@ from __future__ import annotations
 import math
 from collections import Counter
 from dataclasses import dataclass
-from typing import Dict, Iterable, List, Set, Tuple
+from typing import Dict, Iterable, List, Optional, Set, Tuple
 
 from seed_builder import SeedToken, SeedVocabularyBuilder
+from trie import PrefixTrie
 from unigram_lattice import UnigramLattice
+from byte_codec import ByteFallbackEngine
 
 
 @dataclass
@@ -14,9 +16,10 @@ class UnigramModel:
     """
     Trained Unigram Tokenizer Model.
     """
-    vocab: Dict[str, float]       # token -> log_probability
-    token_to_id: Dict[str, int]   # token -> integer ID
-    id_to_token: Dict[int, str]   # integer ID -> token
+
+    vocab: Dict[str, float]  # token -> log_probability
+    token_to_id: Dict[str, int]  # token -> integer ID
+    id_to_token: Dict[int, str]  # integer ID -> token
     special_tokens: List[str]
     max_subword_len: int = 16
     byte_fallback: bool = True
@@ -25,37 +28,129 @@ class UnigramModel:
     def vocab_size(self) -> int:
         return len(self.vocab)
 
+    def _get_trie(self) -> PrefixTrie:
+        """Builds (and caches) a PrefixTrie over the current vocab for fast lattice search."""
+        trie = self.__dict__.get("_trie")
+        if trie is None:
+            trie = PrefixTrie.from_vocab(self.vocab)
+            self._trie = trie
+        return trie
+
+    _FAST_PATH_MAX_LEN = 6
+
+    def _encode_fast(self, text: str) -> Optional[List[Tuple[str, int, int]]]:
+        """
+        Exact Viterbi 1-best for short chunks without constructing a lattice object.
+
+        Reproduces UnigramLattice edge semantics (including byte-fallback
+        only-when-no-vocab-edge and longest-edge-first tie-breaking). Returns
+        (token, start, end) triples, or None to defer to the full lattice.
+        """
+        length = len(text)
+        if length < 2 or length > self._FAST_PATH_MAX_LEN:
+            return None
+
+        max_len = min(self.max_subword_len, length)
+        neg_inf = float("-inf")
+        dp = [neg_inf] * (length + 1)
+        back: List[Optional[Tuple[int, List[str]]]] = [None] * (length + 1)
+        dp[0] = 0.0
+
+        for i in range(1, length + 1):
+            best_score = neg_inf
+            best_edge: Optional[Tuple[int, List[str]]] = None
+            start = max(0, i - max_len)
+            for j in range(start, i):
+                token = text[j:i]
+                log_p = self.vocab.get(token)
+                if log_p is not None:
+                    score = dp[j] + log_p
+                    if score > best_score:
+                        best_score = score
+                        best_edge = (j, [token])
+
+            if best_edge is None and self.byte_fallback:
+                char = text[i - 1]
+                # Byte fallback only applies when the start position has no
+                # in-vocabulary edge at all (matches UnigramLattice._build_graph).
+                has_vocab_edge = False
+                for end in range(i, min(length + 1, i - 1 + max_len + 1)):
+                    if text[i - 1 : end] in self.vocab:
+                        has_vocab_edge = True
+                        break
+                if not has_vocab_edge:
+                    byte_tokens = ByteFallbackEngine.char_to_byte_tokens(char)
+                    log_p = sum(
+                        self.vocab.get(b, -UnigramLattice.DEFAULT_BYTE_PENALTY)
+                        for b in byte_tokens
+                    )
+                    score = dp[i - 1] + log_p
+                    if score > best_score:
+                        best_score = score
+                        best_edge = (i - 1, byte_tokens)
+
+            if best_edge is None:
+                return None  # disconnected; defer to the full lattice
+
+            dp[i] = best_score
+            back[i] = best_edge
+
+        result: List[Tuple[str, int, int]] = []
+        i = length
+        while i > 0:
+            edge = back[i]
+            assert edge is not None
+            j, tokens = edge
+            for token in reversed(tokens):
+                result.append((token, j, i))
+            i = j
+        result.reverse()
+        return result
+
     def encode(self, text: str) -> List[str]:
+        if len(text) == 1 and text in self.vocab:
+            return [text]
+        fast = self._encode_fast(text)
+        if fast is not None:
+            return [token for token, _, _ in fast]
         lattice = UnigramLattice(
             text,
             self.vocab,
             max_subword_len=self.max_subword_len,
             byte_fallback=self.byte_fallback,
+            trie=self._get_trie(),
         )
         tokens, _ = lattice.viterbi()
         return tokens
 
     def encode_with_spans(self, text: str) -> List[Tuple[str, int, int]]:
         """Encode text and retain normalized character spans for every output token."""
+        if len(text) == 1 and text in self.vocab:
+            return [(text, 0, 1)]
+        fast = self._encode_fast(text)
+        if fast is not None:
+            return fast
         lattice = UnigramLattice(
             text,
             self.vocab,
             max_subword_len=self.max_subword_len,
             byte_fallback=self.byte_fallback,
+            trie=self._get_trie(),
         )
         edges, _ = lattice.viterbi_edges()
         return [
-            (token, edge.start, edge.end)
-            for edge in edges
-            for token in edge.tokens
+            (token, edge.start, edge.end) for edge in edges for token in edge.tokens
         ]
 
     def sample(self, text: str, alpha: float = 0.5) -> List[str]:
+        if len(text) == 1 and text in self.vocab:
+            return [text]
         lattice = UnigramLattice(
             text,
             self.vocab,
             max_subword_len=self.max_subword_len,
             byte_fallback=self.byte_fallback,
+            trie=self._get_trie(),
         )
         return lattice.sample(alpha=alpha)
 
@@ -71,6 +166,7 @@ class UnigramModel:
 
     def decode(self, token_ids: List[int], space_char: str = "\u2581") -> str:
         from byte_codec import ByteFallbackEngine
+
         tokens = [self.id_to_token.get(i, "<|unk|>") for i in token_ids]
         return ByteFallbackEngine.decode_tokens(tokens, space_char=space_char)
 
@@ -113,9 +209,7 @@ class UnigramTrainer:
         self.special_tokens = special_tokens
 
     def train(
-        self,
-        pre_tokenized_chunks: Iterable[str],
-        verbose: bool = True
+        self, pre_tokenized_chunks: Iterable[str], verbose: bool = True
     ) -> UnigramModel:
         """
         Runs the full EM training and pruning loop.
@@ -144,7 +238,9 @@ class UnigramTrainer:
         }
 
         if verbose:
-            print(f"[EM Trainer] Seed Vocab Size: {len(current_vocab_log_probs)} (Target: {self.target_vocab_size}, Required: {len(required_tokens)})")
+            print(
+                f"[EM Trainer] Seed Vocab Size: {len(current_vocab_log_probs)} (Target: {self.target_vocab_size}, Required: {len(required_tokens)})"
+            )
 
         round_num = 1
 
@@ -152,12 +248,17 @@ class UnigramTrainer:
         while len(current_vocab_log_probs) > self.target_vocab_size:
             # --- E-STEP & M-STEP SUB-ITERATIONS ---
             for _ in range(self.em_sub_iterations):
-                expected_counts: Dict[str, float] = {tok: 1e-7 for tok in current_vocab_log_probs}
+                expected_counts: Dict[str, float] = {
+                    tok: 1e-7 for tok in current_vocab_log_probs
+                }
                 total_corpus_log_lik = 0.0
+                trie = PrefixTrie.from_vocab(current_vocab_log_probs)
 
                 for chunk, count in chunk_counts.items():
                     # Skip special tokens from lattice segmentation
-                    if chunk in required_tokens and (chunk.startswith("<|") and chunk.endswith("|>")):
+                    if chunk in required_tokens and (
+                        chunk.startswith("<|") and chunk.endswith("|>")
+                    ):
                         expected_counts[chunk] = expected_counts.get(chunk, 0.0) + count
                         continue
 
@@ -166,18 +267,23 @@ class UnigramTrainer:
                         vocab_log_probs=current_vocab_log_probs,
                         max_subword_len=self.max_ngram_length,
                         byte_fallback=self.byte_fallback,
+                        trie=trie,
                     )
 
                     chunk_exp, chunk_log_lik = lattice.forward_backward()
                     total_corpus_log_lik += chunk_log_lik * count
 
                     for tok, exp_val in chunk_exp.items():
-                        expected_counts[tok] = expected_counts.get(tok, 0.0) + (exp_val * count)
+                        expected_counts[tok] = expected_counts.get(tok, 0.0) + (
+                            exp_val * count
+                        )
 
                 # M-Step: Update token log probabilities
                 total_expected = sum(expected_counts.values())
                 current_vocab_log_probs = {
-                    tok: math.log(max(expected_counts.get(tok, 1e-7) / total_expected, 1e-12))
+                    tok: math.log(
+                        max(expected_counts.get(tok, 1e-7) / total_expected, 1e-12)
+                    )
                     for tok in current_vocab_log_probs
                 }
 
@@ -217,7 +323,9 @@ class UnigramTrainer:
             current_vocab_log_probs = new_vocab_log_probs
 
             if verbose:
-                print(f"[EM Round {round_num:>2}] Vocab: {len(current_vocab_log_probs):>5} | Pruned: {len(tokens_to_remove):>4} | Corpus LogLik: {total_corpus_log_lik:.2f}")
+                print(
+                    f"[EM Round {round_num:>2}] Vocab: {len(current_vocab_log_probs):>5} | Pruned: {len(tokens_to_remove):>4} | Corpus LogLik: {total_corpus_log_lik:.2f}"
+                )
 
             round_num += 1
 
@@ -233,10 +341,12 @@ class UnigramTrainer:
         sorted_tokens = sorted(
             final_vocab.keys(),
             key=lambda t: (
-                0 if t.startswith("<|") and t.endswith("|>") else (1 if t.startswith("<0x") else 2),
+                0
+                if t.startswith("<|") and t.endswith("|>")
+                else (1 if t.startswith("<0x") else 2),
                 -len(t),
                 t,
-            )
+            ),
         )
 
         token_to_id = {tok: idx for idx, tok in enumerate(sorted_tokens)}

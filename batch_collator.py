@@ -11,6 +11,7 @@ class BatchEncoding:
     """
     Container for batch-encoded sequences ready for Transformer model consumption.
     """
+
     input_ids: List[List[int]]
     attention_mask: List[List[int]]
     tokens: List[List[str]]
@@ -28,12 +29,15 @@ class BatchEncoding:
         """
         try:
             import torch
+
             return {
                 "input_ids": torch.tensor(self.input_ids, dtype=torch.long),
                 "attention_mask": torch.tensor(self.attention_mask, dtype=torch.long),
             }
         except ImportError:
-            raise ImportError("PyTorch is not installed. Install torch to use to_torch().")
+            raise ImportError(
+                "PyTorch is not installed. Install torch to use to_torch()."
+            )
 
 
 class BatchCollator:
@@ -54,8 +58,12 @@ class BatchCollator:
         self.eos_token = eos_token
 
         self.pad_id = self.tokenizer.model.token_to_id.get(padding_token)
-        self.bos_id = self.tokenizer.model.token_to_id.get(bos_token) if bos_token else None
-        self.eos_id = self.tokenizer.model.token_to_id.get(eos_token) if eos_token else None
+        self.bos_id = (
+            self.tokenizer.model.token_to_id.get(bos_token) if bos_token else None
+        )
+        self.eos_id = (
+            self.tokenizer.model.token_to_id.get(eos_token) if eos_token else None
+        )
 
     def batch_encode(
         self,
@@ -73,7 +81,9 @@ class BatchCollator:
         if max_length is not None and max_length < 0:
             raise ValueError("max_length must not be negative")
         if padding and self.pad_id is None:
-            raise ValueError(f"padding token {self.pad_token!r} is not in the vocabulary")
+            raise ValueError(
+                f"padding token {self.pad_token!r} is not in the vocabulary"
+            )
 
         batch_ids: List[List[int]] = []
         batch_tokens: List[List[str]] = []
@@ -112,7 +122,9 @@ class BatchCollator:
         else:
             target_len = None
 
-        if target_len is not None and any(len(sequence) > target_len for sequence in batch_ids):
+        if target_len is not None and any(
+            len(sequence) > target_len for sequence in batch_ids
+        ):
             raise ValueError(
                 "a sequence exceeds max_length; enable truncation or increase max_length"
             )
@@ -122,16 +134,21 @@ class BatchCollator:
         padded_tokens: List[List[str]] = []
         attention_masks: List[List[int]] = []
 
+        pad_val = (
+            self.pad_id
+            if self.pad_id is not None
+            else self.tokenizer.model.token_to_id.get("<|unk|>", 0)
+        )
         for seq, tokens in zip(batch_ids, batch_tokens):
             seq_len = len(seq)
             if target_len is not None and seq_len < target_len:
                 pad_len = target_len - seq_len
-                padded_seq = seq + [self.pad_id] * pad_len
+                padded_seq = seq + [pad_val] * pad_len
                 padded_token_sequence = tokens + [self.pad_token] * pad_len
                 mask = [1] * seq_len + [0] * pad_len
             else:
-                padded_seq = seq
-                padded_token_sequence = tokens
+                padded_seq = list(seq)
+                padded_token_sequence = list(tokens)
                 mask = [1] * seq_len
 
             padded_ids.append(padded_seq)

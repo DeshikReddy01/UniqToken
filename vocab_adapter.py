@@ -12,7 +12,7 @@ from unigram_trainer import UnigramModel
 class VocabularyAdapter:
     """
     Dynamic Online Vocabulary Adapter (Solves Problem 7: Outdated Vocabulary).
-    
+
     Expands an existing trained tokenizer's vocabulary with new domain tokens
     (e.g., new tech slang, biomedical terms, code symbols) WITHOUT modifying
     existing token IDs, preserving downstream neural network embedding weights.
@@ -58,14 +58,18 @@ class VocabularyAdapter:
 
         existing_tokens: Set[str] = set(old_model.vocab.keys())
         raw_ngrams = seed_builder.mine_ngrams(chunk_counts)
-        filtered_candidates = seed_builder.filter_candidates(raw_ngrams, existing_tokens)
+        filtered_candidates = seed_builder.filter_candidates(
+            raw_ngrams, existing_tokens
+        )
         ranked_candidates = seed_builder.rank_candidates(filtered_candidates)
 
         # 3. Select top new candidates
         new_tokens_to_add = ranked_candidates[:num_new_tokens]
 
         if verbose:
-            print(f"[Vocab Adapter] Mined {len(ranked_candidates)} new candidates. Adding top {len(new_tokens_to_add)} tokens.")
+            print(
+                f"[Vocab Adapter] Mined {len(ranked_candidates)} new candidates. Adding top {len(new_tokens_to_add)} tokens."
+            )
 
         if not new_tokens_to_add:
             return tokenizer
@@ -85,14 +89,16 @@ class VocabularyAdapter:
             new_token_to_id[tok] = assigned_id
             new_id_to_token[assigned_id] = tok
             # Give new token a proportional probability
-            token_prob = max(filtered_candidates[tok] / max(total_new_freq, 1) * 0.1, min_existing_prob)
+            token_prob = max(
+                filtered_candidates[tok] / max(total_new_freq, 1) * 0.1,
+                min_existing_prob,
+            )
             new_vocab_probs[tok] = token_prob
 
         # 5. Re-normalize probability distribution
         total_p = sum(new_vocab_probs.values())
         updated_vocab = {
-            tok: math.log(p / total_p)
-            for tok, p in new_vocab_probs.items()
+            tok: math.log(p / total_p) for tok, p in new_vocab_probs.items()
         }
 
         updated_model = UnigramModel(

@@ -1,2 +1,15 @@
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+build/
+dist/
+*.egg-info/
+*.swp
+*.swo
+.DS_Store
+

@@ -45,6 +45,7 @@ class UnigramLattice:
         vocab_log_probs: Dict[str, float],
         max_subword_len: int = 16,
         byte_fallback: bool = True,
+        trie: Optional[object] = None,
     ):
         if max_subword_len < 1:
             raise ValueError("max_subword_len must be at least one")
@@ -53,6 +54,7 @@ class UnigramLattice:
         self.vocab = vocab_log_probs
         self.max_subword_len = max_subword_len
         self.byte_fallback = byte_fallback
+        self.trie = trie
 
         self.begin_nodes: List[List[LatticeEdge]] = [[] for _ in range(self.length + 1)]
         self.end_nodes: List[List[LatticeEdge]] = [[] for _ in range(self.length + 1)]
@@ -62,36 +64,49 @@ class UnigramLattice:
     def _build_graph(self) -> None:
         for i in range(self.length):
             has_edge_at_i = False
-            max_j = min(self.length + 1, i + self.max_subword_len + 1)
 
-            for j in range(i + 1, max_j):
-                subword = self.text[i:j]
-                if subword in self.vocab:
-                    log_p = self.vocab[subword]
+            if self.trie is not None and hasattr(self.trie, "find_matches"):
+                matches = self.trie.find_matches(self.text, i, self.max_subword_len)
+                for end_j, subword, log_p in matches:
                     edge = LatticeEdge(
                         start=i,
-                        end=j,
+                        end=end_j,
                         tokens=[subword],
                         log_prob=log_p,
-                        cost=-log_p
+                        cost=-log_p,
                     )
                     self.begin_nodes[i].append(edge)
-                    self.end_nodes[j].append(edge)
+                    self.end_nodes[end_j].append(edge)
                     has_edge_at_i = True
+            else:
+                max_j = min(self.length + 1, i + self.max_subword_len + 1)
+                for j in range(i + 1, max_j):
+                    subword = self.text[i:j]
+                    if subword in self.vocab:
+                        log_p = self.vocab[subword]
+                        edge = LatticeEdge(
+                            start=i,
+                            end=j,
+                            tokens=[subword],
+                            log_prob=log_p,
+                            cost=-log_p,
+                        )
+                        self.begin_nodes[i].append(edge)
+                        self.end_nodes[j].append(edge)
+                        has_edge_at_i = True
 
             if not has_edge_at_i and self.byte_fallback:
                 char = self.text[i]
                 byte_tokens = ByteFallbackEngine.char_to_byte_tokens(char)
                 total_log_p = sum(
-                    self.vocab.get(b, -self.DEFAULT_BYTE_PENALTY)
-                    for b in byte_tokens
+                    self.vocab.get(b, -self.DEFAULT_BYTE_PENALTY) for b in byte_tokens
                 )
                 edge = LatticeEdge(
                     start=i,
                     end=i + 1,
                     tokens=byte_tokens,
                     log_prob=total_log_p,
-                    cost=-total_log_p
+                    cost=-total_log_p,
                 )
                 self.begin_nodes[i].append(edge)
                 self.end_nodes[i + 1].append(edge)
@@ -114,11 +129,13 @@ class UnigramLattice:
         curr = self.length
 
         while curr > 0:
-            edge = best_edge[curr]
-            if edge is None:
-                raise RuntimeError(f"Lattice disconnected at index {curr} for {self.text!r}")
-            edges.append(edge)
-            curr = edge.start
+            selected_edge = best_edge[curr]
+            if selected_edge is None:
+                raise RuntimeError(
+                    f"Lattice disconnected at index {curr} for {self.text!r}"
+                )
+            edges.append(selected_edge)
+            curr = selected_edge.start
 
         edges.reverse()
         total_log_likelihood = -best_cost[self.length]
@@ -142,8 +159,7 @@ class UnigramLattice:
 
         for j in range(1, self.length + 1):
             incoming_scores = [
-                log_alpha[edge.start] + edge.log_prob
-                for edge in self.end_nodes[j]
+                log_alpha[edge.start] + edge.log_prob for edge in self.end_nodes[j]
             ]
             log_alpha[j] = logsumexp(incoming_scores)
 
@@ -156,8 +172,7 @@ class UnigramLattice:
 
         for i in range(self.length - 1, -1, -1):
             outgoing_scores = [
-                edge.log_prob + log_beta[edge.end]
-                for edge in self.begin_nodes[i]
+                edge.log_prob + log_beta[edge.end] for edge in self.begin_nodes[i]
             ]
             log_beta[i] = logsumexp(outgoing_scores)
 
@@ -180,10 +195,10 @@ class UnigramLattice:
     def sample(self, alpha: float = 0.5) -> List[str]:
         """
         Subword Regularization via Forward-Filtering Backward-Sampling (FFBS).
-        
+
         Samples a valid segmentation from the distribution:
             P(x | W) ~ exp( alpha * sum(log p(t_i)) )
-            
+
         - alpha -> inf: approaches deterministic Viterbi 1-best path.
         - alpha = 1.0 : exact unigram model posterior sampling.
         - alpha < 1.0 : flattened temperature (more diverse subwords / single characters).
@@ -214,12 +229,16 @@ class UnigramLattice:
         while curr > 0:
             edges = self.end_nodes[curr]
             if not edges:
-                raise RuntimeError(f"Lattice disconnected at index {curr} for {self.text!r}")
+                raise RuntimeError(
+                    f"Lattice disconnected at index {curr} for {self.text!r}"
+                )
 
             # Compute transition probabilities for incoming edges ending at curr
             edge_log_probs: List[float] = []
             for edge in edges:
-                edge_score = log_alpha[edge.start] + (alpha * edge.log_prob) - log_alpha[curr]
+                edge_score = (
+                    log_alpha[edge.start] + (alpha * edge.log_prob) - log_alpha[curr]
+                )
                 edge_log_probs.append(edge_score)
 
             # Softmax normalization to obtain sampling weights

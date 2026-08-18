@@ -1,0 +1,91 @@
+[build-system]
+requires = ["setuptools>=61.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "caliper-tokenizer"
+version = "1.0.0"
+description = "Zero-dependency, high-precision Byte-Fallback Unigram and Multimodal Tokenizer with dual-offset tracking and subword regularization."
+readme = "README.md"
+license = "MIT"
+authors = [
+    { name = "Caliper Authors" }
+]
+keywords = [
+    "tokenizer",
+    "unigram",
+    "bpe",
+    "byte-fallback",
+    "multimodal",
+    "nlp",
+    "subword-regularization",
+    "transformers"
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Science/Research",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Text Processing :: Linguistic"
+]
+requires-python = ">=3.9"
+dependencies = []
+
+[project.optional-dependencies]
+torch = [
+    "torch>=2.0.0"
+]
+huggingface = [
+    "tokenizers>=0.13.0",
+    "transformers>=4.30.0"
+]
+test = [
+    "pytest>=7.0.0",
+    "coverage>=7.0.0",
+    "ruff>=0.4.0",
+    "mypy>=1.8.0"
+]
+bench = [
+    "sentencepiece>=0.1.99",
+    "tokenizers>=0.13.0",
+    "tiktoken>=0.5.0"
+]
+all = [
+    "torch>=2.0.0",
+    "tokenizers>=0.13.0",
+    "transformers>=4.30.0",
+    "sentencepiece>=0.1.99",
+    "pytest>=7.0.0",
+    "ruff>=0.4.0",
+    "mypy>=1.8.0",
+    "tiktoken>=0.5.0"
+]
+
+[project.urls]
+Homepage = "https://github.com/umran666/caliper"
+Repository = "https://github.com/umran666/caliper"
+
+[tool.setuptools]
+py-modules = [
+    "batch_collator",
+    "bpe_model",
+    "bpe_trainer",
+    "byte_codec",
+    "hf_exporter",
+    "indentation_compressor",
+    "pre_tokenizer",
+    "security_shield",
+    "seed_builder",
+    "streaming_decoder",
+    "tokenizer",
+    "trie",
+    "unigram_lattice",
+    "unigram_trainer",
+    "vocab_adapter",
+]
+packages = ["multimodal", "benchmarks"]

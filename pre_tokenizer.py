@@ -15,6 +15,7 @@ class PreToken:
     - norm_span: Character slice in the normalized string.
     - raw_span: Exact slice in the original source string (for QA/NER).
     """
+
     text: str
     norm_span: Tuple[int, int]
     raw_span: Tuple[int, int]
@@ -25,23 +26,25 @@ class Normalizer:
     Standardizes raw text before tokenization with exact source-to-normalized offset tracking.
     """
 
-    PUNCT_MAP = str.maketrans({
-        "“": '"',
-        "”": '"',
-        "„": '"',
-        "‘": "'",
-        "’": "'",
-        "‚": "'",
-        "—": "-",
-        "–": "-",
-        "−": "-",
-        "…": "...",
-    })
+    PUNCT_MAP = str.maketrans(
+        {
+            "“": '"',
+            "”": '"',
+            "„": '"',
+            "‘": "'",
+            "’": "'",
+            "‚": "'",
+            "—": "-",
+            "–": "-",
+            "−": "-",
+            "…": "...",
+        }
+    )
 
     # Explicit mapping for common non-standard Unicode whitespaces
-    UNICODE_SPACES = " \u00A0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200A\u202F\u205F\u3000"
-    _ESCAPE_PREFIX = "\uE000"
-    _ESCAPED_METASPACE = "\uE001"
+    UNICODE_SPACES = " \u00a0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u202f\u205f\u3000"
+    _ESCAPE_PREFIX = "\ue000"
+    _ESCAPED_METASPACE = "\ue001"
 
     def __init__(
         self,
@@ -56,7 +59,9 @@ class Normalizer:
         if len(space_char) != 1 or space_char.isspace():
             raise ValueError("space_char must be a single, non-whitespace character")
         if space_char in {self._ESCAPE_PREFIX, self._ESCAPED_METASPACE}:
-            raise ValueError("space_char uses a reserved normalization escape character")
+            raise ValueError(
+                "space_char uses a reserved normalization escape character"
+            )
         self.space_char = space_char
         self.lowercase = lowercase
         self.normalize_unicode = normalize_unicode
@@ -98,7 +103,9 @@ class Normalizer:
             or 0xD7B0 <= codepoint <= 0xD7FB
         )
 
-    def _normalize_nfkc_with_alignment(self, text: str) -> Tuple[List[str], List[RawSpan]]:
+    def _normalize_nfkc_with_alignment(
+        self, text: str
+    ) -> Tuple[List[str], List[RawSpan]]:
         """Apply NFKC by normalization-safe clusters and retain source spans."""
         normalized_chars: List[str] = []
         alignment_map: List[RawSpan] = []
@@ -111,29 +118,50 @@ class Normalizer:
             normalized_chars.extend(normalized)
             alignment_map.extend([raw_span] * len(normalized))
 
-        for index, char in enumerate(text):
+        index = 0
+        n = len(text)
+        while index < n:
+            char = text[index]
+            if ord(char) < 128:
+                # Fast path: ASCII characters are NFKC-stable and never
+                # combining, so a run of them can be emitted directly.
+                run_end = index
+                while run_end < n and ord(text[run_end]) < 128:
+                    run_end += 1
+                # A combining mark immediately after the run must stay
+                # clustered with the preceding ASCII base character, so roll
+                # that base char back into the slow path.
+                if run_end < n and unicodedata.combining(text[run_end]) != 0:
+                    run_end -= 1
+                if run_end > index:
+                    if index > cluster_start:
+                        flush_cluster(index)
+                    normalized_chars.extend(text[index:run_end])
+                    alignment_map.extend(
+                        (pos, pos + 1) for pos in range(index, run_end)
+                    )
+                    cluster_start = run_end
+                    index = run_end
+                    continue
+
             normalized_char = unicodedata.normalize("NFKC", char)
             starts_with_combining_mark = (
-                bool(normalized_char)
-                and unicodedata.combining(normalized_char[0]) != 0
+                bool(normalized_char) and unicodedata.combining(normalized_char[0]) != 0
             )
-            continues_cluster = (
-                index > cluster_start
-                and (
-                    unicodedata.combining(char) != 0
-                    or starts_with_combining_mark
-                    or (
-                        self._is_hangul_jamo(text[index - 1])
-                        and self._is_hangul_jamo(char)
-                    )
+            continues_cluster = index > cluster_start and (
+                unicodedata.combining(char) != 0
+                or starts_with_combining_mark
+                or (
+                    self._is_hangul_jamo(text[index - 1]) and self._is_hangul_jamo(char)
                 )
             )
             if index > cluster_start and not continues_cluster:
                 flush_cluster(index)
                 cluster_start = index
+            index += 1
 
         if text:
-            flush_cluster(len(text))
+            flush_cluster(n)
 
         # The cluster strategy handles the normal cases while this fallback keeps
         # normalization correct for rare Unicode sequences with unusual boundaries.
@@ -145,9 +173,7 @@ class Normalizer:
 
     @staticmethod
     def _replace_characters(
-        chars: Sequence[str],
-        spans: Sequence[RawSpan],
-        transform
+        chars: Sequence[str], spans: Sequence[RawSpan], transform
     ) -> Tuple[List[str], List[RawSpan]]:
         output_chars: List[str] = []
         output_spans: List[RawSpan] = []
@@ -171,7 +197,9 @@ class Normalizer:
             normalized_chars = list(text)
             alignment_map = [(index, index + 1) for index in range(len(text))]
 
-        if self.normalize_unicode_spaces:
+        if self.normalize_unicode_spaces and any(
+            char != " " and char in self.UNICODE_SPACES for char in normalized_chars
+        ):
             normalized_chars, alignment_map = self._replace_characters(
                 normalized_chars,
                 alignment_map,
@@ -193,7 +221,9 @@ class Normalizer:
             )
             normalized_chars = list("".join(normalized_chars).lower())
             if len(normalized_chars) != len(lowered_by_char):
-                raise ValueError("lowercase normalization produced an unsupported alignment change")
+                raise ValueError(
+                    "lowercase normalization produced an unsupported alignment change"
+                )
             alignment_map = lowered_spans
 
         if self.collapse_whitespaces:
@@ -209,7 +239,10 @@ class Normalizer:
                     continue
 
                 end = index + 1
-                while end < len(normalized_chars) and normalized_chars[end] in {" ", "\t"}:
+                while end < len(normalized_chars) and normalized_chars[end] in {
+                    " ",
+                    "\t",
+                }:
                     end += 1
                 collapsed_chars.append(" ")
                 collapsed_spans.append(
@@ -349,7 +382,9 @@ class RegexPreTokenizer:
         Emits PreToken instances with both normalized and source raw character spans.
         """
         if not isinstance(normalized_text, str):
-            raise TypeError(f"normalized_text must be a string, got {type(normalized_text).__name__}")
+            raise TypeError(
+                f"normalized_text must be a string, got {type(normalized_text).__name__}"
+            )
         if alignment_map is not None and len(alignment_map) != len(normalized_text):
             raise ValueError(
                 "alignment_map must have one entry for every normalized character"
@@ -388,11 +423,11 @@ class RegexPreTokenizer:
 
 if __name__ == "__main__":
     import sys
+
     if sys.stdout.encoding != "utf-8":
-        try:
-            sys.stdout.reconfigure(encoding="utf-8")
-        except AttributeError:
-            pass
+        reconfigure = getattr(sys.stdout, "reconfigure", None)
+        if callable(reconfigure):
+            reconfigure(encoding="utf-8")
 
     normalizer = Normalizer()
     pre_tokenizer = RegexPreTokenizer(split_digits=False)
@@ -400,7 +435,7 @@ if __name__ == "__main__":
     samples = [
         "ﬁx the bug in 2024 (visit https://example.com.)",
         "नमस्ते दुनिया and شكراً",
-        "Cost is ½ price for Ａpple"
+        "Cost is ½ price for Ａpple",
     ]
 
     for sample in samples:
@@ -410,5 +445,7 @@ if __name__ == "__main__":
         print(f"RAW TEXT   : {sample!r}")
         print(f"NORMALIZED : {norm!r}")
         for t in tokens:
-            raw_slice = sample[t.raw_span[0]:t.raw_span[1]]
-            print(f"  {t.text!r:<15} NormSpan={t.norm_span} RawSpan={t.raw_span} RawSlice={raw_slice!r}")
+            raw_slice = sample[t.raw_span[0] : t.raw_span[1]]
+            print(
+                f"  {t.text!r:<15} NormSpan={t.norm_span} RawSpan={t.raw_span} RawSlice={raw_slice!r}"
+            )

@@ -5,7 +5,7 @@ from typing import List
 class ByteFallbackEngine:
     """
     Executable Byte-Fallback codec.
-    
+
     Bridges the gap between raw UTF-8 bytes and token representations (<0x00> through <0xFF>).
     Guarantees executable OOV recovery and lossless roundtripping for valid UTF-8
     byte sequences produced by ``char_to_byte_tokens``.
