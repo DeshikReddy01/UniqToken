@@ -47,9 +47,7 @@ class PrefixTrie:
             trie.insert(token, log_p, token_id=idx)
         return trie
 
-    def find_matches(
-        self, text: str, start_idx: int, max_length: int = 16
-    ) -> List[Tuple[int, str, float]]:
+    def find_matches(self, text: str, start_idx: int, max_length: int = 16) -> List[Tuple[int, str, float]]:
         """
         Traverses the trie from start_idx in text.
         Returns a list of (end_idx, token_string, log_prob) for all matching prefixes.

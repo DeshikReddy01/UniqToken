@@ -47,19 +47,14 @@ class ResidualVectorQuantizer:
         # N_q independent codebooks, each with codebook_size centroids of dimension frame_size
         self.codebooks: List[List[List[float]]] = [
             [
-                [
-                    self._rng.gauss(0.0, 1.0 / math.sqrt(frame_size))
-                    for _ in range(frame_size)
-                ]
+                [self._rng.gauss(0.0, 1.0 / math.sqrt(frame_size)) for _ in range(frame_size)]
                 for _ in range(codebook_size)
             ]
             for _ in range(num_quantizers)
         ]
 
         # Precompute squared norms for efficient dot-product quantization
-        self._codebook_norms: List[List[float]] = [
-            [sum(c * c for c in vec) for vec in cb] for cb in self.codebooks
-        ]
+        self._codebook_norms: List[List[float]] = [[sum(c * c for c in vec) for vec in cb] for cb in self.codebooks]
 
     def get_special_tokens(self) -> List[str]:
         """
@@ -72,9 +67,7 @@ class ResidualVectorQuantizer:
                 tokens.append(f"<|aud_q{q}_{k:04d}|>")
         return tokens
 
-    def _quantize_stage(
-        self, residual_vector: List[float], stage: int
-    ) -> Tuple[int, str, List[float]]:
+    def _quantize_stage(self, residual_vector: List[float], stage: int) -> Tuple[int, str, List[float]]:
         """
         Finds the nearest centroid in the stage-th codebook using dot product distance.
         """
@@ -163,10 +156,7 @@ class ResidualVectorQuantizer:
                         code_idx = int(parts[1])
                     except ValueError:
                         continue
-                    if (
-                        0 <= stage_num < self.num_quantizers
-                        and 0 <= code_idx < self.codebook_size
-                    ):
+                    if 0 <= stage_num < self.num_quantizers and 0 <= code_idx < self.codebook_size:
                         centroid = self.codebooks[stage_num][code_idx]
                         frame_acc = [a + c for a, c in zip(frame_acc, centroid)]
             reconstructed.extend(frame_acc)
@@ -200,15 +190,10 @@ class ResidualVectorQuantizer:
             raise ValueError("audio codebook state has an invalid quantizer count")
         if any(len(codebook) != quantizer.codebook_size for codebook in codebooks):
             raise ValueError("audio codebook state has an invalid codebook size")
-        if any(
-            len(vector) != quantizer.frame_size
-            for codebook in codebooks
-            for vector in codebook
-        ):
+        if any(len(vector) != quantizer.frame_size for codebook in codebooks for vector in codebook):
             raise ValueError("audio codebook state has an invalid vector dimension")
         quantizer.codebooks = codebooks
         quantizer._codebook_norms = [
-            [sum(value * value for value in vector) for vector in codebook]
-            for codebook in quantizer.codebooks
+            [sum(value * value for value in vector) for vector in codebook] for codebook in quantizer.codebooks
         ]
         return quantizer

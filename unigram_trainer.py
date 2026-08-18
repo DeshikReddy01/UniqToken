@@ -80,10 +80,7 @@ class UnigramModel:
                         break
                 if not has_vocab_edge:
                     byte_tokens = ByteFallbackEngine.char_to_byte_tokens(char)
-                    log_p = sum(
-                        self.vocab.get(b, -UnigramLattice.DEFAULT_BYTE_PENALTY)
-                        for b in byte_tokens
-                    )
+                    log_p = sum(self.vocab.get(b, -UnigramLattice.DEFAULT_BYTE_PENALTY) for b in byte_tokens)
                     score = dp[i - 1] + log_p
                     if score > best_score:
                         best_score = score
@@ -138,9 +135,7 @@ class UnigramModel:
             trie=self._get_trie(),
         )
         edges, _ = lattice.viterbi_edges()
-        return [
-            (token, edge.start, edge.end) for edge in edges for token in edge.tokens
-        ]
+        return [(token, edge.start, edge.end) for edge in edges for token in edge.tokens]
 
     def sample(self, text: str, alpha: float = 0.5) -> List[str]:
         if len(text) == 1 and text in self.vocab:
@@ -208,9 +203,7 @@ class UnigramTrainer:
         self.em_sub_iterations = em_sub_iterations
         self.special_tokens = special_tokens
 
-    def train(
-        self, pre_tokenized_chunks: Iterable[str], verbose: bool = True
-    ) -> UnigramModel:
+    def train(self, pre_tokenized_chunks: Iterable[str], verbose: bool = True) -> UnigramModel:
         """
         Runs the full EM training and pruning loop.
         """
@@ -233,8 +226,7 @@ class UnigramTrainer:
         # Step 3: Initialize log probabilities from seed counts
         total_seed_freq = sum(t.frequency for t in seed_tokens)
         current_vocab_log_probs: Dict[str, float] = {
-            t.token: math.log(max(t.frequency, 1) / total_seed_freq)
-            for t in seed_tokens
+            t.token: math.log(max(t.frequency, 1) / total_seed_freq) for t in seed_tokens
         }
 
         if verbose:
@@ -248,17 +240,13 @@ class UnigramTrainer:
         while len(current_vocab_log_probs) > self.target_vocab_size:
             # --- E-STEP & M-STEP SUB-ITERATIONS ---
             for _ in range(self.em_sub_iterations):
-                expected_counts: Dict[str, float] = {
-                    tok: 1e-7 for tok in current_vocab_log_probs
-                }
+                expected_counts: Dict[str, float] = {tok: 1e-7 for tok in current_vocab_log_probs}
                 total_corpus_log_lik = 0.0
                 trie = PrefixTrie.from_vocab(current_vocab_log_probs)
 
                 for chunk, count in chunk_counts.items():
                     # Skip special tokens from lattice segmentation
-                    if chunk in required_tokens and (
-                        chunk.startswith("<|") and chunk.endswith("|>")
-                    ):
+                    if chunk in required_tokens and (chunk.startswith("<|") and chunk.endswith("|>")):
                         expected_counts[chunk] = expected_counts.get(chunk, 0.0) + count
                         continue
 
@@ -274,16 +262,12 @@ class UnigramTrainer:
                     total_corpus_log_lik += chunk_log_lik * count
 
                     for tok, exp_val in chunk_exp.items():
-                        expected_counts[tok] = expected_counts.get(tok, 0.0) + (
-                            exp_val * count
-                        )
+                        expected_counts[tok] = expected_counts.get(tok, 0.0) + (exp_val * count)
 
                 # M-Step: Update token log probabilities
                 total_expected = sum(expected_counts.values())
                 current_vocab_log_probs = {
-                    tok: math.log(
-                        max(expected_counts.get(tok, 1e-7) / total_expected, 1e-12)
-                    )
+                    tok: math.log(max(expected_counts.get(tok, 1e-7) / total_expected, 1e-12))
                     for tok in current_vocab_log_probs
                 }
 
@@ -315,9 +299,7 @@ class UnigramTrainer:
             tokens_to_remove = set(tok for tok, _ in candidate_scores[:num_to_prune])
 
             new_vocab_log_probs: Dict[str, float] = {
-                tok: log_p
-                for tok, log_p in current_vocab_log_probs.items()
-                if tok not in tokens_to_remove
+                tok: log_p for tok, log_p in current_vocab_log_probs.items() if tok not in tokens_to_remove
             }
 
             current_vocab_log_probs = new_vocab_log_probs
@@ -331,19 +313,14 @@ class UnigramTrainer:
 
         # Step 5: Final Probability Re-normalization
         total_p = sum(math.exp(log_p) for log_p in current_vocab_log_probs.values())
-        final_vocab = {
-            tok: math.log(math.exp(log_p) / total_p)
-            for tok, log_p in current_vocab_log_probs.items()
-        }
+        final_vocab = {tok: math.log(math.exp(log_p) / total_p) for tok, log_p in current_vocab_log_probs.items()}
 
         # Step 6: Build Integer Token IDs
         # Sort tokens deterministically: special tokens first, then bytes, then alphabet/subwords
         sorted_tokens = sorted(
             final_vocab.keys(),
             key=lambda t: (
-                0
-                if t.startswith("<|") and t.endswith("|>")
-                else (1 if t.startswith("<0x") else 2),
+                0 if t.startswith("<|") and t.endswith("|>") else (1 if t.startswith("<0x") else 2),
                 -len(t),
                 t,
             ),

@@ -76,9 +76,7 @@ class CrossEntropyMerging:
             return token in model.vocab or token in new_probs
 
         if self.cross_word:
-            streams: List[List[str]] = [
-                [tok for chunk in chunks if chunk for tok in model.encode(chunk)]
-            ]
+            streams: List[List[str]] = [[tok for chunk in chunks if chunk for tok in model.encode(chunk)]]
         else:
             streams = [model.encode(chunk) for chunk in chunks if chunk]
 
@@ -100,12 +98,7 @@ class CrossEntropyMerging:
                 merged = a + b
                 if self.cross_word and self.space_char not in merged:
                     continue
-                if (
-                    len(merged) > max_len
-                    or merged in model.vocab
-                    or merged in new_probs
-                    or merged in special_tokens
-                ):
+                if len(merged) > max_len or merged in model.vocab or merged in new_probs or merged in special_tokens:
                     continue
                 log_p_hat = math.log(f / total_pairs)
                 score = f * (log_prob(a) + log_prob(b) - log_p_hat)

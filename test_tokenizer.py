@@ -64,9 +64,7 @@ class ByteFallbackTests(unittest.TestCase):
             ByteFallbackEngine.decode_tokens(["<0xFF>"])
 
     def test_subwords_still_decode_metaspace(self):
-        self.assertEqual(
-            ByteFallbackEngine.decode_tokens(["hello\u2581world"]), "hello world"
-        )
+        self.assertEqual(ByteFallbackEngine.decode_tokens(["hello\u2581world"]), "hello world")
 
 
 class CustomTokenizerTests(unittest.TestCase):
@@ -135,17 +133,13 @@ class CustomTokenizerTests(unittest.TestCase):
 
         self.assertEqual(updated.model.max_subword_len, 3)
         self.assertFalse(updated.model.byte_fallback)
-        self.assertEqual(
-            updated.model.token_to_id["tok"], self.model.token_to_id["tok"]
-        )
+        self.assertEqual(updated.model.token_to_id["tok"], self.model.token_to_id["tok"])
         self.assertEqual(updated.model.token_to_id["en"], self.model.token_to_id["en"])
 
 
 class LatticeTests(unittest.TestCase):
     def test_rejects_invalid_sampling_temperature(self):
-        lattice = UnigramLattice(
-            "ab", {"a": log(0.5), "b": log(0.5)}, byte_fallback=False
-        )
+        lattice = UnigramLattice("ab", {"a": log(0.5), "b": log(0.5)}, byte_fallback=False)
         with self.assertRaises(ValueError):
             lattice.sample(alpha=0)
         with self.assertRaises(ValueError):
@@ -188,17 +182,11 @@ class BatchCollatorTests(unittest.TestCase):
             special_tokens=["<|pad|>", "<|bos|>", "<|eos|>", "<|unk|>"],
             byte_fallback=False,
         )
-        self.collator = BatchCollator(
-            CustomTokenizer(
-                Normalizer(normalize_unicode=False), RegexPreTokenizer(), model
-            )
-        )
+        self.collator = BatchCollator(CustomTokenizer(Normalizer(normalize_unicode=False), RegexPreTokenizer(), model))
 
     def test_padding_keeps_tokens_aligned_with_ids(self):
         batch = self.collator.batch_encode(["a", "aa"], max_length=5, truncation=True)
-        self.assertEqual(
-            batch.tokens[0], ["<|bos|>", "a", "<|eos|>", "<|pad|>", "<|pad|>"]
-        )
+        self.assertEqual(batch.tokens[0], ["<|bos|>", "a", "<|eos|>", "<|pad|>", "<|pad|>"])
         self.assertEqual([len(row) for row in batch.input_ids], [5, 5])
         self.assertEqual([len(row) for row in batch.tokens], [5, 5])
         self.assertEqual(batch.attention_mask[0], [1, 1, 1, 0, 0])
@@ -219,12 +207,8 @@ class MultimodalTests(unittest.TestCase):
             special_tokens=["<|unk|>"],
             byte_fallback=False,
         )
-        self.tokenizer = CustomTokenizer(
-            Normalizer(normalize_unicode=False), RegexPreTokenizer(), model
-        )
-        self.mm_tok = MultimodalTokenizer(
-            self.tokenizer, patch_size=16, channels=3, num_visual_tokens=64
-        )
+        self.tokenizer = CustomTokenizer(Normalizer(normalize_unicode=False), RegexPreTokenizer(), model)
+        self.mm_tok = MultimodalTokenizer(self.tokenizer, patch_size=16, channels=3, num_visual_tokens=64)
 
     def test_image_patching_and_aspect_ratio(self):
         img = [[[1.0, 2.0, 3.0] for _ in range(32)] for _ in range(16)]
@@ -253,9 +237,7 @@ class MultimodalTests(unittest.TestCase):
             loaded = MultimodalTokenizer.load(directory)
 
             self.assertEqual(loaded.vocab_size, self.mm_tok.vocab_size)
-            self.assertEqual(
-                loaded.codebook.num_embeddings, self.mm_tok.codebook.num_embeddings
-            )
+            self.assertEqual(loaded.codebook.num_embeddings, self.mm_tok.codebook.num_embeddings)
             self.assertEqual(
                 loaded.audio_quantizer.codebooks[0][0][0],
                 123.0,
@@ -294,10 +276,7 @@ class MultimodalTests(unittest.TestCase):
     def test_kmeans_init_improves_quantization(self):
         imgs = []
         for i in range(8):
-            img = [
-                [[0.1 + i * 0.1, 0.2 + i * 0.1, 0.3 + i * 0.1] for _ in range(16)]
-                for _ in range(16)
-            ]
+            img = [[[0.1 + i * 0.1, 0.2 + i * 0.1, 0.3 + i * 0.1] for _ in range(16)] for _ in range(16)]
             imgs.append(img)
 
         patches1, _ = self.mm_tok.patcher.extract_patches(imgs[0])
@@ -412,11 +391,7 @@ class LatticeFastPathTests(unittest.TestCase):
                 )
                 lattice_tokens, _ = lattice.viterbi()
                 edges, _ = lattice.viterbi_edges()
-                lattice_spans = [
-                    (token, edge.start, edge.end)
-                    for edge in edges
-                    for token in edge.tokens
-                ]
+                lattice_spans = [(token, edge.start, edge.end) for edge in edges for token in edge.tokens]
                 fast = model._encode_fast(s)
                 self.assertEqual(model.encode(s), lattice_tokens, repr(s))
                 if fast is not None:
@@ -452,9 +427,7 @@ class HuggingFaceExportTests(unittest.TestCase):
         except ImportError:
             self.skipTest("tokenizers is not installed")
 
-        tok = CustomTokenizer(
-            Normalizer(normalize_unicode=False), RegexPreTokenizer(), model
-        )
+        tok = CustomTokenizer(Normalizer(normalize_unicode=False), RegexPreTokenizer(), model)
         with TemporaryDirectory() as tmp_dir:
             tok.export_to_huggingface(tmp_dir)
             with open(Path(tmp_dir) / "tokenizer.json", "r", encoding="utf-8") as f:
@@ -474,9 +447,7 @@ class HuggingFaceExportTests(unittest.TestCase):
             self.skipTest("tokenizers is not installed")
 
         vocab = {"<|unk|>": log(1.0)}
-        vocab.update(
-            {ByteFallbackEngine.byte_to_token(byte): log(0.001) for byte in range(256)}
-        )
+        vocab.update({ByteFallbackEngine.byte_to_token(byte): log(0.001) for byte in range(256)})
         token_to_id = {token: index for index, token in enumerate(vocab)}
         model = UnigramModel(
             vocab=vocab,
@@ -515,22 +486,15 @@ class SecurityAndIndentationTests(unittest.TestCase):
             special_tokens=["<|space_4|>"],
             byte_fallback=False,
         )
-        tokenizer = CustomTokenizer(
-            Normalizer(normalize_unicode=False), RegexPreTokenizer(), model
-        )
+        tokenizer = CustomTokenizer(Normalizer(normalize_unicode=False), RegexPreTokenizer(), model)
 
         self.assertEqual(tokenizer.encode("    x"), ["<|space_4|>", "x"])
         self.assertEqual(tokenizer.decode(tokenizer.encode_to_ids("    x")), "    x")
         self.assertEqual(
-            [
-                (token.text, token.raw_span)
-                for token in tokenizer.encode_with_offsets("    x")
-            ],
+            [(token.text, token.raw_span) for token in tokenizer.encode_with_offsets("    x")],
             [("<|space_4|>", (0, 4)), ("x", (4, 5))],
         )
-        self.assertEqual(
-            IndentationCompressor.decompress_indents("<|space_4|>x"), "    x"
-        )
+        self.assertEqual(IndentationCompressor.decompress_indents("<|space_4|>x"), "    x")
 
     def test_rejects_invalid_security_action(self):
         shield = SecurityShield(["<|user|>"])
@@ -559,9 +523,7 @@ class StreamingDecoderTests(unittest.TestCase):
 
         decoder.reset()
         escaped_tokens = [6, 4, 4, 6, 4, 5]
-        self.assertEqual(
-            "".join(decoder.feed_token_id(token) for token in escaped_tokens), "▁"
-        )
+        self.assertEqual("".join(decoder.feed_token_id(token) for token in escaped_tokens), "▁")
 
     def test_streaming_decoder_applies_indentation_replacements(self):
         decoder = StreamingDecoder(
@@ -574,9 +536,7 @@ class StreamingDecoderTests(unittest.TestCase):
 
 class AudioCodecTests(unittest.TestCase):
     def test_audio_rvq_and_multimodal_interleaving(self):
-        rvq = ResidualVectorQuantizer(
-            num_quantizers=4, codebook_size=64, frame_size=320
-        )
+        rvq = ResidualVectorQuantizer(num_quantizers=4, codebook_size=64, frame_size=320)
         synthetic_audio = [0.1 * math.sin(i * 0.1) for i in range(640)]
 
         tokens, num_frames = rvq.encode_audio(synthetic_audio)
@@ -596,12 +556,8 @@ class AudioCodecTests(unittest.TestCase):
             special_tokens=["<|unk|>"],
             byte_fallback=False,
         )
-        base_tok = CustomTokenizer(
-            Normalizer(normalize_unicode=False), RegexPreTokenizer(), model
-        )
-        mm_tok = MultimodalTokenizer(
-            base_tok, patch_size=16, channels=3, num_visual_tokens=64
-        )
+        base_tok = CustomTokenizer(Normalizer(normalize_unicode=False), RegexPreTokenizer(), model)
+        mm_tok = MultimodalTokenizer(base_tok, patch_size=16, channels=3, num_visual_tokens=64)
 
         aud_segment = AudioSegment(samples=synthetic_audio)
         seq = mm_tok.encode_interleaved(["audio", aud_segment, "audio"])
@@ -622,9 +578,7 @@ class NeuralCodecTests(unittest.TestCase):
 
         # Batch of 2 RGB images (32x32)
         x = torch.randn(2, 3, 32, 32)
-        model = NeuralVisualCodec(
-            in_channels=3, hidden_dim=32, latent_dim=64, num_tokens=128
-        )
+        model = NeuralVisualCodec(in_channels=3, hidden_dim=32, latent_dim=64, num_tokens=128)
 
         # 1. Forward training pass
         out = model(x)
@@ -646,9 +600,7 @@ class NeuralCodecTests(unittest.TestCase):
         _, odd_indices, (odd_gh, odd_gw) = model.encode_to_tokens(odd_image)
         self.assertEqual((odd_gh, odd_gw), (5, 7))
         self.assertEqual(
-            model.decode_from_indices(
-                odd_indices, odd_gh, odd_gw, output_size=(17, 25)
-            ).shape,
+            model.decode_from_indices(odd_indices, odd_gh, odd_gw, output_size=(17, 25)).shape,
             odd_image.shape,
         )
 
@@ -814,12 +766,7 @@ class SuperBPETests(unittest.TestCase):
         after = len(improved_tok.encode(full_text))
 
         self.assertLess(after, before)
-        self.assertTrue(
-            any(
-                tok in improved_tok.encode(full_text)
-                for tok in ["the" + self.SPACE, self.SPACE + "fox"]
-            )
-        )
+        self.assertTrue(any(tok in improved_tok.encode(full_text) for tok in ["the" + self.SPACE, self.SPACE + "fox"]))
 
     def test_superbpe_roundtrip_lossless_through_pipeline(self):
         docs, _, _, _, improved_tok, _ = self._make_pipeline()
@@ -835,9 +782,7 @@ class SuperBPETests(unittest.TestCase):
             len(base_tok.model.vocab) + len(optimizer.merges),
         )
         for merged in (m[2] for m in optimizer.merges):
-            self.assertGreaterEqual(
-                improved_tok.model.token_to_id[merged], len(base_tok.model.vocab)
-            )
+            self.assertGreaterEqual(improved_tok.model.token_to_id[merged], len(base_tok.model.vocab))
 
     def test_superbpe_respects_max_subword_len(self):
         _, _, _, base_tok, _, optimizer = self._make_pipeline()

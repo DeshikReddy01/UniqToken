@@ -27,9 +27,7 @@ class HuggingFaceExporter:
         added_tokens: List[Dict[str, Any]] = []
         special_set = set(model.special_tokens)
         for token_str, token_id in model.token_to_id.items():
-            if token_str in special_set or (
-                token_str.startswith("<|") and token_str.endswith("|>")
-            ):
+            if token_str in special_set or (token_str.startswith("<|") and token_str.endswith("|>")):
                 added_tokens.append(
                     {
                         "id": token_id,
@@ -55,9 +53,7 @@ class HuggingFaceExporter:
             "added_tokens": added_tokens,
             "normalizer": {
                 "type": "Sequence",
-                "normalizers": [{"type": "NFKC"}]
-                if normalizer.normalize_unicode
-                else [],
+                "normalizers": [{"type": "NFKC"}] if normalizer.normalize_unicode else [],
             },
             "pre_tokenizer": {
                 "type": "Metaspace",
@@ -91,9 +87,7 @@ class HuggingFaceExporter:
         return hf_schema
 
     @classmethod
-    def save_hf_pretrained(
-        cls, tokenizer: CustomTokenizer, output_dir: Union[str, Path]
-    ) -> None:
+    def save_hf_pretrained(cls, tokenizer: CustomTokenizer, output_dir: Union[str, Path]) -> None:
         """
         Saves tokenizer.json and tokenizer_config.json into output_dir.
         """
@@ -108,15 +102,9 @@ class HuggingFaceExporter:
             "tokenizer_class": "PreTrainedTokenizerFast",
             "model_type": "unigram",
             "unk_token": "<|unk|>",
-            "bos_token": "<|bos|>"
-            if "<|bos|>" in tokenizer.model.token_to_id
-            else None,
-            "eos_token": "<|eos|>"
-            if "<|eos|>" in tokenizer.model.token_to_id
-            else None,
-            "pad_token": "<|pad|>"
-            if "<|pad|>" in tokenizer.model.token_to_id
-            else None,
+            "bos_token": "<|bos|>" if "<|bos|>" in tokenizer.model.token_to_id else None,
+            "eos_token": "<|eos|>" if "<|eos|>" in tokenizer.model.token_to_id else None,
+            "pad_token": "<|pad|>" if "<|pad|>" in tokenizer.model.token_to_id else None,
         }
 
         with open(out_path / "tokenizer_config.json", "w", encoding="utf-8") as f:

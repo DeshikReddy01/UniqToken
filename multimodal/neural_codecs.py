@@ -40,17 +40,11 @@ if HAS_TORCH:
         Input: [B, C, H, W] -> Output: [B, D, H/4, W/4]
         """
 
-        def __init__(
-            self, in_channels: int = 3, hidden_dim: int = 64, latent_dim: int = 128
-        ):
+        def __init__(self, in_channels: int = 3, hidden_dim: int = 64, latent_dim: int = 128):
             super().__init__()
-            self.conv_in = nn.Conv2d(
-                in_channels, hidden_dim, kernel_size=4, stride=2, padding=1
-            )  # 2x down
+            self.conv_in = nn.Conv2d(in_channels, hidden_dim, kernel_size=4, stride=2, padding=1)  # 2x down
             self.res1 = ResidualBlock2D(hidden_dim)
-            self.conv_down = nn.Conv2d(
-                hidden_dim, latent_dim, kernel_size=4, stride=2, padding=1
-            )  # 2x down
+            self.conv_down = nn.Conv2d(hidden_dim, latent_dim, kernel_size=4, stride=2, padding=1)  # 2x down
             self.res2 = ResidualBlock2D(latent_dim)
             self.act = nn.GELU()
 
@@ -67,18 +61,12 @@ if HAS_TORCH:
         Input: [B, D, H/4, W/4] -> Output: [B, C, H, W]
         """
 
-        def __init__(
-            self, out_channels: int = 3, hidden_dim: int = 64, latent_dim: int = 128
-        ):
+        def __init__(self, out_channels: int = 3, hidden_dim: int = 64, latent_dim: int = 128):
             super().__init__()
             self.res1 = ResidualBlock2D(latent_dim)
-            self.conv_up1 = nn.ConvTranspose2d(
-                latent_dim, hidden_dim, kernel_size=4, stride=2, padding=1
-            )  # 2x up
+            self.conv_up1 = nn.ConvTranspose2d(latent_dim, hidden_dim, kernel_size=4, stride=2, padding=1)  # 2x up
             self.res2 = ResidualBlock2D(hidden_dim)
-            self.conv_up2 = nn.ConvTranspose2d(
-                hidden_dim, out_channels, kernel_size=4, stride=2, padding=1
-            )  # 2x up
+            self.conv_up2 = nn.ConvTranspose2d(hidden_dim, out_channels, kernel_size=4, stride=2, padding=1)  # 2x up
             self.act = nn.GELU()
 
         def forward(self, z: torch.Tensor) -> torch.Tensor:
@@ -109,9 +97,7 @@ if HAS_TORCH:
             self.encoder = VisualEncoder(in_channels, hidden_dim, latent_dim)
             self.decoder = VisualDecoder(in_channels, hidden_dim, latent_dim)
             self.embedding = nn.Embedding(num_tokens, latent_dim)
-            self.embedding.weight.data.uniform_(
-                -1.0 / math.sqrt(latent_dim), 1.0 / math.sqrt(latent_dim)
-            )
+            self.embedding.weight.data.uniform_(-1.0 / math.sqrt(latent_dim), 1.0 / math.sqrt(latent_dim))
             self.num_tokens = num_tokens
             self.latent_dim = latent_dim
             self.beta_commit = beta_commit
@@ -120,16 +106,12 @@ if HAS_TORCH:
         def _pad_image(x: torch.Tensor) -> torch.Tensor:
             """Pad right and bottom edges so strided layers preserve all pixels."""
             if x.dim() != 4:
-                raise ValueError(
-                    "image tensor must have shape [batch, channels, height, width]"
-                )
+                raise ValueError("image tensor must have shape [batch, channels, height, width]")
             pad_h = (-x.shape[-2]) % 4
             pad_w = (-x.shape[-1]) % 4
             return F.pad(x, (0, pad_w, 0, pad_h))
 
-        def encode_to_tokens(
-            self, x: torch.Tensor
-        ) -> Tuple[List[str], torch.Tensor, Tuple[int, int]]:
+        def encode_to_tokens(self, x: torch.Tensor) -> Tuple[List[str], torch.Tensor, Tuple[int, int]]:
             """
             Encodes an image tensor [B, C, H, W] into discrete visual token strings.
             Returns (token_strings, code_indices, (grid_h, grid_w)).
@@ -221,9 +203,7 @@ if HAS_TORCH:
 
         def __init__(self, channels: int, dilation: int = 1):
             super().__init__()
-            self.conv1 = nn.Conv1d(
-                channels, channels, kernel_size=3, padding=dilation, dilation=dilation
-            )
+            self.conv1 = nn.Conv1d(channels, channels, kernel_size=3, padding=dilation, dilation=dilation)
             self.conv2 = nn.Conv1d(channels, channels, kernel_size=1)
             self.act = nn.ELU()
 
@@ -239,29 +219,17 @@ if HAS_TORCH:
         Input: [B, 1, T] -> Output: [B, D, T / 320]
         """
 
-        def __init__(
-            self, in_channels: int = 1, hidden_dim: int = 64, latent_dim: int = 128
-        ):
+        def __init__(self, in_channels: int = 1, hidden_dim: int = 64, latent_dim: int = 128):
             super().__init__()
             # Strided downsampling: 4x, 4x, 4x, 5x = 320x total temporal downsampling
-            self.conv_in = nn.Conv1d(
-                in_channels, hidden_dim, kernel_size=7, stride=1, padding=3
-            )
-            self.down1 = nn.Conv1d(
-                hidden_dim, hidden_dim, kernel_size=8, stride=4, padding=2
-            )
+            self.conv_in = nn.Conv1d(in_channels, hidden_dim, kernel_size=7, stride=1, padding=3)
+            self.down1 = nn.Conv1d(hidden_dim, hidden_dim, kernel_size=8, stride=4, padding=2)
             self.res1 = ResidualBlock1D(hidden_dim, dilation=1)
-            self.down2 = nn.Conv1d(
-                hidden_dim, hidden_dim * 2, kernel_size=8, stride=4, padding=2
-            )
+            self.down2 = nn.Conv1d(hidden_dim, hidden_dim * 2, kernel_size=8, stride=4, padding=2)
             self.res2 = ResidualBlock1D(hidden_dim * 2, dilation=2)
-            self.down3 = nn.Conv1d(
-                hidden_dim * 2, hidden_dim * 2, kernel_size=8, stride=4, padding=2
-            )
+            self.down3 = nn.Conv1d(hidden_dim * 2, hidden_dim * 2, kernel_size=8, stride=4, padding=2)
             self.res3 = ResidualBlock1D(hidden_dim * 2, dilation=1)
-            self.down4 = nn.Conv1d(
-                hidden_dim * 2, latent_dim, kernel_size=10, stride=5, padding=3
-            )
+            self.down4 = nn.Conv1d(hidden_dim * 2, latent_dim, kernel_size=10, stride=5, padding=3)
             self.res4 = ResidualBlock1D(latent_dim, dilation=1)
             self.act = nn.ELU()
 
@@ -279,9 +247,7 @@ if HAS_TORCH:
         Input: [B, D, T / 320] -> Output: [B, 1, T]
         """
 
-        def __init__(
-            self, out_channels: int = 1, hidden_dim: int = 64, latent_dim: int = 128
-        ):
+        def __init__(self, out_channels: int = 1, hidden_dim: int = 64, latent_dim: int = 128):
             super().__init__()
             # Upsampling: 5x, 4x, 4x, 4x = 320x total temporal upsampling
             self.res1 = ResidualBlock1D(latent_dim, dilation=1)
@@ -294,20 +260,12 @@ if HAS_TORCH:
                 output_padding=1,
             )
             self.res2 = ResidualBlock1D(hidden_dim * 2, dilation=1)
-            self.up2 = nn.ConvTranspose1d(
-                hidden_dim * 2, hidden_dim * 2, kernel_size=8, stride=4, padding=2
-            )
+            self.up2 = nn.ConvTranspose1d(hidden_dim * 2, hidden_dim * 2, kernel_size=8, stride=4, padding=2)
             self.res3 = ResidualBlock1D(hidden_dim * 2, dilation=2)
-            self.up3 = nn.ConvTranspose1d(
-                hidden_dim * 2, hidden_dim, kernel_size=8, stride=4, padding=2
-            )
+            self.up3 = nn.ConvTranspose1d(hidden_dim * 2, hidden_dim, kernel_size=8, stride=4, padding=2)
             self.res4 = ResidualBlock1D(hidden_dim, dilation=1)
-            self.up4 = nn.ConvTranspose1d(
-                hidden_dim, hidden_dim, kernel_size=8, stride=4, padding=2
-            )
-            self.conv_out = nn.Conv1d(
-                hidden_dim, out_channels, kernel_size=7, stride=1, padding=3
-            )
+            self.up4 = nn.ConvTranspose1d(hidden_dim, hidden_dim, kernel_size=8, stride=4, padding=2)
+            self.conv_out = nn.Conv1d(hidden_dim, out_channels, kernel_size=7, stride=1, padding=3)
             self.act = nn.ELU()
 
         def forward(self, z: torch.Tensor) -> torch.Tensor:
@@ -343,29 +301,21 @@ if HAS_TORCH:
             self.latent_dim = latent_dim
 
             # N_q codebook embedding layers
-            self.quantizers = nn.ModuleList(
-                [nn.Embedding(codebook_size, latent_dim) for _ in range(num_quantizers)]
-            )
+            self.quantizers = nn.ModuleList([nn.Embedding(codebook_size, latent_dim) for _ in range(num_quantizers)])
             for q in self.quantizers:
-                q.weight.data.uniform_(
-                    -1.0 / math.sqrt(latent_dim), 1.0 / math.sqrt(latent_dim)
-                )
+                q.weight.data.uniform_(-1.0 / math.sqrt(latent_dim), 1.0 / math.sqrt(latent_dim))
 
         @staticmethod
         def _pad_audio(audio: torch.Tensor) -> torch.Tensor:
             """Pad waveforms to complete 320-sample encoder frames."""
             if audio.dim() != 3:
-                raise ValueError(
-                    "audio tensor must have shape [batch, channels, samples]"
-                )
+                raise ValueError("audio tensor must have shape [batch, channels, samples]")
             if audio.shape[-1] < 1:
                 raise ValueError("audio tensor must contain at least one sample")
             target_length = max(320, math.ceil(audio.shape[-1] / 320) * 320)
             return F.pad(audio, (0, target_length - audio.shape[-1]))
 
-        def encode_to_tokens(
-            self, audio: torch.Tensor
-        ) -> Tuple[List[str], torch.Tensor]:
+        def encode_to_tokens(self, audio: torch.Tensor) -> Tuple[List[str], torch.Tensor]:
             """
             Encodes audio waveform [B, 1, T] into hierarchical RVQ discrete tokens.
             """
@@ -399,9 +349,7 @@ if HAS_TORCH:
                 tokens.append("<|audio_end|>")
             return tokens, indices_3d
 
-        def decode_from_indices(
-            self, indices: torch.Tensor, output_length: Optional[int] = None
-        ) -> torch.Tensor:
+        def decode_from_indices(self, indices: torch.Tensor, output_length: Optional[int] = None) -> torch.Tensor:
             """
             Synthesizes waveform from hierarchical RVQ code indices [B, T', N_q].
             """
@@ -413,11 +361,7 @@ if HAS_TORCH:
                 q_ind = flat_indices[:, q_idx]
                 z_q_total = z_q_total + self.quantizers[q_idx](q_ind)
 
-            z_q = (
-                z_q_total.view(b, t_prime, self.latent_dim)
-                .permute(0, 2, 1)
-                .contiguous()
-            )
+            z_q = z_q_total.view(b, t_prime, self.latent_dim).permute(0, 2, 1).contiguous()
             reconstructed = self.decoder(z_q)
             if output_length is not None:
                 if output_length < 1:
@@ -451,9 +395,7 @@ if HAS_TORCH:
                 z_q = quantizer(indices)
 
                 loss_commit = (
-                    loss_commit
-                    + F.mse_loss(z_q, residual.detach())
-                    + 0.25 * F.mse_loss(residual, z_q.detach())
+                    loss_commit + F.mse_loss(z_q, residual.detach()) + 0.25 * F.mse_loss(residual, z_q.detach())
                 )
                 residual = residual - z_q
                 z_q_sum = z_q_sum + z_q
@@ -471,9 +413,7 @@ if HAS_TORCH:
                 "recon_loss": loss_recon,
                 "commit_loss": loss_commit,
                 "audio_recon": audio_recon,
-                "indices": torch.stack(all_indices, dim=1).view(
-                    b, t_prime, self.num_quantizers
-                ),
+                "indices": torch.stack(all_indices, dim=1).view(b, t_prime, self.num_quantizers),
             }
 
 
@@ -498,11 +438,7 @@ class NeuralCodecFacade:
         return NeuralVisualCodec(num_tokens=num_tokens)
 
     @staticmethod
-    def get_audio_codec(
-        num_quantizers: int = 4, codebook_size: int = 256
-    ) -> Optional[Any]:
+    def get_audio_codec(num_quantizers: int = 4, codebook_size: int = 256) -> Optional[Any]:
         if not HAS_TORCH:
             return None
-        return NeuralAudioCodec(
-            num_quantizers=num_quantizers, codebook_size=codebook_size
-        )
+        return NeuralAudioCodec(num_quantizers=num_quantizers, codebook_size=codebook_size)

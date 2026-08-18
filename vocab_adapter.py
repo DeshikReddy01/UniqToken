@@ -58,9 +58,7 @@ class VocabularyAdapter:
 
         existing_tokens: Set[str] = set(old_model.vocab.keys())
         raw_ngrams = seed_builder.mine_ngrams(chunk_counts)
-        filtered_candidates = seed_builder.filter_candidates(
-            raw_ngrams, existing_tokens
-        )
+        filtered_candidates = seed_builder.filter_candidates(raw_ngrams, existing_tokens)
         ranked_candidates = seed_builder.rank_candidates(filtered_candidates)
 
         # 3. Select top new candidates
@@ -97,9 +95,7 @@ class VocabularyAdapter:
 
         # 5. Re-normalize probability distribution
         total_p = sum(new_vocab_probs.values())
-        updated_vocab = {
-            tok: math.log(p / total_p) for tok, p in new_vocab_probs.items()
-        }
+        updated_vocab = {tok: math.log(p / total_p) for tok, p in new_vocab_probs.items()}
 
         updated_model = UnigramModel(
             vocab=updated_vocab,

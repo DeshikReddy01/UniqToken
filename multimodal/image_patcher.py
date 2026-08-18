@@ -33,9 +33,7 @@ class DynamicImagePatcher:
         patch_size: int = 16,
         channels: int = 3,
         normalize_pixels: bool = True,
-        pixel_range: Optional[
-            Tuple[float, float]
-        ] = None,  # (min, max) if known, e.g., (0.0, 1.0) or (0.0, 255.0)
+        pixel_range: Optional[Tuple[float, float]] = None,  # (min, max) if known, e.g., (0.0, 1.0) or (0.0, 255.0)
     ):
         if patch_size <= 0:
             raise ValueError("patch_size must be positive")
@@ -74,9 +72,7 @@ class DynamicImagePatcher:
                 raise ValueError("All rows must have the same width")
             for pixel in row:
                 if len(pixel) != self.channels:
-                    raise ValueError(
-                        f"Expected {self.channels} channels, got {len(pixel)}"
-                    )
+                    raise ValueError(f"Expected {self.channels} channels, got {len(pixel)}")
 
         p = self.patch_size
         grid_h = math.ceil(h / p)

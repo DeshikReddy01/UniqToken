@@ -67,11 +67,7 @@ class BPEModel:
             new_symbols: List[str] = []
             i = 0
             while i < len(symbols):
-                if (
-                    i < len(symbols) - 1
-                    and symbols[i] == first
-                    and symbols[i + 1] == second
-                ):
+                if i < len(symbols) - 1 and symbols[i] == first and symbols[i + 1] == second:
                     new_symbols.append(first + second)
                     i += 2
                 else:

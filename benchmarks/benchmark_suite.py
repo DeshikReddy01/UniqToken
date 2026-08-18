@@ -112,9 +112,7 @@ class TokenizerBenchmarkSuite:
         else:
             self.tokenizer = tokenizer
 
-    def evaluate_dataset(
-        self, name: str, text: str, warmup: int = 2, iterations: int = 5
-    ) -> BenchmarkMetrics:
+    def evaluate_dataset(self, name: str, text: str, warmup: int = 2, iterations: int = 5) -> BenchmarkMetrics:
         raw_bytes = text.encode("utf-8")
         num_bytes = len(raw_bytes)
         num_chars = len(text)
@@ -231,13 +229,8 @@ class TokenizerBenchmarkSuite:
         }
 
     def evaluate_unigram_vs_bpe(self) -> Dict[str, Any]:
-        text = (
-            self.BENCHMARK_CORPORA["English_Prose"]
-            + self.BENCHMARK_CORPORA["Python_Code"]
-        )
-        chunks = self.tokenizer.pre_tokenizer.pre_tokenize(
-            self.tokenizer.normalizer.normalize(text)
-        )
+        text = self.BENCHMARK_CORPORA["English_Prose"] + self.BENCHMARK_CORPORA["Python_Code"]
+        chunks = self.tokenizer.pre_tokenizer.pre_tokenize(self.tokenizer.normalizer.normalize(text))
 
         # Train BPE
         bpe_trainer = BPETrainer(num_merges=100, byte_fallback=True)
@@ -258,12 +251,8 @@ class TokenizerBenchmarkSuite:
         return {
             "unigram_token_count": len(unigram_tokens),
             "bpe_token_count": len(bpe_tokens),
-            "unigram_bytes_per_token": round(
-                len(text.encode("utf-8")) / len(unigram_tokens), 3
-            ),
-            "bpe_bytes_per_token": round(
-                len(text.encode("utf-8")) / len(bpe_tokens), 3
-            ),
+            "unigram_bytes_per_token": round(len(text.encode("utf-8")) / len(unigram_tokens), 3),
+            "bpe_bytes_per_token": round(len(text.encode("utf-8")) / len(bpe_tokens), 3),
             "unigram_encode_sec": round(t_unigram, 4),
             "bpe_encode_sec": round(t_bpe, 4),
         }
@@ -284,9 +273,7 @@ class TokenizerBenchmarkSuite:
             "brown dogs are quick",
         ]
         text = " ".join(base_words) * 30
-        chunks = self.tokenizer.pre_tokenizer.pre_tokenize(
-            self.tokenizer.normalizer.normalize(text)
-        )
+        chunks = self.tokenizer.pre_tokenizer.pre_tokenize(self.tokenizer.normalizer.normalize(text))
 
         constrained = UnigramTrainer(
             target_vocab_size=300,
@@ -307,12 +294,8 @@ class TokenizerBenchmarkSuite:
             "token_count_before": before,
             "token_count_after": after,
             "token_reduction_pct": round((before - after) / max(before, 1) * 100.0, 2),
-            "bytes_per_token_before": round(
-                len(text.encode("utf-8")) / max(before, 1), 3
-            ),
-            "bytes_per_token_after": round(
-                len(text.encode("utf-8")) / max(after, 1), 3
-            ),
+            "bytes_per_token_before": round(len(text.encode("utf-8")) / max(before, 1), 3),
+            "bytes_per_token_after": round(len(text.encode("utf-8")) / max(after, 1), 3),
         }
 
     def evaluate_superbpe(self) -> Dict[str, Any]:
@@ -329,9 +312,7 @@ class TokenizerBenchmarkSuite:
             "brown dogs are quick",
         ]
         text = " ".join(base_words) * 30
-        chunks = self.tokenizer.pre_tokenizer.pre_tokenize(
-            self.tokenizer.normalizer.normalize(text)
-        )
+        chunks = self.tokenizer.pre_tokenizer.pre_tokenize(self.tokenizer.normalizer.normalize(text))
 
         constrained = UnigramTrainer(
             target_vocab_size=300,
@@ -340,16 +321,12 @@ class TokenizerBenchmarkSuite:
             byte_fallback=True,
         ).train(chunks, verbose=False)
 
-        base_tok = CustomTokenizer(
-            self.tokenizer.normalizer, self.tokenizer.pre_tokenizer, constrained
-        )
+        base_tok = CustomTokenizer(self.tokenizer.normalizer, self.tokenizer.pre_tokenizer, constrained)
         before = len(base_tok.encode(text))
 
         superbpe = CrossEntropyMerging(max_merges=100, cross_word=True)
         improved = superbpe.optimize(constrained, chunks)
-        improved_tok = CustomTokenizer(
-            self.tokenizer.normalizer, self.tokenizer.pre_tokenizer, improved
-        )
+        improved_tok = CustomTokenizer(self.tokenizer.normalizer, self.tokenizer.pre_tokenizer, improved)
         after = len(improved_tok.encode(text))
 
         return {
@@ -359,12 +336,8 @@ class TokenizerBenchmarkSuite:
             "token_count_before": before,
             "token_count_after": after,
             "token_reduction_pct": round((before - after) / max(before, 1) * 100.0, 2),
-            "bytes_per_token_before": round(
-                len(text.encode("utf-8")) / max(before, 1), 3
-            ),
-            "bytes_per_token_after": round(
-                len(text.encode("utf-8")) / max(after, 1), 3
-            ),
+            "bytes_per_token_before": round(len(text.encode("utf-8")) / max(before, 1), 3),
+            "bytes_per_token_after": round(len(text.encode("utf-8")) / max(after, 1), 3),
         }
 
     def evaluate_external_baselines(self) -> Dict[str, Any]:
@@ -434,9 +407,7 @@ class TokenizerBenchmarkSuite:
                     pad_id=-1,
                     minloglevel=2,
                 )
-                sp_processor = spm.SentencePieceProcessor(
-                    model_file=str(model_prefix) + ".model"
-                )
+                sp_processor = spm.SentencePieceProcessor(model_file=str(model_prefix) + ".model")
                 t0 = time.perf_counter()
                 for _ in range(5):
                     sp_ids = sp_processor.encode(text, out_type=int)

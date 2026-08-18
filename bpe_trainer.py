@@ -30,9 +30,7 @@ class BPETrainer:
             raise ValueError("num_merges must not be negative")
         self.target_vocab_size = target_vocab_size
         self.num_merges = num_merges
-        self.special_tokens = list(
-            special_tokens or ["<|unk|>", "<|pad|>", "<|bos|>", "<|eos|>"]
-        )
+        self.special_tokens = list(special_tokens or ["<|unk|>", "<|pad|>", "<|bos|>", "<|eos|>"])
         self.byte_fallback = byte_fallback
 
     def train(self, chunks: List[str], verbose: bool = False) -> BPEModel:
@@ -63,11 +61,7 @@ class BPETrainer:
         merges: Dict[Tuple[str, str], int] = {}
         rank = 0
 
-        target_size = (
-            self.target_vocab_size
-            if self.target_vocab_size is not None
-            else float("inf")
-        )
+        target_size = self.target_vocab_size if self.target_vocab_size is not None else float("inf")
         max_merges = self.num_merges if self.num_merges is not None else float("inf")
 
         # 2. Greedy merge loop
@@ -105,11 +99,7 @@ class BPETrainer:
                 new_symbols: List[str] = []
                 i = 0
                 while i < len(word_symbols):
-                    if (
-                        i < len(word_symbols) - 1
-                        and word_symbols[i] == first
-                        and word_symbols[i + 1] == second
-                    ):
+                    if i < len(word_symbols) - 1 and word_symbols[i] == first and word_symbols[i + 1] == second:
                         new_symbols.append(new_token)
                         i += 2
                     else:
@@ -118,9 +108,7 @@ class BPETrainer:
                 splits[word] = new_symbols
 
             if verbose and rank % 100 == 0:
-                print(
-                    f"[BPE Trainer] Merge {rank:>4}: {best_pair} -> {new_token!r} (Freq: {pair_counts[best_pair]})"
-                )
+                print(f"[BPE Trainer] Merge {rank:>4}: {best_pair} -> {new_token!r} (Freq: {pair_counts[best_pair]})")
 
         # 3. Build token-to-id mapping
         token_to_id: Dict[str, int] = {}

@@ -79,12 +79,9 @@ class StreamingDecoder:
         token = self.id_to_token.get(token_id, "<|unk|>")
 
         if token in self.special_replacements:
-            return self._force_flush_buffer() + self._emit_text(
-                self.special_replacements[token]
-            )
+            return self._force_flush_buffer() + self._emit_text(self.special_replacements[token])
         if self.skip_special_tokens and (
-            token in self.special_tokens
-            or (token.startswith("<|") and token.endswith("|>"))
+            token in self.special_tokens or (token.startswith("<|") and token.endswith("|>"))
         ):
             return ""
 

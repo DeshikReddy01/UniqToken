@@ -59,9 +59,7 @@ class Normalizer:
         if len(space_char) != 1 or space_char.isspace():
             raise ValueError("space_char must be a single, non-whitespace character")
         if space_char in {self._ESCAPE_PREFIX, self._ESCAPED_METASPACE}:
-            raise ValueError(
-                "space_char uses a reserved normalization escape character"
-            )
+            raise ValueError("space_char uses a reserved normalization escape character")
         self.space_char = space_char
         self.lowercase = lowercase
         self.normalize_unicode = normalize_unicode
@@ -97,15 +95,9 @@ class Normalizer:
     @staticmethod
     def _is_hangul_jamo(char: str) -> bool:
         codepoint = ord(char)
-        return (
-            0x1100 <= codepoint <= 0x11FF
-            or 0xA960 <= codepoint <= 0xA97C
-            or 0xD7B0 <= codepoint <= 0xD7FB
-        )
+        return 0x1100 <= codepoint <= 0x11FF or 0xA960 <= codepoint <= 0xA97C or 0xD7B0 <= codepoint <= 0xD7FB
 
-    def _normalize_nfkc_with_alignment(
-        self, text: str
-    ) -> Tuple[List[str], List[RawSpan]]:
+    def _normalize_nfkc_with_alignment(self, text: str) -> Tuple[List[str], List[RawSpan]]:
         """Apply NFKC by normalization-safe clusters and retain source spans."""
         normalized_chars: List[str] = []
         alignment_map: List[RawSpan] = []
@@ -137,23 +129,17 @@ class Normalizer:
                     if index > cluster_start:
                         flush_cluster(index)
                     normalized_chars.extend(text[index:run_end])
-                    alignment_map.extend(
-                        (pos, pos + 1) for pos in range(index, run_end)
-                    )
+                    alignment_map.extend((pos, pos + 1) for pos in range(index, run_end))
                     cluster_start = run_end
                     index = run_end
                     continue
 
             normalized_char = unicodedata.normalize("NFKC", char)
-            starts_with_combining_mark = (
-                bool(normalized_char) and unicodedata.combining(normalized_char[0]) != 0
-            )
+            starts_with_combining_mark = bool(normalized_char) and unicodedata.combining(normalized_char[0]) != 0
             continues_cluster = index > cluster_start and (
                 unicodedata.combining(char) != 0
                 or starts_with_combining_mark
-                or (
-                    self._is_hangul_jamo(text[index - 1]) and self._is_hangul_jamo(char)
-                )
+                or (self._is_hangul_jamo(text[index - 1]) and self._is_hangul_jamo(char))
             )
             if index > cluster_start and not continues_cluster:
                 flush_cluster(index)
@@ -221,9 +207,7 @@ class Normalizer:
             )
             normalized_chars = list("".join(normalized_chars).lower())
             if len(normalized_chars) != len(lowered_by_char):
-                raise ValueError(
-                    "lowercase normalization produced an unsupported alignment change"
-                )
+                raise ValueError("lowercase normalization produced an unsupported alignment change")
             alignment_map = lowered_spans
 
         if self.collapse_whitespaces:
@@ -382,13 +366,9 @@ class RegexPreTokenizer:
         Emits PreToken instances with both normalized and source raw character spans.
         """
         if not isinstance(normalized_text, str):
-            raise TypeError(
-                f"normalized_text must be a string, got {type(normalized_text).__name__}"
-            )
+            raise TypeError(f"normalized_text must be a string, got {type(normalized_text).__name__}")
         if alignment_map is not None and len(alignment_map) != len(normalized_text):
-            raise ValueError(
-                "alignment_map must have one entry for every normalized character"
-            )
+            raise ValueError("alignment_map must have one entry for every normalized character")
 
         tokens: List[PreToken] = []
 
@@ -446,6 +426,4 @@ if __name__ == "__main__":
         print(f"NORMALIZED : {norm!r}")
         for t in tokens:
             raw_slice = sample[t.raw_span[0] : t.raw_span[1]]
-            print(
-                f"  {t.text!r:<15} NormSpan={t.norm_span} RawSpan={t.raw_span} RawSlice={raw_slice!r}"
-            )
+            print(f"  {t.text!r:<15} NormSpan={t.norm_span} RawSpan={t.raw_span} RawSlice={raw_slice!r}")

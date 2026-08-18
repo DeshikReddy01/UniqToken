@@ -38,24 +38,17 @@ class VisualCodebook:
         # Initialize codebook vectors e_1 .. e_K
         self._rng = random.Random(seed)
         self.codebook: List[List[float]] = [
-            [
-                self._rng.gauss(0.0, 1.0 / math.sqrt(embedding_dim))
-                for _ in range(embedding_dim)
-            ]
+            [self._rng.gauss(0.0, 1.0 / math.sqrt(embedding_dim)) for _ in range(embedding_dim)]
             for _ in range(num_embeddings)
         ]
 
         # EMA statistics for online training
         self._ema_cluster_size: List[float] = [0.0] * num_embeddings
-        self._ema_embed_sum: List[List[float]] = [
-            [0.0] * embedding_dim for _ in range(num_embeddings)
-        ]
+        self._ema_embed_sum: List[List[float]] = [[0.0] * embedding_dim for _ in range(num_embeddings)]
         self._update_count = 0
 
         # Precompute squared norms for efficient distance computation
-        self._codebook_norms: List[float] = [
-            sum(c * c for c in code_vec) for code_vec in self.codebook
-        ]
+        self._codebook_norms: List[float] = [sum(c * c for c in code_vec) for code_vec in self.codebook]
 
     def get_special_tokens(self) -> List[str]:
         """
@@ -71,9 +64,7 @@ class VisualCodebook:
         Uses efficient distance computation: ||x - y||^2 = ||x||^2 + ||y||^2 - 2<x,y>
         """
         if len(patch_vector) != self.embedding_dim:
-            raise ValueError(
-                f"Patch vector dimension {len(patch_vector)} != embedding_dim {self.embedding_dim}"
-            )
+            raise ValueError(f"Patch vector dimension {len(patch_vector)} != embedding_dim {self.embedding_dim}")
 
         patch_norm = sum(p * p for p in patch_vector)
 
@@ -106,9 +97,7 @@ class VisualCodebook:
 
         idx = int(token_str[6:-2])
         if not 0 <= idx < self.num_embeddings:
-            raise ValueError(
-                f"Visual token index {idx} out of range (0-{self.num_embeddings - 1})"
-            )
+            raise ValueError(f"Visual token index {idx} out of range (0-{self.num_embeddings - 1})")
 
         return list(self.codebook[idx])
 
@@ -128,9 +117,7 @@ class VisualCodebook:
 
         for vec, idx in zip(patch_vectors, indices):
             if len(vec) != self.embedding_dim:
-                raise ValueError(
-                    f"Patch vector dimension {len(vec)} != embedding_dim {self.embedding_dim}"
-                )
+                raise ValueError(f"Patch vector dimension {len(vec)} != embedding_dim {self.embedding_dim}")
             if not 0 <= idx < self.num_embeddings:
                 raise ValueError(f"Codebook index {idx} out of range")
 
@@ -142,8 +129,7 @@ class VisualCodebook:
             # Update EMA embedding sum
             for d in range(self.embedding_dim):
                 self._ema_embed_sum[idx][d] = (
-                    self.ema_decay * self._ema_embed_sum[idx][d]
-                    + (1 - self.ema_decay) * vec[d]
+                    self.ema_decay * self._ema_embed_sum[idx][d] + (1 - self.ema_decay) * vec[d]
                 )
 
         # Periodically re-normalize codebook vectors from EMA statistics
@@ -164,9 +150,7 @@ class VisualCodebook:
                 self.codebook[idx][d] = self._ema_embed_sum[idx][d] / smoothed_n
 
         # Update precomputed norms
-        self._codebook_norms = [
-            sum(c * c for c in code_vec) for code_vec in self.codebook
-        ]
+        self._codebook_norms = [sum(c * c for c in code_vec) for code_vec in self.codebook]
 
     def kmeans_init(self, patch_vectors: List[List[float]], max_iter: int = 10) -> None:
         """
@@ -174,16 +158,12 @@ class VisualCodebook:
         Useful for warm-starting the codebook before EMA training.
         """
         if len(patch_vectors) < self.num_embeddings:
-            raise ValueError(
-                f"Need at least {self.num_embeddings} patches for k-means init, got {len(patch_vectors)}"
-            )
+            raise ValueError(f"Need at least {self.num_embeddings} patches for k-means init, got {len(patch_vectors)}")
         if max_iter < 1:
             raise ValueError("max_iter must be at least one")
         for vector in patch_vectors:
             if len(vector) != self.embedding_dim:
-                raise ValueError(
-                    f"Patch vector dimension {len(vector)} != embedding_dim {self.embedding_dim}"
-                )
+                raise ValueError(f"Patch vector dimension {len(vector)} != embedding_dim {self.embedding_dim}")
 
         # K-means++ initialization
         centroids = []
@@ -205,9 +185,7 @@ class VisualCodebook:
             # Sample next centroid proportional to squared distance
             total = sum(min_dists)
             if total == 0:
-                centroids.append(
-                    patch_vectors[self._rng.randrange(len(patch_vectors))][:]
-                )
+                centroids.append(patch_vectors[self._rng.randrange(len(patch_vectors))][:])
                 continue
             r = self._rng.random() * total
             cumsum = 0.0
@@ -220,9 +198,7 @@ class VisualCodebook:
         # Run k-means iterations
         for _ in range(max_iter):
             # Assign each patch to nearest centroid
-            assignments: List[List[List[float]]] = [
-                [] for _ in range(self.num_embeddings)
-            ]
+            assignments: List[List[List[float]]] = [[] for _ in range(self.num_embeddings)]
             for vec in patch_vectors:
                 best_idx = 0
                 min_dist = float("inf")
@@ -246,22 +222,16 @@ class VisualCodebook:
                     new_centroids.append(new_c)
                 else:
                     # Re-initialize empty cluster randomly
-                    new_centroids.append(
-                        patch_vectors[self._rng.randrange(len(patch_vectors))][:]
-                    )
+                    new_centroids.append(patch_vectors[self._rng.randrange(len(patch_vectors))][:])
 
             centroids = new_centroids
 
         # Update codebook
         self.codebook = centroids
-        self._codebook_norms = [
-            sum(c * c for c in code_vec) for code_vec in self.codebook
-        ]
+        self._codebook_norms = [sum(c * c for c in code_vec) for code_vec in self.codebook]
         # Reset EMA stats
         self._ema_cluster_size = [0.0] * self.num_embeddings
-        self._ema_embed_sum = [
-            [0.0] * self.embedding_dim for _ in range(self.num_embeddings)
-        ]
+        self._ema_embed_sum = [[0.0] * self.embedding_dim for _ in range(self.num_embeddings)]
         self._update_count = 0
 
     def get_codebook_state(self) -> Dict:

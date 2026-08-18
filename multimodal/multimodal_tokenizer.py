@@ -57,9 +57,7 @@ class MultimodalTokenizer:
         ema_decay: float = 0.99,
     ):
         if not isinstance(text_tokenizer, CustomTokenizer):
-            raise TypeError(
-                f"text_tokenizer must be a CustomTokenizer instance, got {type(text_tokenizer).__name__}"
-            )
+            raise TypeError(f"text_tokenizer must be a CustomTokenizer instance, got {type(text_tokenizer).__name__}")
 
         self.text_tokenizer = text_tokenizer
         self.patcher = DynamicImagePatcher(patch_size=patch_size, channels=channels)
@@ -110,9 +108,7 @@ class MultimodalTokenizer:
         tid = self._token_to_id.get(token)
         if tid is None:
             if self._frozen:
-                raise KeyError(
-                    f"Cannot register new token '{token}' on a frozen MultimodalTokenizer vocabulary."
-                )
+                raise KeyError(f"Cannot register new token '{token}' on a frozen MultimodalTokenizer vocabulary.")
             tid = len(self._token_to_id)
             self._token_to_id[token] = tid
         return tid
@@ -125,9 +121,7 @@ class MultimodalTokenizer:
         Tokenizes a 2D/3D image into discrete visual codebook tokens bracketed by boundary markers.
         """
         if not isinstance(image_pixels, list):
-            raise TypeError(
-                f"image_pixels must be a list, got {type(image_pixels).__name__}"
-            )
+            raise TypeError(f"image_pixels must be a list, got {type(image_pixels).__name__}")
         if not image_pixels:
             return [], []
 
@@ -190,9 +184,7 @@ class MultimodalTokenizer:
                 aud_toks, _ = self.audio_quantizer.encode_audio(element.samples)
                 for t in aud_toks:
                     all_tokens.append(t)
-                    if t in {"<|audio_start|>", "<|audio_end|>"} or t.startswith(
-                        "<|aud_len_"
-                    ):
+                    if t in {"<|audio_start|>", "<|audio_end|>"} or t.startswith("<|aud_len_"):
                         modality_mask.append(3)
                     else:
                         modality_mask.append(2)  # Audio modality
@@ -312,9 +304,7 @@ class MultimodalTokenizer:
                 )
             )
 
-        canvas = self.patcher.reconstruct_image(
-            reconstructed_patches, grid_h=grid_h, grid_w=grid_w
-        )
+        canvas = self.patcher.reconstruct_image(reconstructed_patches, grid_h=grid_h, grid_w=grid_w)
 
         # Crop back to the original image dimensions (removes zero padding)
         if img_h and img_w:
@@ -375,9 +365,7 @@ class MultimodalTokenizer:
         # Restore codebook state
         mm_tok.codebook = VisualCodebook.from_state(mm_config["codebook_state"])
         if "audio_codebook_state" in mm_config:
-            mm_tok.audio_quantizer = ResidualVectorQuantizer.from_state(
-                mm_config["audio_codebook_state"]
-            )
+            mm_tok.audio_quantizer = ResidualVectorQuantizer.from_state(mm_config["audio_codebook_state"])
             mm_tok.audio_tokens = mm_tok.audio_quantizer.get_special_tokens()
 
         # Restore token mappings

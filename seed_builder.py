@@ -63,11 +63,7 @@ class SeedVocabularyBuilder:
         self.max_ngram_length = max_ngram_length
         self.min_frequency = min_frequency
         self.byte_fallback = byte_fallback
-        self.special_tokens = (
-            special_tokens
-            if special_tokens is not None
-            else list(self.DEFAULT_SPECIAL_TOKENS)
-        )
+        self.special_tokens = special_tokens if special_tokens is not None else list(self.DEFAULT_SPECIAL_TOKENS)
         self.ranking_strategy = ranking_strategy
 
     def collect_special_tokens(self) -> List[SeedToken]:
@@ -129,9 +125,7 @@ class SeedVocabularyBuilder:
         max_len = self.max_ngram_length
 
         for chunk, chunk_freq in chunk_counts.items():
-            if chunk in self.special_tokens or (
-                chunk.startswith("<|") and chunk.endswith("|>")
-            ):
+            if chunk in self.special_tokens or (chunk.startswith("<|") and chunk.endswith("|>")):
                 continue
 
             chunk_len = len(chunk)
@@ -143,9 +137,7 @@ class SeedVocabularyBuilder:
 
         return ngram_counts
 
-    def filter_candidates(
-        self, ngram_counts: Counter[str], protected_tokens: Set[str]
-    ) -> Dict[str, int]:
+    def filter_candidates(self, ngram_counts: Counter[str], protected_tokens: Set[str]) -> Dict[str, int]:
         filtered: Dict[str, int] = {}
         for token, count in ngram_counts.items():
             if token in protected_tokens:

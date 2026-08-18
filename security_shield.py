@@ -54,9 +54,7 @@ class SecurityShield:
         if not isinstance(text, str):
             raise TypeError(f"text must be a string, got {type(text).__name__}")
         if disallowed_special_action not in {"escape", "raise", "ignore"}:
-            raise ValueError(
-                "disallowed_special_action must be 'escape', 'raise', or 'ignore'"
-            )
+            raise ValueError("disallowed_special_action must be 'escape', 'raise', or 'ignore'")
 
         if allowed_special == "all":
             allowed_set = self.special_tokens
@@ -80,9 +78,7 @@ class SecurityShield:
             token = match.group(0)
             if token in allowed_set:
                 output.append(token)
-                alignment.extend(
-                    (index, index + 1) for index in range(match.start(), match.end())
-                )
+                alignment.extend((index, index + 1) for index in range(match.start(), match.end()))
             elif disallowed_special_action == "raise":
                 raise ValueError(
                     f"Security Exception: Input contains unauthorized control token {token!r}. "

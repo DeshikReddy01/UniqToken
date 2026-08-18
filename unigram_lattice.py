@@ -98,9 +98,7 @@ class UnigramLattice:
             if not has_edge_at_i and self.byte_fallback:
                 char = self.text[i]
                 byte_tokens = ByteFallbackEngine.char_to_byte_tokens(char)
-                total_log_p = sum(
-                    self.vocab.get(b, -self.DEFAULT_BYTE_PENALTY) for b in byte_tokens
-                )
+                total_log_p = sum(self.vocab.get(b, -self.DEFAULT_BYTE_PENALTY) for b in byte_tokens)
                 edge = LatticeEdge(
                     start=i,
                     end=i + 1,
@@ -131,9 +129,7 @@ class UnigramLattice:
         while curr > 0:
             selected_edge = best_edge[curr]
             if selected_edge is None:
-                raise RuntimeError(
-                    f"Lattice disconnected at index {curr} for {self.text!r}"
-                )
+                raise RuntimeError(f"Lattice disconnected at index {curr} for {self.text!r}")
             edges.append(selected_edge)
             curr = selected_edge.start
 
@@ -158,9 +154,7 @@ class UnigramLattice:
         log_alpha[0] = 0.0
 
         for j in range(1, self.length + 1):
-            incoming_scores = [
-                log_alpha[edge.start] + edge.log_prob for edge in self.end_nodes[j]
-            ]
+            incoming_scores = [log_alpha[edge.start] + edge.log_prob for edge in self.end_nodes[j]]
             log_alpha[j] = logsumexp(incoming_scores)
 
         total_marginal_log_lik = log_alpha[self.length]
@@ -171,21 +165,14 @@ class UnigramLattice:
         log_beta[self.length] = 0.0
 
         for i in range(self.length - 1, -1, -1):
-            outgoing_scores = [
-                edge.log_prob + log_beta[edge.end] for edge in self.begin_nodes[i]
-            ]
+            outgoing_scores = [edge.log_prob + log_beta[edge.end] for edge in self.begin_nodes[i]]
             log_beta[i] = logsumexp(outgoing_scores)
 
         expected_counts: Dict[str, float] = {}
 
         for j in range(1, self.length + 1):
             for edge in self.end_nodes[j]:
-                log_posterior = (
-                    log_alpha[edge.start]
-                    + edge.log_prob
-                    + log_beta[edge.end]
-                    - total_marginal_log_lik
-                )
+                log_posterior = log_alpha[edge.start] + edge.log_prob + log_beta[edge.end] - total_marginal_log_lik
                 posterior = math.exp(log_posterior)
                 for tok in edge.tokens:
                     expected_counts[tok] = expected_counts.get(tok, 0.0) + posterior
@@ -213,10 +200,7 @@ class UnigramLattice:
         log_alpha[0] = 0.0
 
         for j in range(1, self.length + 1):
-            incoming = [
-                log_alpha[edge.start] + (alpha * edge.log_prob)
-                for edge in self.end_nodes[j]
-            ]
+            incoming = [log_alpha[edge.start] + (alpha * edge.log_prob) for edge in self.end_nodes[j]]
             log_alpha[j] = logsumexp(incoming)
 
         if log_alpha[self.length] == -float("inf"):
@@ -229,16 +213,12 @@ class UnigramLattice:
         while curr > 0:
             edges = self.end_nodes[curr]
             if not edges:
-                raise RuntimeError(
-                    f"Lattice disconnected at index {curr} for {self.text!r}"
-                )
+                raise RuntimeError(f"Lattice disconnected at index {curr} for {self.text!r}")
 
             # Compute transition probabilities for incoming edges ending at curr
             edge_log_probs: List[float] = []
             for edge in edges:
-                edge_score = (
-                    log_alpha[edge.start] + (alpha * edge.log_prob) - log_alpha[curr]
-                )
+                edge_score = log_alpha[edge.start] + (alpha * edge.log_prob) - log_alpha[curr]
                 edge_log_probs.append(edge_score)
 
             # Softmax normalization to obtain sampling weights

@@ -148,12 +148,8 @@ class CustomTokenizer:
         if not self._indent_compression_enabled:
             return sanitized, sanitized_alignment
 
-        compressed, compressed_alignment = (
-            IndentationCompressor.compress_indents_with_alignment(sanitized)
-        )
-        return compressed, self._compose_alignment(
-            compressed_alignment, sanitized_alignment
-        )
+        compressed, compressed_alignment = IndentationCompressor.compress_indents_with_alignment(sanitized)
+        return compressed, self._compose_alignment(compressed_alignment, sanitized_alignment)
 
     @classmethod
     def train_from_corpus(
@@ -295,9 +291,7 @@ class CustomTokenizer:
             allowed_special=allowed_special,
             disallowed_special_action=disallowed_special_action,
         )
-        norm, normalization_alignment = self.normalizer.normalize_with_alignment(
-            prepared_text
-        )
+        norm, normalization_alignment = self.normalizer.normalize_with_alignment(prepared_text)
         alignment = self._compose_alignment(normalization_alignment, prepared_alignment)
         pre_tokens = self.pre_tokenizer.pre_tokenize_with_offsets(norm, alignment)
 
@@ -325,10 +319,7 @@ class CustomTokenizer:
 
     @property
     def _indent_compression_enabled(self) -> bool:
-        return any(
-            tok in self.model.special_tokens
-            for tok in IndentationCompressor.INDENT_SPECIAL_TOKENS
-        )
+        return any(tok in self.model.special_tokens for tok in IndentationCompressor.INDENT_SPECIAL_TOKENS)
 
     def decode(self, token_ids: List[int]) -> str:
         decoded = self.model.decode(token_ids, space_char=self.normalizer.space_char)
@@ -336,14 +327,10 @@ class CustomTokenizer:
             decoded = IndentationCompressor.decompress_indents(decoded)
         return self.normalizer.restore_escaped_metaspace(decoded)
 
-    def get_streaming_decoder(
-        self, skip_special_tokens: bool = True
-    ) -> StreamingDecoder:
+    def get_streaming_decoder(self, skip_special_tokens: bool = True) -> StreamingDecoder:
         indent_replacements = {}
         if self._indent_compression_enabled:
-            indent_replacements = {
-                token: " " * count for count, token in IndentationCompressor.INDENT_MAP
-            }
+            indent_replacements = {token: " " * count for count, token in IndentationCompressor.INDENT_MAP}
             indent_replacements["<|tab|>"] = "\t"
         return StreamingDecoder(
             id_to_token=self.model.id_to_token,
@@ -414,30 +401,20 @@ class CustomTokenizer:
         pre_tokenizer_config = config.get("pre_tokenizer", {})
 
         normalizer = Normalizer(
-            space_char=normalizer_config.get(
-                "space_char", config.get("space_char", "\u2581")
-            ),
+            space_char=normalizer_config.get("space_char", config.get("space_char", "\u2581")),
             lowercase=normalizer_config.get("lowercase", False),
             normalize_unicode=normalizer_config.get("normalize_unicode", True),
             normalize_punctuation=normalizer_config.get("normalize_punctuation", False),
-            normalize_unicode_spaces=normalizer_config.get(
-                "normalize_unicode_spaces", True
-            ),
+            normalize_unicode_spaces=normalizer_config.get("normalize_unicode_spaces", True),
             collapse_whitespaces=normalizer_config.get("collapse_whitespaces", False),
             strip_whitespace=normalizer_config.get("strip_whitespace", False),
         )
         pre_tokenizer = RegexPreTokenizer(
-            space_char=pre_tokenizer_config.get(
-                "space_char", config.get("space_char", "\u2581")
-            ),
-            split_digits=pre_tokenizer_config.get(
-                "split_digits", config.get("split_digits", False)
-            ),
+            space_char=pre_tokenizer_config.get("space_char", config.get("space_char", "\u2581")),
+            split_digits=pre_tokenizer_config.get("split_digits", config.get("split_digits", False)),
             split_punctuation=pre_tokenizer_config.get("split_punctuation", True),
             keep_special_tokens=pre_tokenizer_config.get("keep_special_tokens", True),
-            special_token_pattern=pre_tokenizer_config.get(
-                "special_token_pattern", r"<\|[^\s|]+\|>"
-            ),
+            special_token_pattern=pre_tokenizer_config.get("special_token_pattern", r"<\|[^\s|]+\|>"),
         )
 
         return cls(normalizer=normalizer, pre_tokenizer=pre_tokenizer, model=model)

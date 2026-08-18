@@ -101,9 +101,7 @@ class PropertyBasedFuzzSuite(unittest.TestCase):
             decoded_text = self.tokenizer.decode(token_ids)
 
             # 2. Compute expected normalized string
-            sanitized = self.tokenizer.security.sanitize(
-                fuzzed_text, allowed_special="none"
-            )
+            sanitized = self.tokenizer.security.sanitize(fuzzed_text, allowed_special="none")
             normalized_expected = self.normalizer.restore_escaped_metaspace(
                 self.normalizer.normalize(sanitized)
             ).replace(self.normalizer.space_char, " ")
@@ -133,16 +131,9 @@ class PropertyBasedFuzzSuite(unittest.TestCase):
 
         for _ in range(50):
             # Generate arbitrary Unicode codepoints (U+0020 to U+07FF)
-            random_codepoints = "".join(
-                chr(self.rng.randint(0x20, 0x07FF))
-                for _ in range(self.rng.randint(10, 40))
-            )
+            random_codepoints = "".join(chr(self.rng.randint(0x20, 0x07FF)) for _ in range(self.rng.randint(10, 40)))
             # Filter unassigned / control codepoints that Python standard strings normalize
-            filtered = "".join(
-                c
-                for c in random_codepoints
-                if unicodedata.category(c)[0] in {"L", "N", "P", "S", "Z"}
-            )
+            filtered = "".join(c for c in random_codepoints if unicodedata.category(c)[0] in {"L", "N", "P", "S", "Z"})
             if not filtered:
                 continue
 
@@ -187,15 +178,9 @@ class PropertyBasedFuzzSuite(unittest.TestCase):
             for tok in tokens:
                 s, e = tok.raw_span
                 # 1. Bounds check
-                self.assertGreaterEqual(
-                    s, 0, f"Span start < 0 for token {tok.text!r} in {text!r}"
-                )
-                self.assertLessEqual(
-                    e, n_raw, f"Span end > len(text) for token {tok.text!r} in {text!r}"
-                )
-                self.assertLessEqual(
-                    s, e, f"Span start > end for token {tok.text!r} in {text!r}"
-                )
+                self.assertGreaterEqual(s, 0, f"Span start < 0 for token {tok.text!r} in {text!r}")
+                self.assertLessEqual(e, n_raw, f"Span end > len(text) for token {tok.text!r} in {text!r}")
+                self.assertLessEqual(s, e, f"Span start > end for token {tok.text!r} in {text!r}")
 
                 # 2. Monotonic progression check
                 self.assertGreaterEqual(
@@ -203,9 +188,7 @@ class PropertyBasedFuzzSuite(unittest.TestCase):
                     prev_start,
                     f"Span start not monotonic: prev {prev_start} > curr {s}",
                 )
-                self.assertGreaterEqual(
-                    e, prev_end, f"Span end not monotonic: prev {prev_end} > curr {e}"
-                )
+                self.assertGreaterEqual(e, prev_end, f"Span end not monotonic: prev {prev_end} > curr {e}")
 
                 prev_start = s
                 prev_end = e
@@ -242,9 +225,7 @@ class PropertyBasedFuzzSuite(unittest.TestCase):
 
         for attack in attack_payloads:
             # 1. Default escape mode: control tokens neutralized
-            sanitized = shield.sanitize(
-                attack, allowed_special="none", disallowed_special_action="escape"
-            )
+            sanitized = shield.sanitize(attack, allowed_special="none", disallowed_special_action="escape")
             self.assertNotIn("<|endoftext|>", sanitized)
             self.assertNotIn("<|system|>", sanitized)
             self.assertNotIn("<|user|>", sanitized)
@@ -270,9 +251,7 @@ class PropertyBasedFuzzSuite(unittest.TestCase):
                     )
 
             # 3. Single-string whitelist mode: only whitelisted token is preserved
-            whitelisted = shield.sanitize(
-                attack, allowed_special="<|system|>", disallowed_special_action="escape"
-            )
+            whitelisted = shield.sanitize(attack, allowed_special="<|system|>", disallowed_special_action="escape")
             if "<|system|>" in attack:
                 self.assertIn("<|system|>", whitelisted)
             self.assertNotIn("<|endoftext|>", whitelisted)
@@ -346,9 +325,7 @@ class PropertyBasedFuzzSuite(unittest.TestCase):
                 self.assertLessEqual(x1, x2)
 
         # Audio temporal framing test across 20 randomized audio lengths
-        rvq = ResidualVectorQuantizer(
-            num_quantizers=4, codebook_size=64, frame_size=320
-        )
+        rvq = ResidualVectorQuantizer(num_quantizers=4, codebook_size=64, frame_size=320)
         for _ in range(20):
             n_samples = self.rng.randint(1, 2000)
             fake_audio = [self.rng.uniform(-1.0, 1.0) for _ in range(n_samples)]
