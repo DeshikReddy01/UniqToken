@@ -9,8 +9,13 @@ from multimodal.multimodal_tokenizer import (
     MultimodalSequence,
     MultimodalTokenizer,
 )
+from multimodal.neural_codecs import (
+    HAS_TORCH,
+    NeuralAudioCodec,
+    NeuralCodecFacade,
+    NeuralVisualCodec,
+)
 from multimodal.visual_codebook import VisualCodebook
-from multimodal.neural_codecs import NeuralCodecFacade
 
 __all__ = [
     "MultimodalTokenizer",
@@ -22,4 +27,7 @@ __all__ = [
     "ResidualVectorQuantizer",
     "AudioSegment",
     "NeuralCodecFacade",
+    "NeuralVisualCodec",
+    "NeuralAudioCodec",
+    "HAS_TORCH",
 ]

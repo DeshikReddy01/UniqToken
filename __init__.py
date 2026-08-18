@@ -18,6 +18,12 @@ from multimodal.multimodal_tokenizer import (
     MultimodalSequence,
     MultimodalTokenizer,
 )
+from multimodal.neural_codecs import (
+    HAS_TORCH,
+    NeuralAudioCodec,
+    NeuralCodecFacade,
+    NeuralVisualCodec,
+)
 from multimodal.visual_codebook import VisualCodebook
 from pre_tokenizer import Normalizer, PreToken, RegexPreTokenizer
 from security_shield import SecurityShield
@@ -68,4 +74,8 @@ __all__ = [
     "VisualCodebook",
     "ResidualVectorQuantizer",
     "AudioSegment",
+    "NeuralCodecFacade",
+    "NeuralVisualCodec",
+    "NeuralAudioCodec",
+    "HAS_TORCH",
 ]
