@@ -7,7 +7,7 @@ name = "caliper-tokenizer"
 version = "1.0.0"
 description = "Zero-dependency, high-precision Byte-Fallback Unigram and Multimodal Tokenizer with dual-offset tracking and subword regularization."
 readme = "README.md"
-license = "MIT"
+license = { text = "MIT" }
 authors = [
     { name = "Caliper Authors" }
 ]
@@ -15,6 +15,7 @@ keywords = [
     "tokenizer",
     "unigram",
     "bpe",
+    "superbpe",
     "byte-fallback",
     "multimodal",
     "nlp",
@@ -52,8 +53,7 @@ test = [
 ]
 bench = [
     "sentencepiece>=0.1.99",
-    "tokenizers>=0.13.0",
-    "tiktoken>=0.5.0"
+    "tokenizers>=0.13.0"
 ]
 all = [
     "torch>=2.0.0",
@@ -62,8 +62,7 @@ all = [
     "sentencepiece>=0.1.99",
     "pytest>=7.0.0",
     "ruff>=0.4.0",
-    "mypy>=1.8.0",
-    "tiktoken>=0.5.0"
+    "mypy>=1.8.0"
 ]
 
 [project.urls]
@@ -76,6 +75,7 @@ py-modules = [
     "bpe_model",
     "bpe_trainer",
     "byte_codec",
+    "cem_merger",
     "hf_exporter",
     "indentation_compressor",
     "pre_tokenizer",
