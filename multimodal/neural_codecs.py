@@ -415,6 +415,9 @@ if HAS_TORCH:
                 "audio_recon": audio_recon,
                 "indices": torch.stack(all_indices, dim=1).view(b, t_prime, self.num_quantizers),
             }
+else:
+    NeuralVisualCodec: Any = None  # type: ignore[no-redef]
+    NeuralAudioCodec: Any = None  # type: ignore[no-redef]
 
 
 # =========================================================================
