@@ -79,8 +79,8 @@ class VocabularyAdapter:
 
         # Compute prior probabilities for new tokens based on occurrence in new corpus
         total_new_freq = sum(filtered_candidates[t] for t in new_tokens_to_add)
-        min_existing_prob = min(math.exp(lp) for lp in old_model.vocab.values())
-        new_vocab_probs = {tok: math.exp(lp) for tok, lp in old_model.vocab.items()}
+        min_existing_prob = max(min(math.exp(lp) for lp in old_model.vocab.values()), 1e-12)
+        new_vocab_probs = {tok: max(math.exp(lp), 1e-12) for tok, lp in old_model.vocab.items()}
 
         for idx, tok in enumerate(new_tokens_to_add):
             assigned_id = start_id + idx

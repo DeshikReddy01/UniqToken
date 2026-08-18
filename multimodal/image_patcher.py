@@ -86,7 +86,8 @@ class DynamicImagePatcher:
         elif self.normalize_pixels:
             # Auto-detect: check if any pixel exceeds 1.0 significantly
             # Use a threshold to avoid false positives from floating-point noise
-            max_val = max(val for row in image_pixels for px in row for val in px)
+            vals = [val for row in image_pixels for px in row for val in px]
+            max_val = max(vals) if vals else 1.0
             if max_val > 1.0 + 1e-6:
                 # Treat as [0, 255] or similar range
                 scale = 255.0

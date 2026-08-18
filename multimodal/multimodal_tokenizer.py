@@ -364,6 +364,7 @@ class MultimodalTokenizer:
 
         # Restore codebook state
         mm_tok.codebook = VisualCodebook.from_state(mm_config["codebook_state"])
+        mm_tok.visual_tokens = mm_tok.codebook.get_special_tokens()
         if "audio_codebook_state" in mm_config:
             mm_tok.audio_quantizer = ResidualVectorQuantizer.from_state(mm_config["audio_codebook_state"])
             mm_tok.audio_tokens = mm_tok.audio_quantizer.get_special_tokens()

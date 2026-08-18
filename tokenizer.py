@@ -38,6 +38,7 @@ class CustomTokenizer:
         self.pre_tokenizer = pre_tokenizer
         self.model = model
         self.security = SecurityShield(special_tokens=self.model.special_tokens)
+        self._cross_word_set: Optional[frozenset[str]] = None
 
     @staticmethod
     def _span(entry: Union[int, Tuple[int, int]]) -> Tuple[int, int]:
@@ -63,19 +64,17 @@ class CustomTokenizer:
             )
         return composed
 
-    def _cross_word_tokens(self) -> frozenset:
+    def _cross_word_tokens(self) -> frozenset[str]:
         """Vocab tokens containing the space char (SuperBPE spanning tokens).
 
         These can never be emitted by the per-chunk Unigram lattice (a chunk is
         ``"the"`` or ``"\u2581"``, never ``"the\u2581quick"``), so they are only
         reachable through the post-encode merge pass.
         """
-        cached = self.__dict__.get("_cross_word_set")
-        if cached is None:
+        if self._cross_word_set is None:
             sc = self.normalizer.space_char
-            cached = frozenset(t for t in self.model.vocab if sc in t and t.strip(sc))
-            self.__dict__["_cross_word_set"] = cached
-        return cached
+            self._cross_word_set = frozenset(t for t in self.model.vocab if sc in t and t.strip(sc))
+        return self._cross_word_set
 
     def _apply_cross_word_merges(self, tokens: List[str]) -> List[str]:
         """Deterministic greedy pass that fuses adjacent tokens into SuperBPE
@@ -245,7 +244,7 @@ class CustomTokenizer:
             else:
                 all_tokens.extend(self.model.sample(chunk, alpha=alpha))
 
-        return all_tokens
+        return self._apply_cross_word_merges(all_tokens)
 
     def encode_to_ids(
         self,

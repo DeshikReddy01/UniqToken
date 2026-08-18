@@ -63,22 +63,21 @@ class UnigramModel:
             for j in range(start, i):
                 token = text[j:i]
                 log_p = self.vocab.get(token)
-                if log_p is not None:
+                if log_p is not None and dp[j] > neg_inf:
                     score = dp[j] + log_p
                     if score > best_score:
                         best_score = score
                         best_edge = (j, [token])
 
-            if best_edge is None and self.byte_fallback:
-                char = text[i - 1]
-                # Byte fallback only applies when the start position has no
-                # in-vocabulary edge at all (matches UnigramLattice._build_graph).
+            # Byte fallback edge from (i - 1) to i applies if no vocab edge starts at (i - 1)
+            if self.byte_fallback and dp[i - 1] > neg_inf:
                 has_vocab_edge = False
                 for end in range(i, min(length + 1, i - 1 + max_len + 1)):
                     if text[i - 1 : end] in self.vocab:
                         has_vocab_edge = True
                         break
                 if not has_vocab_edge:
+                    char = text[i - 1]
                     byte_tokens = ByteFallbackEngine.char_to_byte_tokens(char)
                     log_p = sum(self.vocab.get(b, -UnigramLattice.DEFAULT_BYTE_PENALTY) for b in byte_tokens)
                     score = dp[i - 1] + log_p
@@ -240,7 +239,7 @@ class UnigramTrainer:
         while len(current_vocab_log_probs) > self.target_vocab_size:
             # --- E-STEP & M-STEP SUB-ITERATIONS ---
             for _ in range(self.em_sub_iterations):
-                expected_counts: Dict[str, float] = {tok: 1e-7 for tok in current_vocab_log_probs}
+                expected_counts: Dict[str, float] = {}
                 total_corpus_log_lik = 0.0
                 trie = PrefixTrie.from_vocab(current_vocab_log_probs)
 
@@ -266,8 +265,10 @@ class UnigramTrainer:
 
                 # M-Step: Update token log probabilities
                 total_expected = sum(expected_counts.values())
+                if total_expected <= 0:
+                    total_expected = 1.0
                 current_vocab_log_probs = {
-                    tok: math.log(max(expected_counts.get(tok, 1e-7) / total_expected, 1e-12))
+                    tok: math.log(max(expected_counts.get(tok, 1e-12) / total_expected, 1e-12))
                     for tok in current_vocab_log_probs
                 }
 

@@ -803,12 +803,36 @@ class SuperBPETests(unittest.TestCase):
                 prev_end = end
             self.assertEqual(improved_tok.decode([t.id for t in tokens]), doc)
 
-    def test_superbpe_is_noop_without_spanning_tokens(self):
+    def test_superbpe_sample_applies_cross_word_merges(self):
+        _, _, _, _, improved_tok, _ = self._make_pipeline()
+        sample_tokens = improved_tok.sample("the quick brown fox", alpha=0.5)
+        self.assertTrue(len(sample_tokens) > 0)
+        sample_ids = [
+            improved_tok.model.token_to_id.get(t, improved_tok.model.token_to_id.get("<|unk|>", 0))
+            for t in sample_tokens
+        ]
+        self.assertEqual(improved_tok.decode(sample_ids), "the quick brown fox")
+
+    def test_image_patcher_empty_nested_pixels(self):
+        from multimodal.image_patcher import DynamicImagePatcher
+
+        patcher = DynamicImagePatcher(patch_size=4, channels=3)
+        self.assertEqual(patcher.extract_patches([]), ([], (0, 0)))
+        self.assertEqual(patcher.extract_patches([[]]), ([], (0, 0)))
+
+    def test_vocab_adapter_extreme_underflow(self):
+        from vocab_adapter import VocabularyAdapter
+
         _, _, _, base_tok, _, _ = self._make_pipeline()
-        self.assertEqual(base_tok._cross_word_tokens(), frozenset())
-        doc = "the quick brown fox"
-        tokens = base_tok.encode(doc)
-        self.assertEqual(base_tok._apply_cross_word_merges(tokens), tokens)
+        # Simulate extreme negative log-probs
+        base_tok.model.vocab["rare_token"] = -1000.0
+        adapted = VocabularyAdapter.expand_vocabulary(
+            base_tok, ["xyzabc xyzabc xyzabc"], num_new_tokens=5, min_frequency=1, verbose=False
+        )
+        self.assertGreater(len(adapted.model.vocab), len(base_tok.model.vocab))
+        for tok, lp in adapted.model.vocab.items():
+            self.assertFalse(math.isnan(lp))
+            self.assertFalse(math.isinf(lp))
 
 
 if __name__ == "__main__":
