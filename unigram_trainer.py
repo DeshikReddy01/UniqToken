@@ -37,6 +37,21 @@ class UnigramModel:
         return trie
 
     _FAST_PATH_MAX_LEN = 6
+    _MAX_CACHE_SIZE = 10000
+
+    def clear_cache(self) -> None:
+        """Clears cached PrefixTrie and segmentation memoization tables."""
+        if "_trie" in self.__dict__:
+            del self.__dict__["_trie"]
+        if "_seg_cache" in self.__dict__:
+            del self.__dict__["_seg_cache"]
+
+    def _get_seg_cache(self) -> Dict[str, List[Tuple[str, int, int]]]:
+        cache = self.__dict__.get("_seg_cache")
+        if cache is None:
+            cache = {}
+            self._seg_cache = cache
+        return cache
 
     def _encode_fast(self, text: str) -> Optional[List[Tuple[str, int, int]]]:
         """
@@ -106,35 +121,36 @@ class UnigramModel:
     def encode(self, text: str) -> List[str]:
         if len(text) == 1 and text in self.vocab:
             return [text]
-        fast = self._encode_fast(text)
-        if fast is not None:
-            return [token for token, _, _ in fast]
-        lattice = UnigramLattice(
-            text,
-            self.vocab,
-            max_subword_len=self.max_subword_len,
-            byte_fallback=self.byte_fallback,
-            trie=self._get_trie(),
-        )
-        tokens, _ = lattice.viterbi()
-        return tokens
+        spans = self.encode_with_spans(text)
+        return [token for token, _, _ in spans]
 
     def encode_with_spans(self, text: str) -> List[Tuple[str, int, int]]:
         """Encode text and retain normalized character spans for every output token."""
         if len(text) == 1 and text in self.vocab:
             return [(text, 0, 1)]
+
+        cache = self._get_seg_cache()
+        cached = cache.get(text)
+        if cached is not None:
+            return cached
+
         fast = self._encode_fast(text)
         if fast is not None:
-            return fast
-        lattice = UnigramLattice(
-            text,
-            self.vocab,
-            max_subword_len=self.max_subword_len,
-            byte_fallback=self.byte_fallback,
-            trie=self._get_trie(),
-        )
-        edges, _ = lattice.viterbi_edges()
-        return [(token, edge.start, edge.end) for edge in edges for token in edge.tokens]
+            spans = fast
+        else:
+            lattice = UnigramLattice(
+                text,
+                self.vocab,
+                max_subword_len=self.max_subword_len,
+                byte_fallback=self.byte_fallback,
+                trie=self._get_trie(),
+            )
+            edges, _ = lattice.viterbi_edges()
+            spans = [(token, edge.start, edge.end) for edge in edges for token in edge.tokens]
+
+        if len(cache) < self._MAX_CACHE_SIZE and len(text) <= 64:
+            cache[text] = spans
+        return spans
 
     def sample(self, text: str, alpha: float = 0.5) -> List[str]:
         if len(text) == 1 and text in self.vocab:
@@ -185,6 +201,8 @@ class UnigramTrainer:
         max_edges_per_node: Optional[int] = None,
         min_edge_log_prob: Optional[float] = None,
         convergence_tolerance: float = 1e-4,
+        script_balance_temperature: Optional[float] = None,
+        min_boundary_entropy: Optional[float] = None,
     ):
         if target_vocab_size <= 0:
             raise ValueError("target_vocab_size must be greater than zero")
@@ -211,6 +229,8 @@ class UnigramTrainer:
         self.max_edges_per_node = max_edges_per_node
         self.min_edge_log_prob = min_edge_log_prob
         self.convergence_tolerance = convergence_tolerance
+        self.script_balance_temperature = script_balance_temperature
+        self.min_boundary_entropy = min_boundary_entropy
 
     def train(self, pre_tokenized_chunks: Iterable[str], verbose: bool = True) -> UnigramModel:
         """
@@ -229,6 +249,8 @@ class UnigramTrainer:
             special_tokens=self.special_tokens,
             ranking_strategy=self.ranking_strategy,
             adaptive_multiplier=self.adaptive_multiplier,
+            script_balance_temperature=self.script_balance_temperature,
+            min_boundary_entropy=self.min_boundary_entropy,
         )
 
         seed_tokens: List[SeedToken] = seed_builder.build_seed_vocab(chunk_counts)

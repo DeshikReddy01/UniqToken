@@ -3,7 +3,7 @@ from __future__ import annotations
 import math
 from collections import Counter
 from dataclasses import dataclass
-from typing import Dict, Iterable, List, Optional, Set
+from typing import Dict, Iterable, List, Optional, Set, Tuple
 
 
 @dataclass(frozen=True)
@@ -49,6 +49,8 @@ class SeedVocabularyBuilder:
         special_tokens: List[str] | None = None,
         ranking_strategy: str = "char_savings",
         adaptive_multiplier: bool = False,
+        script_balance_temperature: Optional[float] = None,
+        min_boundary_entropy: Optional[float] = None,
     ):
         if target_vocab_size <= 0:
             raise ValueError("target_vocab_size must be greater than zero")
@@ -60,9 +62,15 @@ class SeedVocabularyBuilder:
             raise ValueError("min_frequency must be at least one")
         if ranking_strategy not in {"char_savings", "frequency", "pmi"}:
             raise ValueError("ranking_strategy must be 'char_savings', 'frequency', or 'pmi'")
+        if script_balance_temperature is not None and script_balance_temperature <= 0:
+            raise ValueError("script_balance_temperature must be greater than zero")
+        if min_boundary_entropy is not None and min_boundary_entropy < 0:
+            raise ValueError("min_boundary_entropy cannot be negative")
         self.target_vocab_size = target_vocab_size
         self.seed_multiplier = seed_multiplier
         self.adaptive_multiplier = adaptive_multiplier
+        self.script_balance_temperature = script_balance_temperature
+        self.min_boundary_entropy = min_boundary_entropy
         self.seed_vocab_size = int(target_vocab_size * seed_multiplier)
         self.max_ngram_length = max_ngram_length
         self.min_frequency = min_frequency
@@ -124,8 +132,31 @@ class SeedVocabularyBuilder:
             )
         return tokens
 
+    @staticmethod
+    def _detect_script(token: str) -> str:
+        """Categorizes a token into a script family based on Unicode codepoints."""
+        for ch in token:
+            cp = ord(ch)
+            if (0x0041 <= cp <= 0x005A) or (0x0061 <= cp <= 0x007A) or (0x00C0 <= cp <= 0x024F):
+                return "latin"
+            elif 0x0900 <= cp <= 0x0D7F:
+                return "indic"
+            elif (0x4E00 <= cp <= 0x9FFF) or (0x3040 <= cp <= 0x30FF) or (0xAC00 <= cp <= 0xD7AF):
+                return "cjk"
+            elif (0x0600 <= cp <= 0x06FF) or (0x0750 <= cp <= 0x077F):
+                return "arabic"
+            elif 0x0400 <= cp <= 0x04FF:
+                return "cyrillic"
+        return "symbol"
+
     def mine_ngrams(self, chunk_counts: Counter[str]) -> Counter[str]:
+        counts, _ = self.mine_ngrams_with_entropy(chunk_counts)
+        return counts
+
+    def mine_ngrams_with_entropy(self, chunk_counts: Counter[str]) -> Tuple[Counter[str], Dict[str, float]]:
         ngram_counts: Counter[str] = Counter()
+        left_ctx: Dict[str, Counter[str]] = {}
+        right_ctx: Dict[str, Counter[str]] = {}
         max_len = self.max_ngram_length
 
         for chunk, chunk_freq in chunk_counts.items():
@@ -135,19 +166,51 @@ class SeedVocabularyBuilder:
             chunk_len = len(chunk)
             for start in range(chunk_len):
                 end_limit = min(chunk_len + 1, start + max_len + 1)
+                l_char = chunk[start - 1] if start > 0 else "^"
                 for end in range(start + 1, end_limit):
                     sub = chunk[start:end]
+                    r_char = chunk[end] if end < chunk_len else "$"
                     ngram_counts[sub] += chunk_freq
+                    if self.min_boundary_entropy is not None:
+                        if sub not in left_ctx:
+                            left_ctx[sub] = Counter()
+                            right_ctx[sub] = Counter()
+                        left_ctx[sub][l_char] += chunk_freq
+                        right_ctx[sub][r_char] += chunk_freq
 
-        return ngram_counts
+        entropies: Dict[str, float] = {}
+        if self.min_boundary_entropy is not None:
+            for sub, counts in ngram_counts.items():
+                l_cnt = left_ctx.get(sub, Counter())
+                r_cnt = right_ctx.get(sub, Counter())
+                l_tot = sum(l_cnt.values())
+                r_tot = sum(r_cnt.values())
+                h_l = -sum((c / l_tot) * math.log2(c / l_tot) for c in l_cnt.values() if c > 0) if l_tot > 0 else 0.0
+                h_r = -sum((c / r_tot) * math.log2(c / r_tot) for c in r_cnt.values() if c > 0) if r_tot > 0 else 0.0
+                entropies[sub] = min(h_l, h_r)
 
-    def filter_candidates(self, ngram_counts: Counter[str], protected_tokens: Set[str]) -> Dict[str, int]:
+        return ngram_counts, entropies
+
+    def filter_candidates(
+        self,
+        ngram_counts: Counter[str],
+        protected_tokens: Set[str],
+        entropies: Optional[Dict[str, float]] = None,
+    ) -> Dict[str, int]:
         filtered: Dict[str, int] = {}
         for token, count in ngram_counts.items():
             if token in protected_tokens:
                 continue
-            if count >= self.min_frequency:
-                filtered[token] = count
+            if count < self.min_frequency:
+                continue
+            if (
+                self.min_boundary_entropy is not None
+                and entropies is not None
+                and len(token) > 1
+                and entropies.get(token, 0.0) < self.min_boundary_entropy
+            ):
+                continue
+            filtered[token] = count
         return filtered
 
     def rank_candidates(
@@ -157,14 +220,27 @@ class SeedVocabularyBuilder:
         total_unigrams: Optional[int] = None,
     ) -> List[str]:
         """
-        Deterministic Candidate Ranking:
+        Deterministic Candidate Ranking with optional script balancing:
         - "char_savings": (len(t) - 1) * freq
         - "frequency": raw freq
         - "pmi": Pointwise Mutual Information cohesion scaled by savings
         """
+        script_weights: Dict[str, float] = {}
+        if self.script_balance_temperature is not None and candidate_counts:
+            T = self.script_balance_temperature
+            script_totals: Counter[str] = Counter()
+            for t, cnt in candidate_counts.items():
+                script_totals[self._detect_script(t)] += cnt
+
+            temp_totals = {s: (tot**T) for s, tot in script_totals.items()}
+            sum_temp = sum(temp_totals.values())
+            for s, tot in script_totals.items():
+                prob_target = temp_totals[s] / max(sum_temp, 1e-9)
+                script_weights[s] = prob_target / max(tot, 1e-9)
+
         if self.ranking_strategy == "pmi" and unigram_counts and total_unigrams and total_unigrams > 0:
-            tot = float(total_unigrams)
-            log_tot = math.log(tot)
+            total_val = float(total_unigrams)
+            log_tot = math.log(total_val)
             char_log_p = {c: math.log(max(cnt, 1)) - log_tot for c, cnt in unigram_counts.items()}
 
             def pmi_score(t: str) -> float:
@@ -172,8 +248,10 @@ class SeedVocabularyBuilder:
                 log_p_t = math.log(max(freq, 1)) - log_tot
                 sum_char_log_p = sum(char_log_p.get(c, -10.0) for c in t)
                 pmi = log_p_t - sum_char_log_p
-                # Scale cohesion by character length savings
-                return (len(t) - 1) * freq * max(0.1, pmi)
+                base = (len(t) - 1) * freq * max(0.1, pmi)
+                if self.script_balance_temperature is not None:
+                    return base * script_weights.get(self._detect_script(t), 1.0)
+                return base
 
             return sorted(
                 candidate_counts.keys(),
@@ -185,19 +263,33 @@ class SeedVocabularyBuilder:
                 ),
             )
         elif self.ranking_strategy == "char_savings":
+
+            def savings_score(t: str) -> float:
+                base = (len(t) - 1) * candidate_counts[t]
+                if self.script_balance_temperature is not None:
+                    return base * script_weights.get(self._detect_script(t), 1.0)
+                return float(base)
+
             return sorted(
                 candidate_counts.keys(),
                 key=lambda t: (
-                    -(len(t) - 1) * candidate_counts[t],
+                    -savings_score(t),
                     -candidate_counts[t],
                     -len(t),
                     t,
                 ),
             )
         else:
+
+            def freq_score(t: str) -> float:
+                base = float(candidate_counts[t])
+                if self.script_balance_temperature is not None:
+                    return base * script_weights.get(self._detect_script(t), 1.0)
+                return base
+
             return sorted(
                 candidate_counts.keys(),
-                key=lambda t: (-candidate_counts[t], -len(t), t),
+                key=lambda t: (-freq_score(t), -candidate_counts[t], -len(t), t),
             )
 
     def build_seed_vocab(
@@ -241,8 +333,8 @@ class SeedVocabularyBuilder:
         total_unigrams = sum(unigram_counts.values())
 
         # 3. Mine, Filter, and Rank Candidates
-        raw_ngrams = self.mine_ngrams(chunk_counts)
-        filtered_candidates = self.filter_candidates(raw_ngrams, seen_tokens)
+        raw_ngrams, entropies = self.mine_ngrams_with_entropy(chunk_counts)
+        filtered_candidates = self.filter_candidates(raw_ngrams, seen_tokens, entropies=entropies)
         ranked_candidates = self.rank_candidates(
             filtered_candidates,
             unigram_counts=unigram_counts,

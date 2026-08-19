@@ -201,6 +201,8 @@ class CustomTokenizer:
         max_edges_per_node: Optional[int] = None,
         min_edge_log_prob: Optional[float] = None,
         convergence_tolerance: float = 1e-4,
+        script_balance_temperature: Optional[float] = None,
+        min_boundary_entropy: Optional[float] = None,
         verbose: bool = True,
     ) -> CustomTokenizer:
         normalizer = Normalizer()
@@ -233,6 +235,8 @@ class CustomTokenizer:
             max_edges_per_node=max_edges_per_node,
             min_edge_log_prob=min_edge_log_prob,
             convergence_tolerance=convergence_tolerance,
+            script_balance_temperature=script_balance_temperature,
+            min_boundary_entropy=min_boundary_entropy,
         )
 
         model = trainer.train(chunks, verbose=verbose)
@@ -516,6 +520,12 @@ class CustomTokenizer:
         if self._indent_compression_enabled:
             decoded = IndentationCompressor.decompress_indents(decoded)
         return self.normalizer.restore_escaped_metaspace(decoded)
+
+    def decode_tokens(self, tokens: Sequence[str]) -> str:
+        """Decodes a list of token strings directly back to the original text string."""
+        unk_id = self.model.token_to_id.get("<|unk|>", 0)
+        token_ids = [self.model.token_to_id.get(t, unk_id) for t in tokens]
+        return self.decode(token_ids)
 
     def get_streaming_decoder(self, skip_special_tokens: bool = True) -> StreamingDecoder:
         indent_replacements = {}
