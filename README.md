@@ -1,61 +1,81 @@
-# Caliper
+<p align="center">
+  <h1 align="center">Caliper</h1>
+  <p align="center">
+    <strong>Zero-dependency, high-precision Byte-Fallback Unigram &amp; Multimodal Tokenizer</strong>
+  </p>
+  <p align="center">
+    Built from scratch in pure Python — with exact character-span tracking, multilingual Unicode protection, and three interchangeable subword algorithms.
+  </p>
+</p>
 
-**A zero-dependency, high-precision Byte-Fallback Unigram and Multimodal Tokenizer**, built from scratch in pure Python — with exact character-span tracking, multilingual Unicode protection, and three interchangeable subword algorithms (Unigram LM, BPE, and CEM/SuperBPE vocabulary extension).
-
-![License](https://img.shields.io/badge/license-MIT-blue.svg)
-![Python](https://img.shields.io/badge/python-3.9%2B-blue.svg)
-![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)
-![Dependencies](https://img.shields.io/badge/dependencies-zero-brightgreen.svg)
-
-Most production tokenizers lean on a compiled C++ or Rust backend (SentencePiece, `tokenizers`) and treat character-offset alignment, control-token injection, and vocabulary extension as afterthoughts. Caliper is a single, dependency-free Python package that treats all three as first-class design constraints, while still implementing the same core algorithms — Unigram Language Model segmentation, Byte-Pair Encoding, and post-training vocabulary merging — that back today's production LLM tokenizers.
-
----
-
-## Table of Contents
-
-1. [Why Caliper](#why-caliper)
-2. [Features](#features)
-3. [Installation](#installation)
-4. [Quickstart](#quickstart)
-5. [Architecture and Project Structure](#architecture-and-project-structure)
-6. [Algorithms and Base Papers](#algorithms-and-base-papers)
-7. [Security Model](#security-model)
-8. [Testing and Code Quality](#testing-and-code-quality)
-9. [Multimodal and Benchmarking](#multimodal-and-benchmarking)
-10. [Contributing](#contributing)
-11. [License](#license)
+<p align="center">
+  <a href="https://github.com/umran666/caliper/actions/workflows/ci.yml"><img src="https://github.com/umran666/caliper/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI"></a>
+  <a href="https://github.com/umran666/caliper/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License"></a>
+  <img src="https://img.shields.io/badge/python-3.9%20%7C%203.10%20%7C%203.11%20%7C%203.12-blue.svg" alt="Python">
+  <img src="https://img.shields.io/badge/version-1.0.0-blue.svg" alt="Version">
+  <img src="https://img.shields.io/badge/dependencies-zero-brightgreen.svg" alt="Dependencies">
+</p>
 
 ---
 
-## Why Caliper
+## Overview
 
-Standard subword tokenizers share five recurring failure modes in production LLM pipelines. Caliper's design exists specifically to close each of them:
+Most production tokenizers lean on a compiled C++ or Rust backend (SentencePiece, HuggingFace `tokenizers`) and treat character-offset alignment, control-token injection defense, and vocabulary extension as afterthoughts. **Caliper** is a single, dependency-free Python package that treats all three as first-class design constraints, while implementing the same core algorithms — Unigram Language Model segmentation, Byte-Pair Encoding, and post-training vocabulary merging — that back today's production LLM tokenizers.
 
-| # | Problem | How Caliper addresses it |
-|---|---------|---------------------------|
-| 1 | **Out-of-vocabulary catastrophe** — rare Unicode, emoji, or foreign scripts silently collapse to `<unk>`, destroying information. | Strict **byte fallback**: any character not in the vocabulary decomposes into its raw UTF-8 bytes (`<0x00>`–`<0xFF>`), giving a **0% OOV rate** and exact, lossless roundtrip decoding. |
-| 2 | **Span drift** — normalization (NFKC, case folding) changes string length, breaking the character offsets that NER, extractive QA, and citation systems depend on. | **Dual-offset tracking**: sanitization, indentation compression, normalization, and pre-tokenization each produce their own alignment, composed end-to-end by `_compose_alignment()`, so `encode_with_offsets()` returns a `Token.raw_span` pointing to the exact position in the original raw text. |
-| 3 | **Digit and script clumping** — numbers and mixed scripts get fused into arbitrary tokens (`2024`, `https://…`), hurting arithmetic reasoning and URL parsing. | A **10-pattern regex boundary layer** isolates URLs, emails, hashtags, emoji (including ZWJ sequences), CJK ideographs, and digit runs before subword segmentation ever runs. |
-| 4 | **Deterministic brittleness** — a single fixed segmentation makes models fragile to typos and spelling variants. | **FFBS subword regularization** — Forward-Filtering Backward-Sampling over the segmentation lattice — lets you sample stochastic alternative segmentations during training. |
-| 5 | **Vocabulary freezing** — extending a trained vocabulary normally forces re-indexing, corrupting the model's existing embedding matrix. | **Non-destructive vocabulary growth**: both `vocab_adapter.py` and `cem_merger.py` append new tokens at `id = len(old_vocab) + i`, leaving every existing token ID and embedding row untouched. |
+### Design Goals
+
+| # | Production Failure Mode | Caliper's Response |
+|:-:|:---|:---|
+| 1 | **Out-of-vocabulary catastrophe** — rare Unicode, emoji, or foreign scripts silently collapse to `<unk>`, destroying information. | Strict **byte fallback**: any character outside the vocabulary decomposes into its raw UTF-8 bytes (`<0x00>`–`<0xFF>`), guaranteeing a **0% OOV rate** and exact, lossless roundtrip decoding. |
+| 2 | **Span drift** — normalization (NFKC, case folding) changes string length, breaking the character offsets that NER, extractive QA, and citation systems depend on. | **Dual-offset tracking**: sanitization, indentation compression, normalization, and pre-tokenization each produce their own alignment, composed end-to-end by `_compose_alignment()`, so `encode_with_offsets()` returns a `Token.raw_span` pointing to the exact byte range in the original raw text. |
+| 3 | **Digit and script clumping** — numbers and mixed scripts get fused into arbitrary tokens, hurting arithmetic reasoning and URL parsing. | A **10-pattern regex boundary layer** isolates URLs, emails, hashtags, emoji (including ZWJ sequences), CJK ideographs, and digit runs before subword segmentation ever runs. |
+| 4 | **Deterministic brittleness** — a single fixed segmentation makes models fragile to typos and spelling variants. | **FFBS subword regularization** — Forward-Filtering Backward-Sampling over the segmentation lattice — samples stochastic alternative segmentations during training ([Kudo, 2018](#algorithms--base-papers)). |
+| 5 | **Vocabulary freezing** — extending a trained vocabulary normally forces re-indexing, corrupting the model's existing embedding matrix. | **Non-destructive vocabulary growth**: both `VocabularyAdapter` and `CrossEntropyMerging` append new tokens at `id = len(old_vocab) + i`, leaving every existing token ID and embedding row untouched. |
+
+---
 
 ## Features
 
-- **Zero core dependencies** — pure Python 3.9+, nothing to compile, nothing to pin.
-- **Three trainable tokenization algorithms** in one package: Unigram Language Model (DAG + Viterbi + EM + FFBS), classic Byte-Pair Encoding, and a Cross-Entropy Merging (CEM) post-training vocabulary extender with an optional SuperBPE ("space travel") mode.
-- **Exact dual-offset span tracking** from raw input straight through to token output.
-- **Multilingual and structural protection**: Indic viramas, Arabic harakat, Hebrew niqqud, Hangul jamo clusters, CJK isolation, emoji ZWJ/variation-selector sequences, RFC-style URL preservation, and optional digit splitting.
-- **Non-destructive vocabulary expansion** for domain adaptation without disturbing existing embeddings.
-- **Control-token injection defense** — `SecurityShield` sanitizes or escapes untrusted input that tries to smuggle in fake `<|endoftext|>` / `<|system|>`-style control sequences.
-- **Streaming-safe decoding** — `StreamingDecoder` buffers fragmented multi-byte UTF-8 sequences so token-by-token generation never emits `U+FFFD` replacement characters.
-- **HuggingFace-compatible export** — one call serializes to the canonical `tokenizers` `tokenizer.json` schema for `transformers.AutoTokenizer.from_pretrained()`.
-- **Code-aware compression** — `IndentationCompressor` collapses runs of 2/4/8/16 spaces and tabs into single structural tokens, reversibly.
-- **Fast lattice construction** — a `PrefixTrie` gives O(L) single-pass edge mining instead of repeated substring slicing and hash lookups.
-- **PyTorch-ready batching** — `BatchCollator` handles padding, attention masks, BOS/EOS injection, and tensor conversion.
+<table>
+<tr><td>
+
+**Tokenization**
+- Three trainable algorithms: Unigram LM (DAG + Viterbi + EM + FFBS), BPE, and CEM/SuperBPE vocabulary extension
+- Byte-fallback codec for 0% OOV across all Unicode
+- FFBS subword regularization for training-time augmentation
+- PrefixTrie for O(L) single-pass lattice edge mining
+
+</td><td>
+
+**Alignment & Safety**
+- Exact dual-offset span tracking (raw → normalized → token)
+- SecurityShield: control-token injection / delimiter-hijacking defense
+- Indic virama, Arabic harakat, Hebrew niqqud, Hangul jamo cluster protection
+- CJK isolation, emoji ZWJ/variation-selector preservation
+
+</td></tr>
+<tr><td>
+
+**Serving**
+- StreamingDecoder with UTF-8 byte-buffer for real-time generation
+- BatchCollator with padding, attention masks, BOS/EOS injection
+- PyTorch tensor output via `to_torch()`
+- HuggingFace-compatible export (`tokenizer.json` schema)
+
+</td><td>
+
+**Code & Domain**
+- IndentationCompressor: reversible 2/4/8/16-space and tab compression
+- Non-destructive online vocabulary expansion for domain adaptation
+- SuperBPE whitespace-crossing merge mode ([Liu et al., 2025](#algorithms--base-papers))
+- Save/load serialization with full config preservation
+
+</td></tr>
+</table>
+
+---
 
 ## Installation
-
-Caliper isn't published to PyPI; install it directly from the repository.
 
 ```bash
 git clone https://github.com/umran666/caliper.git
@@ -63,242 +83,354 @@ cd caliper
 pip install -e .
 ```
 
-Optional extras (all defined in `pyproject.toml`):
+**Optional extras** (defined in [`pyproject.toml`](pyproject.toml)):
 
-```bash
-pip install -e ".[torch]"        # PyTorch tensor output in BatchCollator
-pip install -e ".[huggingface]"  # tokenizers / transformers interop
-pip install -e ".[bench]"        # sentencepiece + tokenizers, as benchmark baselines
-pip install -e ".[test]"         # pytest, coverage, ruff, mypy
-pip install -e ".[all]"          # everything above
-```
+| Extra | Command | What it adds |
+|:------|:--------|:-------------|
+| PyTorch | `pip install -e ".[torch]"` | `torch>=2.0.0` — tensor output in `BatchCollator` |
+| HuggingFace | `pip install -e ".[huggingface]"` | `tokenizers>=0.13.0`, `transformers>=4.30.0` — interop & export |
+| Benchmarks | `pip install -e ".[bench]"` | `sentencepiece>=0.1.99`, `tokenizers>=0.13.0` — comparison baselines |
+| Testing | `pip install -e ".[test]"` | `pytest>=7.0.0`, `coverage>=7.0.0`, `ruff>=0.4.0`, `mypy>=1.8.0` |
+| Everything | `pip install -e ".[all]"` | All of the above |
+
+---
 
 ## Quickstart
 
-### Train and use a Unigram tokenizer
+### Train a Unigram tokenizer
 
 ```python
 from tokenizer import CustomTokenizer
 
-corpus = [...]  # your training documents, one string per item
+corpus = [...]  # list of training documents
 
 tok = CustomTokenizer.train_from_corpus(
     corpus,
-    target_vocab_size=32000,
+    target_vocab_size=32_000,
     special_tokens=["<|pad|>", "<|unk|>", "<|bos|>", "<|eos|>"],
     byte_fallback=True,
 )
 
+# Encode → decode roundtrip
 ids = tok.encode_to_ids("fix in 2024 at https://site.com")
 text = tok.decode(ids)
+assert text == "fix in 2024 at https://site.com"
 
-# Stochastic subword regularization for training-time augmentation
+# Stochastic subword regularization (training-time augmentation)
 sampled = tok.sample("hello world", alpha=0.5)
 
 # Exact character-span offsets for every token
 for token in tok.encode_with_offsets("fix in 2024"):
-    print(token.text, token.id, token.raw_span)
-
-tok.save("saved_model/")
-tok2 = CustomTokenizer.load("saved_model/")
+    print(f"{token.text!r:>12}  id={token.id:<5}  raw_span={token.raw_span}")
 ```
 
-### Train a classic BPE tokenizer instead
+### Train a BPE tokenizer
 
 ```python
 from bpe_trainer import BPETrainer
 
-bpe_trainer = BPETrainer(target_vocab_size=32000, byte_fallback=True)
-bpe_model = bpe_trainer.train(chunks=corpus, verbose=True)
+trainer = BPETrainer(target_vocab_size=32_000, byte_fallback=True)
+model = trainer.train(chunks=corpus, verbose=True)
 
-tokens = bpe_model.encode("tokenization")
-text = bpe_model.decode(token_ids)
+tokens = model.encode("tokenization")
+text = model.decode(token_ids)
 ```
 
-### Extend a trained Unigram vocabulary with CEM / SuperBPE
+### Extend vocabulary with CEM / SuperBPE
 
 ```python
 from cem_merger import CrossEntropyMerging
 
-# Greedily add multi-token merges that least increase corpus cross-entropy
+# Standard CEM: greedily add merges that minimize cross-entropy increase
 cem = CrossEntropyMerging(max_merges=200, verbose=True)
-extended_model = cem.optimize(tok.model, chunks=corpus)
+extended = cem.optimize(tok.model, chunks=corpus)
 
-# Or run a SuperBPE ("space travel") pass: only accept merges that cross
-# whitespace, producing tokens like "the▁quick" that span word boundaries
+# SuperBPE mode: only accept merges that cross whitespace boundaries
 superbpe = CrossEntropyMerging(max_merges=200, cross_word=True)
 superbpe_model = superbpe.optimize(tok.model, chunks=corpus)
 ```
 
-### Export to the HuggingFace `tokenizers` format
+### Export to HuggingFace format
 
 ```python
 tok.export_to_huggingface("hf_export/")
 
+# Then load with transformers:
 # from transformers import AutoTokenizer
-# AutoTokenizer.from_pretrained("hf_export/")
+# hf_tok = AutoTokenizer.from_pretrained("hf_export/")
 ```
 
-Internally this is a thin wrapper around `HuggingFaceExporter.save_hf_pretrained(tok, directory)`, which you can also call directly.
-
-### Decode a streamed generation loop safely
+### Streaming decode
 
 ```python
-decoder = tok.get_streaming_decoder()  # pre-wired with this tokenizer's vocab, space char, and special tokens
+decoder = tok.get_streaming_decoder()
 
 output = ""
-for token_id in generated_ids:  # streamed one id at a time from an LLM
+for token_id in generated_ids:  # one id at a time from an LLM
     output += decoder.feed_token_id(token_id)
 output += decoder.flush()
 ```
 
-### Sanitize untrusted input before it reaches the model
+### Sanitize untrusted input
 
 ```python
 from security_shield import SecurityShield
 
 shield = SecurityShield(special_tokens=["<|endoftext|>", "<|system|>", "<|user|>"])
-safe_text = shield.sanitize(
-    untrusted_user_input,
-    allowed_special="none",              # or {"<|user|>"} to whitelist specific tokens
+safe = shield.sanitize(
+    untrusted_input,
+    allowed_special="none",              # or {"<|user|>"} to whitelist
     disallowed_special_action="escape",  # "escape" | "raise" | "ignore"
 )
 ```
 
-### Compress structured code whitespace
+> **Note:** `CustomTokenizer` wires `SecurityShield.sanitize()` into every `encode()`, `sample()`, and `encode_with_offsets()` call automatically (defaults: `allowed_special="none"`, `disallowed_special_action="escape"`), so sanitization is not an opt-in step.
+
+### Compress structured whitespace
 
 ```python
 from indentation_compressor import IndentationCompressor
 
 compact = IndentationCompressor.compress_indents(source_code)
 restored = IndentationCompressor.decompress_indents(compact)
+assert restored == source_code
 ```
 
-## Architecture and Project Structure
+### Save and load
 
-### Pipeline
+```python
+tok.save("saved_model/")
+tok2 = CustomTokenizer.load("saved_model/")
+
+assert tok2.encode_to_ids("test") == tok.encode_to_ids("test")
+```
+
+---
+
+## Architecture
+
+### End-to-End Pipeline
 
 ```mermaid
-flowchart TD
-    A[Raw text] --> B[SecurityShield<br/>optional sanitize]
-    B --> C[Normalizer<br/>NFKC + dual-offset alignment]
-    C --> D[RegexPreTokenizer<br/>10 boundary patterns]
-    D --> E1[UnigramLattice<br/>DAG · Viterbi · EM · FFBS]
-    D --> E2[BPETrainer / BPEModel<br/>greedy pair merges]
-    E1 --> F[CrossEntropyMerging<br/>CEM / SuperBPE extension]
-    E1 --> G[Token IDs]
+flowchart LR
+    A["Raw Text"] --> B["SecurityShield<br/>sanitize + alignment"]
+    B --> C["Normalizer<br/>NFKC + dual-offset"]
+    C --> D["RegexPreTokenizer<br/>10 boundary patterns"]
+    D --> E1["UnigramLattice<br/>DAG · Viterbi · FFBS"]
+    D --> E2["BPEModel<br/>rank-based merges"]
+    E1 --> F["CEM / SuperBPE<br/>vocabulary extension"]
+    E1 --> G["Token IDs"]
     E2 --> G
     F --> G
-    G --> H[BatchCollator<br/>pad · mask · BOS/EOS]
-    G --> I[decode / StreamingDecoder<br/>byte-buffer aware]
-    H --> J[PyTorch tensors]
-    I --> K[Reconstructed text]
+    G --> H["BatchCollator<br/>pad · mask · BOS/EOS"]
+    G --> I["StreamingDecoder<br/>byte-buffer aware"]
+    H --> J["PyTorch Tensors"]
+    I --> K["Decoded Text"]
 ```
 
-### File-by-file
+### Project Structure
 
-**Core codec and text processing**
+```
+caliper/
+├── tokenizer.py              # CustomTokenizer — unified facade
+├── pre_tokenizer.py           # Normalizer + RegexPreTokenizer (10 patterns)
+├── byte_codec.py              # ByteFallbackEngine — UTF-8 ↔ <0xHH> codec
+├── trie.py                    # PrefixTrie — O(L) vocab prefix matching
+│
+├── seed_builder.py            # SeedVocabularyBuilder — initial ≈3× candidate vocab
+├── unigram_lattice.py         # UnigramLattice — DAG, Viterbi, EM stats, FFBS sampling
+├── unigram_trainer.py         # UnigramTrainer — EM + likelihood-pruning training loop
+├── vocab_adapter.py           # VocabularyAdapter — non-destructive vocab expansion
+├── cem_merger.py              # CrossEntropyMerging — CEM / SuperBPE extension
+│
+├── bpe_trainer.py             # BPETrainer — classic greedy pairwise-merge training
+├── bpe_model.py               # BPEModel — rank-based merge inference (tiktoken-style)
+│
+├── batch_collator.py          # BatchCollator — padding, masks, BOS/EOS, to_torch()
+├── streaming_decoder.py       # StreamingDecoder — incremental UTF-8-safe decode
+├── hf_exporter.py             # HuggingFaceExporter — tokenizer.json + config export
+│
+├── security_shield.py         # SecurityShield — control-token injection defense
+├── indentation_compressor.py  # IndentationCompressor — reversible whitespace codec
+│
+├── multimodal/
+│   ├── multimodal_tokenizer.py  # MultimodalTokenizer — text + image + audio
+│   ├── visual_codebook.py       # VisualCodebook — VQ codebook for image patches
+│   ├── image_patcher.py         # ImagePatcher — grid-based patch extraction
+│   ├── audio_codec.py           # ResidualVectorQuantizer — RVQ for audio
+│   └── neural_codecs.py         # NeuralVisualCodec / NeuralAudioCodec (PyTorch)
+│
+├── benchmarks/
+│   └── benchmark_suite.py     # TokenizerBenchmarkSuite — 7-axis evaluation
+│
+├── test_tokenizer.py          # 57 unit tests across 17 test classes
+├── test_fuzz_properties.py    # 7 property-based fuzz tests
+├── saved_model/               # Example serialized tokenizer artifact
+├── pyproject.toml             # Package config, extras, ruff/mypy settings
+└── .github/workflows/ci.yml  # CI: 3 OS × 4 Python versions = 12-cell matrix
+```
 
-| File | Purpose |
-|---|---|
-| `byte_codec.py` | `ByteFallbackEngine` — UTF-8 ↔ `<0xHH>` byte-token codec; guarantees 0% OOV and exact roundtrip decode. |
-| `pre_tokenizer.py` | `Normalizer` (NFKC + dual-offset alignment, punctuation/whitespace normalization, metaspace escaping) and `RegexPreTokenizer` (the 10-pattern boundary matcher: special tokens, URLs, emails, hashtags/mentions, emoji, CJK, words, numbers, whitespace, punctuation). |
-| `trie.py` | `PrefixTrie` — O(L) single-pass vocabulary prefix matching used during lattice construction. |
+### Module Dependency Graph
 
-**Unigram Language Model**
+```mermaid
+graph TD
+    T["tokenizer.py<br/>CustomTokenizer"] --> N["pre_tokenizer.py<br/>Normalizer · RegexPreTokenizer"]
+    T --> UL["unigram_lattice.py<br/>UnigramLattice"]
+    T --> UT["unigram_trainer.py<br/>UnigramTrainer · UnigramModel"]
+    T --> SS["security_shield.py<br/>SecurityShield"]
+    T --> IC["indentation_compressor.py<br/>IndentationCompressor"]
+    T --> SD["streaming_decoder.py<br/>StreamingDecoder"]
+    T --> HF["hf_exporter.py<br/>HuggingFaceExporter"]
 
-| File | Purpose |
-|---|---|
-| `seed_builder.py` | `SeedVocabularyBuilder` — mines the initial ≈3× candidate vocabulary (special tokens, 256 byte tokens, base alphabet, ranked n-grams). |
-| `unigram_lattice.py` | `UnigramLattice` — builds the per-segment DAG; implements Viterbi 1-best decoding, forward-backward EM statistics, and FFBS sampling. |
-| `unigram_trainer.py` | `UnigramTrainer` — runs the EM + likelihood-pruning loop from the seed vocabulary down to `target_vocab_size`, then assigns deterministic token IDs. |
-| `vocab_adapter.py` | `VocabularyAdapter` — non-destructive online vocabulary expansion for domain adaptation; existing token IDs are never reassigned. |
-| `cem_merger.py` | `CrossEntropyMerging` — post-training greedy vocabulary extension scored by cross-entropy impact; `cross_word=True` switches to a SuperBPE-style whitespace-crossing merge pass. |
+    UT --> UL
+    UT --> SB["seed_builder.py<br/>SeedVocabularyBuilder"]
+    UT --> BC["byte_codec.py<br/>ByteFallbackEngine"]
+    UT --> TR["trie.py<br/>PrefixTrie"]
+    UL --> BC
+    UL --> TR
 
-**Byte-Pair Encoding**
+    CEM["cem_merger.py<br/>CrossEntropyMerging"] --> UT
+    VA["vocab_adapter.py<br/>VocabularyAdapter"] --> UT
 
-| File | Purpose |
-|---|---|
-| `bpe_trainer.py` | `BPETrainer` — classic greedy pairwise-merge BPE training with deterministic tie-breaking. |
-| `bpe_model.py` | `BPEModel` — rank-based greedy merge inference (the tiktoken/GPT-style approach) plus decode. |
+    BT["bpe_trainer.py<br/>BPETrainer"] --> BC
+    BT --> N
+    BM["bpe_model.py<br/>BPEModel"] --> BC
 
-**Serving and interop**
+    MM["multimodal/<br/>MultimodalTokenizer"] --> T
+```
 
-| File | Purpose |
-|---|---|
-| `tokenizer.py` | `CustomTokenizer` — the unified facade: `train_from_corpus`, `encode`/`encode_to_ids`, `sample`/`sample_to_ids`, `encode_with_offsets` (returns `Token(text, id, raw_span)`), `decode`, `save`/`load`, plus convenience wrappers `get_streaming_decoder()` and `export_to_huggingface()`. |
-| `batch_collator.py` | `BatchCollator` — padding, attention masks, BOS/EOS injection, and `to_torch()` tensor conversion. |
-| `streaming_decoder.py` | `StreamingDecoder` — incremental token-by-token decode with UTF-8 byte-buffer accumulation for real-time generation loops. |
-| `hf_exporter.py` | `HuggingFaceExporter` — exports to the canonical HuggingFace `tokenizers` `tokenizer.json` + `tokenizer_config.json` schema. |
+---
 
-**Safety and code-domain utilities**
+## Algorithms & Base Papers
 
-| File | Purpose |
-|---|---|
-| `security_shield.py` | `SecurityShield` — sanitizes or escapes control-token injection / delimiter-hijacking attempts in untrusted input. |
-| `indentation_compressor.py` | `IndentationCompressor` — reversibly collapses structured whitespace runs (2/4/8/16 spaces, tabs) into single tokens. |
+Caliper is an independent, from-scratch implementation. It does not wrap any paper's reference code. The algorithms are drawn from:
 
-**Tests, tooling, and other packages**
+| Algorithm | Module(s) | Reference |
+|:----------|:----------|:----------|
+| Unigram LM segmentation (DAG, Viterbi, EM, FFBS sampling) | `unigram_lattice.py`, `unigram_trainer.py` | Taku Kudo. *"Subword Regularization: Improving Neural Network Translation Models with Multiple Subword Candidates."* ACL 2018. |
+| Byte-Pair Encoding | `bpe_trainer.py`, `bpe_model.py` | Rico Sennrich, Barry Haddow, Alexandra Birch. *"Neural Machine Translation of Rare Words with Subword Units."* ACL 2016. |
+| Cross-Entropy Merging (CEM) | `cem_merger.py` | Leonidas Gee, Leonardo Rigutini, Marco Ernandes, Andrea Zugarini. *"Multi-Word Tokenization for Sequence Compression."* EMNLP 2023 (arXiv:2402.09949). |
+| SuperBPE ("Space Travel") | `cem_merger.py` (`cross_word=True`) | Alisa Liu, Jonathan Hayase, Valentin Hofmann, Sewoong Oh, Noah A. Smith, Yejin Choi. *"SuperBPE: Space Travel for Language Models."* COLM 2025 (arXiv:2503.13423). |
 
-| File / Directory | Purpose |
-|---|---|
-| `test_tokenizer.py` | 16 unit tests across six classes: `NormalizerTests`, `ByteFallbackTests`, `CustomTokenizerTests`, `LatticeTests`, `TrainerValidationTests`, `BatchCollatorTests`. |
-| `test_fuzz_properties.py` | Property/fuzz-style tests. |
-| `mypy.ini`, `[tool.ruff]` in `pyproject.toml` | Type-checking and linting configuration (line length 120, target `py39`). |
-| `multimodal/` | Registered as an installable package in `pyproject.toml`; provides the multimodal side of the tokenizer per the project description. |
-| `benchmarks/` | Registered as an installable package in `pyproject.toml`; the `bench` extra installs `sentencepiece` and `tokenizers` as comparison baselines. |
-| `saved_model/` | Example serialized tokenizer artifact (`tokenizer.json`). |
-| `.github/workflows/` | CI configuration. |
-
-## Algorithms and Base Papers
-
-Caliper is an independent, from-scratch implementation — it doesn't wrap any of the papers' official code — but the algorithms it implements are drawn directly from the following:
-
-1. **Taku Kudo. "Subword Regularization: Improving Neural Network Translation Models with Multiple Subword Candidates." ACL 2018.**
-   Basis for the Unigram Language Model tokenizer: DAG segmentation, EM training, Viterbi 1-best decoding, and probabilistic subword sampling for regularization (`unigram_lattice.py`, `unigram_trainer.py`).
-
-2. **Rico Sennrich, Barry Haddow, Alexandra Birch. "Neural Machine Translation of Rare Words with Subword Units." ACL 2016.**
-   Basis for the classic greedy pairwise-merge Byte-Pair Encoding trainer and model (`bpe_trainer.py`, `bpe_model.py`).
-
-3. **Leonidas Gee, Leonardo Rigutini, Marco Ernandes, Andrea Zugarini. "Multi-Word Tokenization for Sequence Compression." EMNLP 2023 Industry Track (also released as arXiv:2402.09949 in 2024).**
-   Basis for the Cross-Entropy Merging (CEM) post-training vocabulary extension in `cem_merger.py` — the module's own docstring cites this as "(Gee et al., 2024)," matching the arXiv posting date.
-
-4. **Alisa Liu, Jonathan Hayase, Valentin Hofmann, Sewoong Oh, Noah A. Smith, Yejin Choi. "SuperBPE: Space Travel for Language Models." COLM 2025 (arXiv:2503.13423).**
-   Basis for the whitespace-crossing "space travel" merge mode (`cross_word=True`) in `cem_merger.py`, which only accepts merges whose result contains the space/metaspace character.
+---
 
 ## Security Model
 
-`security_shield.py` implements `SecurityShield`, a control-token sanitizer that guards against out-of-band control-token smuggling and delimiter hijacking — for example, a user pasting a literal `<|endoftext|>` or `<|system|>` string to try to manipulate a model's context boundary. It supports three policies for disallowed control sequences found in untrusted input — `"escape"` (neutralize in place), `"raise"` (reject the input), or `"ignore"` — and an `allowed_special` whitelist (`"all"`, `"none"`, or a specific set) for control sequences you *do* want to honor. Sanitization preserves the same character-alignment tracking used throughout the rest of the pipeline via `sanitize_with_alignment`. `CustomTokenizer` wires this in automatically: every `encode()`, `sample()`, and `encode_with_offsets()` call runs input through `SecurityShield.sanitize()` first (defaults: `allowed_special="none"`, `disallowed_special_action="escape"`), so sanitization isn't an opt-in extra step.
+`SecurityShield` guards against control-token smuggling and delimiter hijacking — e.g., a user injecting a literal `<|endoftext|>` or `<|system|>` string to manipulate a model's context boundary.
 
-## Testing and Code Quality
+| Policy | Behavior |
+|:-------|:---------|
+| `"escape"` | Neutralizes the control sequence in place (default) |
+| `"raise"` | Raises `ValueError`, rejecting the input |
+| `"ignore"` | Passes the sequence through unmodified |
+
+The `allowed_special` parameter accepts `"all"`, `"none"`, or a specific `set` of control tokens to whitelist. Sanitization preserves character-alignment tracking via `sanitize_with_alignment()`.
+
+`CustomTokenizer` integrates this automatically — every `encode()`, `sample()`, and `encode_with_offsets()` call runs through `SecurityShield.sanitize()` first.
+
+---
+
+## Testing & CI
+
+### Test Suite
+
+| Suite | Tests | Scope |
+|:------|------:|:------|
+| `test_tokenizer.py` | 57 | 17 test classes covering normalization, byte-fallback, encoding/decoding, lattice construction, training validation, batch collation, multimodal, trie, BPE, fast-path parity, HuggingFace export, security shield, indentation compression, streaming decode, audio codecs, neural codecs, CEM, and SuperBPE |
+| `test_fuzz_properties.py` | 7 | Property-based fuzzing: roundtrip integrity, offset validity, Unicode resilience, determinism |
+| **Total** | **64** | |
+
+### CI Pipeline
+
+The GitHub Actions [workflow](.github/workflows/ci.yml) runs on every push and PR across a **12-cell matrix** (3 OS × 4 Python versions):
+
+| | Ubuntu | Windows | macOS |
+|:---|:---:|:---:|:---:|
+| Python 3.9 | ✓ | ✓ | ✓ |
+| Python 3.10 | ✓ | ✓ | ✓ |
+| Python 3.11 | ✓ | ✓ | ✓ |
+| Python 3.12 | ✓ | ✓ | ✓ |
+
+Each cell runs:
+1. **Ruff** lint + format check
+2. **Mypy** static type checking
+3. **Full test suite** (unit + property fuzzing)
+4. **Benchmark suite** smoke test
+5. **Package build** verification (`python -m build`)
+
+### Running locally
 
 ```bash
 pip install -e ".[test]"
 
-pytest                 # test_tokenizer.py (16 tests) + test_fuzz_properties.py
-ruff check .           # linting (line-length 120, target py39)
-mypy .                 # static type checking (mypy.ini)
-coverage run -m pytest && coverage report
+pytest                                          # all tests
+ruff check . && ruff format --check .           # lint + format
+mypy .                                          # type check
+coverage run -m pytest && coverage report       # coverage
+python benchmarks/benchmark_suite.py            # benchmarks
 ```
 
-`test_tokenizer.py` covers, among other invariants: NFKC composition with raw-span preservation, whitespace and metaspace-escaping correctness, byte-fallback decoding (including rejection of invalid UTF-8 sequences), exact dual-offset emission on subwords, save/load fidelity, online vocabulary-adapter ID preservation, lattice validation (sampling temperature, disconnected graphs, invalid lengths), trainer hyperparameter validation, and padding/ID alignment in the batch collator.
+---
 
-## Multimodal and Benchmarking
+## Benchmarks
 
-`pyproject.toml` registers `multimodal` and `benchmarks` as installable packages alongside the core tokenizer modules, and the project description (`"Zero-dependency, high-precision Byte-Fallback Unigram and Multimodal Tokenizer..."`) confirms multimodal tokenization as part of Caliper's scope. The `bench` extra (`pip install -e ".[bench]"`) installs `sentencepiece` and `tokenizers`, indicating those are the comparison baselines used by the benchmark suite.
+`TokenizerBenchmarkSuite` evaluates Caliper across **7 axes** on **6 multilingual corpora** (English prose, Python source, Hindi/Devanagari, Japanese/CJK, Arabic, arithmetic/math):
+
+| Axis | Metric |
+|:-----|:-------|
+| **Compression ratio** | Bytes per token across scripts |
+| **Morphological fertility** | Tokens per word |
+| **Encode throughput** | KB/sec and tokens/sec |
+| **Decode throughput** | KB/sec |
+| **Offset overhead** | `encode_with_offsets` / `encode` time ratio |
+| **Code compression** | Token savings from `IndentationCompressor` |
+| **Architecture comparison** | Unigram vs. BPE head-to-head |
+
+External baselines (with `[bench]` extra installed): **HuggingFace `tokenizers`** (Rust), **SentencePiece** (C++), and **tiktoken**.
+
+```bash
+pip install -e ".[bench]"
+python benchmarks/benchmark_suite.py
+```
+
+---
+
+## Multimodal
+
+The `multimodal/` package extends Caliper to handle text, image, and audio inputs through a unified `MultimodalTokenizer`:
+
+| Module | Purpose |
+|:-------|:--------|
+| `multimodal_tokenizer.py` | `MultimodalTokenizer` — unified text + image + audio tokenization with cross-modal token interleaving |
+| `visual_codebook.py` | `VisualCodebook` — vector-quantized codebook for mapping image patches to discrete tokens |
+| `image_patcher.py` | `ImagePatcher` — grid-based patch extraction from pixel arrays |
+| `audio_codec.py` | `ResidualVectorQuantizer` — multi-layer residual VQ for audio waveform discretization |
+| `neural_codecs.py` | `NeuralVisualCodec` / `NeuralAudioCodec` — PyTorch-based learned codecs (requires `[torch]` extra) |
+
+---
 
 ## Contributing
 
 1. Fork the repository and create a feature branch.
-2. Install the dev toolchain: `pip install -e ".[test]"`.
-3. Make your changes, keeping new code within the `ruff` (line-length 120) and `mypy` configuration already in the repo.
+2. Install the dev toolchain:
+   ```bash
+   pip install -e ".[test]"
+   ```
+3. Keep new code within the `ruff` (line-length 120, target `py39`) and `mypy` configuration.
 4. Add or update tests in `test_tokenizer.py` / `test_fuzz_properties.py` for any behavioral change.
-5. Run `pytest`, `ruff check .`, and `mypy .` before opening a pull request.
-
-## License
-
-Released under the [MIT License](https://github.com/umran666/caliper/blob/main/LICENSE).
+5. Verify before opening a PR:
+   ```bash
+   pytest && ruff check . && mypy .
+   ```
 
 ---
 
-Maintained by [@umran666](https://github.com/umran666).
+## License
+
+Released under the [MIT License](LICENSE).
+
+---
+
+<p align="center">
+  Maintained by <a href="https://github.com/umran666">@umran666</a>
+</p>
