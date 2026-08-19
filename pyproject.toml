@@ -69,6 +69,9 @@ all = [
 Homepage = "https://github.com/umran666/caliper"
 Repository = "https://github.com/umran666/caliper"
 
+[project.scripts]
+caliper = "cli:main"
+
 [tool.setuptools]
 py-modules = [
     "batch_collator",
@@ -76,6 +79,7 @@ py-modules = [
     "bpe_trainer",
     "byte_codec",
     "cem_merger",
+    "cli",
     "hf_exporter",
     "indentation_compressor",
     "pre_tokenizer",
