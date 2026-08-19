@@ -4,17 +4,26 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
 
 
-@dataclass
 class TrieNode:
     """
-    Node in the Prefix Trie for vocabulary matching.
+    Slots-optimized Node in the Prefix Trie for fast vocabulary matching.
     """
 
-    children: Dict[str, TrieNode] = field(default_factory=dict)
-    token: Optional[str] = None
-    log_p: Optional[float] = None
-    token_id: Optional[int] = None
-    is_terminal: bool = False
+    __slots__ = ("children", "token", "log_p", "token_id", "is_terminal")
+
+    def __init__(
+        self,
+        children: Optional[Dict[str, TrieNode]] = None,
+        token: Optional[str] = None,
+        log_p: Optional[float] = None,
+        token_id: Optional[int] = None,
+        is_terminal: bool = False,
+    ) -> None:
+        self.children = {} if children is None else children
+        self.token = token
+        self.log_p = log_p
+        self.token_id = token_id
+        self.is_terminal = is_terminal
 
 
 class PrefixTrie:
@@ -24,7 +33,7 @@ class PrefixTrie:
     Eliminates substring slicing and hash table lookups during lattice construction.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.root = TrieNode()
 
     def insert(self, token: str, log_p: float, token_id: Optional[int] = None) -> None:
@@ -40,11 +49,12 @@ class PrefixTrie:
         node.is_terminal = True
 
     @classmethod
-    def from_vocab(cls, vocab: Dict[str, float]) -> PrefixTrie:
+    def from_vocab(cls, vocab: Dict[str, float], token_to_id: Optional[Dict[str, int]] = None) -> PrefixTrie:
         """Constructs a PrefixTrie from a dictionary of token -> log_prob."""
         trie = cls()
         for idx, (token, log_p) in enumerate(vocab.items()):
-            trie.insert(token, log_p, token_id=idx)
+            t_id = token_to_id.get(token, idx) if token_to_id is not None else idx
+            trie.insert(token, log_p, token_id=t_id)
         return trie
 
     def find_matches(self, text: str, start_idx: int, max_length: int = 16) -> List[Tuple[int, str, float]]:

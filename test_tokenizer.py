@@ -1010,5 +1010,79 @@ class PhaseOneOptimizationTests(unittest.TestCase):
             self.assertEqual(decoded, text)
 
 
+class PhaseTwoOptimizationTests(unittest.TestCase):
+    def test_batch_encoding_and_offsets(self):
+        corpus = [
+            "the quick brown fox jumps over the lazy dog",
+            "fast parallel batch encoding verification",
+            "neural language model subword regularization",
+        ]
+        tok = CustomTokenizer.train_from_corpus(corpus, target_vocab_size=320, verbose=False)
+
+        # Batch encode vs sequential
+        seq_tokens = [tok.encode(t) for t in corpus]
+        batch_tokens = tok.encode_batch(corpus, num_workers=2)
+        self.assertEqual(seq_tokens, batch_tokens)
+
+        # Batch IDs vs sequential
+        seq_ids = [tok.encode_to_ids(t) for t in corpus]
+        batch_ids = tok.encode_to_ids_batch(corpus, num_workers=2)
+        self.assertEqual(seq_ids, batch_ids)
+
+        # Batch offsets vs sequential
+        seq_offsets = [[tok_obj.raw_span for tok_obj in tok.encode_with_offsets(t)] for t in corpus]
+        batch_offsets = [
+            [tok_obj.raw_span for tok_obj in batch] for batch in tok.encode_with_offsets_batch(corpus, num_workers=2)
+        ]
+        self.assertEqual(seq_offsets, batch_offsets)
+
+    def test_compact_trie_slots_and_id_mapping(self):
+        from trie import PrefixTrie, TrieNode
+
+        node = TrieNode()
+        self.assertTrue(hasattr(node, "__slots__"))
+        self.assertFalse(hasattr(node, "__dict__"))
+
+        vocab = {"hello": log(0.5), "world": log(0.5)}
+        token_to_id = {"hello": 101, "world": 102}
+        trie = PrefixTrie.from_vocab(vocab, token_to_id=token_to_id)
+        matches = trie.find_matches("helloworld", 0)
+        self.assertEqual(len(matches), 1)
+        self.assertEqual(matches[0][1], "hello")
+
+    def test_benchmark_vocab_scaling_and_exporters(self):
+        from benchmarks.benchmark_suite import TokenizerBenchmarkSuite
+
+        suite = TokenizerBenchmarkSuite()
+        scaling_results = suite.evaluate_vocab_scaling(vocab_sizes=[550])
+        self.assertEqual(len(scaling_results), 1)
+        self.assertIn("tokens", scaling_results[0])
+
+        with TemporaryDirectory() as tmp_dir:
+            md_path = Path(tmp_dir) / "report.md"
+            latex_path = Path(tmp_dir) / "report.tex"
+            suite.export_markdown_report(str(md_path))
+            suite.export_latex_report(str(latex_path))
+            self.assertTrue(md_path.exists())
+            self.assertTrue(latex_path.exists())
+            self.assertGreater(md_path.stat().st_size, 0)
+            self.assertGreater(latex_path.stat().st_size, 0)
+
+    def test_downstream_evaluator_smoke(self):
+        from benchmarks.downstream_eval import DownstreamEvaluator
+
+        corpus = [
+            "the quick brown fox jumps over the lazy dog",
+            "neural language model downstream transformer evaluation",
+        ]
+        evaluator = DownstreamEvaluator(vocab_size=300, max_merges=5, corpus=corpus)
+        results = evaluator.run_downstream_suite(include_external_baselines=False)
+        self.assertGreaterEqual(len(results), 2)
+        for r in results:
+            self.assertGreater(r.total_tokens, 0)
+            self.assertGreater(r.bytes_per_token, 0.0)
+            self.assertGreater(r.effective_bytes_in_2k_context, 0)
+
+
 if __name__ == "__main__":
     unittest.main()

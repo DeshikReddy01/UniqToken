@@ -9,7 +9,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any, Dict, List, Optional
 
-sys.path.append(str(Path(__file__).parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from bpe_trainer import BPETrainer
 from cem_merger import CrossEntropyMerging
@@ -561,6 +561,111 @@ class TokenizerBenchmarkSuite:
                 )
         print("=" * 85)
 
+    def evaluate_vocab_scaling(self, vocab_sizes: Optional[List[int]] = None) -> List[Dict[str, Any]]:
+        """Evaluates compression and throughput scaling across different vocabulary budgets."""
+        if vocab_sizes is None:
+            vocab_sizes = [400, 800, 1600, 3200]
+
+        combined_text = "\n".join(self.BENCHMARK_CORPORA.values())
+        corpus = list(self.BENCHMARK_CORPORA.values())
+        results: List[Dict[str, Any]] = []
+
+        for vs in vocab_sizes:
+            try:
+                tok = CustomTokenizer.train_from_corpus(
+                    corpus=corpus,
+                    target_vocab_size=vs,
+                    min_frequency=1,
+                    verbose=False,
+                )
+                t0 = time.perf_counter()
+                tokens = tok.encode(combined_text)
+                t_enc = max(time.perf_counter() - t0, 1e-6)
+                num_bytes = len(combined_text.encode("utf-8"))
+                num_words = max(len(combined_text.split()), 1)
+                num_tok = len(tokens)
+
+                fb_tokens = sum(1 for t in tokens if t.startswith("<0x") and t.endswith(">") and len(t) == 6)
+                results.append(
+                    {
+                        "target_vocab": vs,
+                        "actual_vocab": tok.vocab_size,
+                        "tokens": num_tok,
+                        "bytes_per_tok": round(num_bytes / max(num_tok, 1), 3),
+                        "tokens_per_word": round(num_tok / num_words, 3),
+                        "tok_per_sec": round(num_tok / t_enc, 1),
+                        "fallback_rate_pct": round((fb_tokens / max(num_tok, 1)) * 100.0, 2),
+                    }
+                )
+            except Exception as e:
+                results.append({"target_vocab": vs, "error": str(e)})
+
+        return results
+
+    def export_markdown_report(self, output_path: str) -> None:
+        """Exports full benchmark results to a formatted GitHub Markdown document."""
+        results = self.run_all_benchmarks()
+        lines = [
+            "# Caliper Tokenizer Benchmark Report",
+            "",
+            "## Multilingual Throughput & Compression",
+            "",
+            "| Dataset | Bytes | Tokens | Bytes/Tok | Fertility (Tok/Word) | Enc KB/s | Tok/sec | RAM (MB) | Fallback % | Offset Overhead |",
+            "| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |",
+        ]
+        for r in results:
+            lines.append(
+                f"| {r.dataset_name} | {r.num_bytes} | {r.num_tokens} | {r.bytes_per_token} | {r.tokens_per_word} | {r.encode_speed_kbs} | {r.encode_speed_tokens_sec} | {r.peak_ram_mb} | {r.fallback_rate_pct}% | {r.offset_overhead_ratio}x |"
+            )
+
+        baselines = self.evaluate_external_baselines()
+        lines.extend(
+            [
+                "",
+                "## Comparative Baselines",
+                "",
+                "| Engine | Tokens | Throughput (tok/sec) | Time (s) |",
+                "| :--- | :--- | :--- | :--- |",
+            ]
+        )
+        for engine, stats in baselines.items():
+            if "error" not in stats:
+                lines.append(f"| {engine} | {stats['tokens']} | {stats['tokens_sec']} | {stats['time_sec']} |")
+
+        Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+        with open(output_path, "w", encoding="utf-8") as f:
+            f.write("\n".join(lines) + "\n")
+
+    def export_latex_report(self, output_path: str) -> None:
+        """Exports full benchmark results to a publication-ready LaTeX table."""
+        results = self.run_all_benchmarks()
+        lines = [
+            r"\begin{table*}[t]",
+            r"\centering",
+            r"\small",
+            r"\begin{tabular}{lrrrrrrrr}",
+            r"\toprule",
+            r"\textbf{Dataset} & \textbf{Bytes} & \textbf{Tokens} & \textbf{Bytes/Tok} & \textbf{Fertility} & \textbf{Enc KB/s} & \textbf{Tok/s} & \textbf{RAM (MB)} & \textbf{Fallback \%} \\",
+            r"\midrule",
+        ]
+        for r in results:
+            clean_name = r.dataset_name.replace("_", r"\_")
+            lines.append(
+                f"{clean_name} & {r.num_bytes} & {r.num_tokens} & {r.bytes_per_token:.2f} & {r.tokens_per_word:.2f} & {r.encode_speed_kbs:.1f} & {r.encode_speed_tokens_sec:.1f} & {r.peak_ram_mb:.2f} & {r.fallback_rate_pct:.1f}\\% \\\\"
+            )
+        lines.extend(
+            [
+                r"\bottomrule",
+                r"\end{tabular}",
+                r"\caption{Caliper Empirical Benchmark Suite Evaluation Across Multilingual Corpora.}",
+                r"\label{tab:caliper_benchmarks}",
+                r"\end{table*}",
+            ]
+        )
+        Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+        with open(output_path, "w", encoding="utf-8") as f:
+            f.write("\n".join(lines) + "\n")
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run Caliper tokenizer benchmarks.")
@@ -569,6 +674,25 @@ if __name__ == "__main__":
         action="store_true",
         help="also run the 1 MiB and 10 MiB local throughput workloads",
     )
+    parser.add_argument(
+        "--export-markdown",
+        type=str,
+        default=None,
+        help="path to write markdown benchmark report",
+    )
+    parser.add_argument(
+        "--export-latex",
+        type=str,
+        default=None,
+        help="path to write LaTeX benchmark table",
+    )
     args = parser.parse_args()
     suite = TokenizerBenchmarkSuite()
     suite.print_summary_report(include_large_payloads=args.large_payloads)
+
+    if args.export_markdown:
+        suite.export_markdown_report(args.export_markdown)
+        print(f"\n[Exporter] Saved Markdown benchmark report to {args.export_markdown}")
+    if args.export_latex:
+        suite.export_latex_report(args.export_latex)
+        print(f"\n[Exporter] Saved LaTeX benchmark table to {args.export_latex}")

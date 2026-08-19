@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import os
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional, Sequence, Set, Tuple, Union
@@ -58,6 +60,10 @@ class CustomTokenizer:
         self.model = model
         self.security = SecurityShield(special_tokens=self.model.special_tokens)
         self._cross_word_set: Optional[frozenset[str]] = None
+
+    @property
+    def vocab_size(self) -> int:
+        return self.model.vocab_size
 
     @staticmethod
     def _span(entry: Union[int, Tuple[int, int]]) -> Tuple[int, int]:
@@ -303,6 +309,105 @@ class CustomTokenizer:
         )
         unk_id = self.model.token_to_id.get("<|unk|>", 0)
         return [self.model.token_to_id.get(t, unk_id) for t in tokens]
+
+    def encode_batch(
+        self,
+        texts: Sequence[str],
+        allowed_special: Union[str, Set[str], List[str]] = "none",
+        disallowed_special_action: str = "escape",
+        num_workers: Optional[int] = None,
+    ) -> List[List[str]]:
+        """Encodes a sequence of texts, parallelizing across workers when batch is large."""
+        if not texts:
+            return []
+        if len(texts) <= 64 or num_workers == 1:
+            return [
+                self.encode(
+                    t,
+                    allowed_special=allowed_special,
+                    disallowed_special_action=disallowed_special_action,
+                )
+                for t in texts
+            ]
+
+        workers = num_workers or min(os.cpu_count() or 1, 8)
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            return list(
+                executor.map(
+                    lambda t: self.encode(
+                        t,
+                        allowed_special=allowed_special,
+                        disallowed_special_action=disallowed_special_action,
+                    ),
+                    texts,
+                )
+            )
+
+    def encode_to_ids_batch(
+        self,
+        texts: Sequence[str],
+        allowed_special: Union[str, Set[str], List[str]] = "none",
+        disallowed_special_action: str = "escape",
+        num_workers: Optional[int] = None,
+    ) -> List[List[int]]:
+        """Encodes a sequence of texts to token IDs, parallelizing across workers when batch is large."""
+        if not texts:
+            return []
+        if len(texts) <= 64 or num_workers == 1:
+            return [
+                self.encode_to_ids(
+                    t,
+                    allowed_special=allowed_special,
+                    disallowed_special_action=disallowed_special_action,
+                )
+                for t in texts
+            ]
+
+        workers = num_workers or min(os.cpu_count() or 1, 8)
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            return list(
+                executor.map(
+                    lambda t: self.encode_to_ids(
+                        t,
+                        allowed_special=allowed_special,
+                        disallowed_special_action=disallowed_special_action,
+                    ),
+                    texts,
+                )
+            )
+
+    def encode_with_offsets_batch(
+        self,
+        texts: Sequence[str],
+        allowed_special: Union[str, Set[str], List[str]] = "none",
+        disallowed_special_action: str = "escape",
+        num_workers: Optional[int] = None,
+    ) -> List[List[Token]]:
+        """Encodes a sequence of texts with exact spans, parallelizing across workers when batch is large."""
+        if not texts:
+            return []
+        if len(texts) <= 64 or num_workers == 1:
+            return [
+                self.encode_with_offsets(
+                    t,
+                    allowed_special=allowed_special,
+                    disallowed_special_action=disallowed_special_action,
+                )
+                for t in texts
+            ]
+
+        workers = num_workers or min(os.cpu_count() or 1, 8)
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            return list(
+                executor.map(
+                    lambda t: self.encode_with_offsets(
+                        t,
+                        allowed_special=allowed_special,
+                        disallowed_special_action=disallowed_special_action,
+                    ),
+                    texts,
+                )
+            )
 
     def sample_to_ids(
         self,

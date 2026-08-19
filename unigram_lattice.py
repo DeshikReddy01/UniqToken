@@ -130,9 +130,7 @@ class UnigramLattice:
                     self.end_nodes[j] = list(self.end_nodes[j][:k])
                     # Synchronize begin_nodes to remove pruned edges
                     for i in range(j):
-                        self.begin_nodes[i] = [
-                            e for e in self.begin_nodes[i] if e.end != j or id(e) in retained_ids
-                        ]
+                        self.begin_nodes[i] = [e for e in self.begin_nodes[i] if e.end != j or id(e) in retained_ids]
 
     def viterbi_edges(self) -> Tuple[List[LatticeEdge], float]:
         """Return the edges in the single most probable segmentation."""
