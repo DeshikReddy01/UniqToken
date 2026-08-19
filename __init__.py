@@ -29,7 +29,7 @@ from pre_tokenizer import Normalizer, PreToken, RegexPreTokenizer
 from security_shield import SecurityShield
 from seed_builder import SeedToken, SeedVocabularyBuilder
 from streaming_decoder import StreamingDecoder
-from tokenizer import CustomTokenizer, Token
+from tokenizer import CustomTokenizer, Token, TokenizationReport
 from trie import PrefixTrie, TrieNode
 from unigram_lattice import LatticeEdge, UnigramLattice
 from unigram_trainer import UnigramModel, UnigramTrainer
@@ -40,6 +40,7 @@ __all__ = [
     # Core Engine
     "CustomTokenizer",
     "Token",
+    "TokenizationReport",
     "Normalizer",
     "RegexPreTokenizer",
     "PreToken",

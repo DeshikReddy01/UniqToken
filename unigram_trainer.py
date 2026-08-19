@@ -180,6 +180,11 @@ class UnigramTrainer:
         prune_rate: float = 0.20,
         em_sub_iterations: int = 2,
         special_tokens: List[str] | None = None,
+        ranking_strategy: str = "char_savings",
+        adaptive_multiplier: bool = False,
+        max_edges_per_node: Optional[int] = None,
+        min_edge_log_prob: Optional[float] = None,
+        convergence_tolerance: float = 1e-4,
     ):
         if target_vocab_size <= 0:
             raise ValueError("target_vocab_size must be greater than zero")
@@ -201,10 +206,15 @@ class UnigramTrainer:
         self.prune_rate = prune_rate
         self.em_sub_iterations = em_sub_iterations
         self.special_tokens = special_tokens
+        self.ranking_strategy = ranking_strategy
+        self.adaptive_multiplier = adaptive_multiplier
+        self.max_edges_per_node = max_edges_per_node
+        self.min_edge_log_prob = min_edge_log_prob
+        self.convergence_tolerance = convergence_tolerance
 
     def train(self, pre_tokenized_chunks: Iterable[str], verbose: bool = True) -> UnigramModel:
         """
-        Runs the full EM training and pruning loop.
+        Runs the full EM training and pruning loop with convergence checks and beam pruning.
         """
         # Step 1: Pre-aggregate chunk frequencies
         chunk_counts = Counter(pre_tokenized_chunks)
@@ -217,6 +227,8 @@ class UnigramTrainer:
             min_frequency=self.min_frequency,
             byte_fallback=self.byte_fallback,
             special_tokens=self.special_tokens,
+            ranking_strategy=self.ranking_strategy,
+            adaptive_multiplier=self.adaptive_multiplier,
         )
 
         seed_tokens: List[SeedToken] = seed_builder.build_seed_vocab(chunk_counts)
@@ -238,7 +250,8 @@ class UnigramTrainer:
         # Step 4: Iterative EM Optimization & Pruning Loop
         while len(current_vocab_log_probs) > self.target_vocab_size:
             # --- E-STEP & M-STEP SUB-ITERATIONS ---
-            for _ in range(self.em_sub_iterations):
+            prev_log_lik = -float("inf")
+            for sub_iter in range(self.em_sub_iterations):
                 expected_counts: Dict[str, float] = {}
                 total_corpus_log_lik = 0.0
                 trie = PrefixTrie.from_vocab(current_vocab_log_probs)
@@ -255,6 +268,8 @@ class UnigramTrainer:
                         max_subword_len=self.max_ngram_length,
                         byte_fallback=self.byte_fallback,
                         trie=trie,
+                        max_edges_per_node=self.max_edges_per_node,
+                        min_edge_log_prob=self.min_edge_log_prob,
                     )
 
                     chunk_exp, chunk_log_lik = lattice.forward_backward()
@@ -262,6 +277,10 @@ class UnigramTrainer:
 
                     for tok, exp_val in chunk_exp.items():
                         expected_counts[tok] = expected_counts.get(tok, 0.0) + (exp_val * count)
+
+                # Check convergence
+                delta_log_lik = abs(total_corpus_log_lik - prev_log_lik)
+                prev_log_lik = total_corpus_log_lik
 
                 # M-Step: Update token log probabilities
                 total_expected = sum(expected_counts.values())
@@ -271,6 +290,9 @@ class UnigramTrainer:
                     tok: math.log(max(expected_counts.get(tok, 1e-12) / total_expected, 1e-12))
                     for tok in current_vocab_log_probs
                 }
+
+                if sub_iter > 0 and delta_log_lik < self.convergence_tolerance:
+                    break
 
             # --- PRUNING STEP ---
             current_size = len(current_vocab_log_probs)

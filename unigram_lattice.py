@@ -46,15 +46,21 @@ class UnigramLattice:
         max_subword_len: int = 16,
         byte_fallback: bool = True,
         trie: Optional[object] = None,
+        max_edges_per_node: Optional[int] = None,
+        min_edge_log_prob: Optional[float] = None,
     ):
         if max_subword_len < 1:
             raise ValueError("max_subword_len must be at least one")
+        if max_edges_per_node is not None and max_edges_per_node < 1:
+            raise ValueError("max_edges_per_node must be at least one")
         self.text = text
         self.length = len(text)
         self.vocab = vocab_log_probs
         self.max_subword_len = max_subword_len
         self.byte_fallback = byte_fallback
         self.trie = trie
+        self.max_edges_per_node = max_edges_per_node
+        self.min_edge_log_prob = min_edge_log_prob
 
         self.begin_nodes: List[List[LatticeEdge]] = [[] for _ in range(self.length + 1)]
         self.end_nodes: List[List[LatticeEdge]] = [[] for _ in range(self.length + 1)]
@@ -68,6 +74,8 @@ class UnigramLattice:
             if self.trie is not None and hasattr(self.trie, "find_matches"):
                 matches = self.trie.find_matches(self.text, i, self.max_subword_len)
                 for end_j, subword, log_p in matches:
+                    if self.min_edge_log_prob is not None and log_p < self.min_edge_log_prob:
+                        continue
                     edge = LatticeEdge(
                         start=i,
                         end=end_j,
@@ -84,6 +92,8 @@ class UnigramLattice:
                     subword = self.text[i:j]
                     if subword in self.vocab:
                         log_p = self.vocab[subword]
+                        if self.min_edge_log_prob is not None and log_p < self.min_edge_log_prob:
+                            continue
                         edge = LatticeEdge(
                             start=i,
                             end=j,
@@ -108,6 +118,21 @@ class UnigramLattice:
                 )
                 self.begin_nodes[i].append(edge)
                 self.end_nodes[i + 1].append(edge)
+
+        # Beam Pruning: Cap incoming edges per node if max_edges_per_node is specified
+        if self.max_edges_per_node is not None:
+            k = self.max_edges_per_node
+            for j in range(1, self.length + 1):
+                if len(self.end_nodes[j]) > k:
+                    # Retain top-k incoming edges with lowest cost (highest log_prob)
+                    self.end_nodes[j].sort(key=lambda e: e.cost)
+                    retained_ids = {id(e) for e in self.end_nodes[j][:k]}
+                    self.end_nodes[j] = list(self.end_nodes[j][:k])
+                    # Synchronize begin_nodes to remove pruned edges
+                    for i in range(j):
+                        self.begin_nodes[i] = [
+                            e for e in self.begin_nodes[i] if e.end != j or id(e) in retained_ids
+                        ]
 
     def viterbi_edges(self) -> Tuple[List[LatticeEdge], float]:
         """Return the edges in the single most probable segmentation."""

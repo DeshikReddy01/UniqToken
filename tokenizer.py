@@ -24,6 +24,24 @@ class Token:
     raw_span: Tuple[int, int]
 
 
+@dataclass(frozen=True)
+class TokenizationReport:
+    """
+    Detailed runtime diagnostic metrics emitted during tokenization.
+    """
+
+    tokens: List[str]
+    token_ids: List[int]
+    token_spans: List[Tuple[int, int]]
+    num_tokens: int
+    num_bytes: int
+    num_chars: int
+    byte_fallback_tokens: int
+    byte_fallback_rate: float
+    compression_ratio_bytes_per_token: float
+    avg_token_length: float
+
+
 class CustomTokenizer:
     """
     Production-Grade Byte-Fallback Unigram Custom Tokenizer.
@@ -172,6 +190,11 @@ class CustomTokenizer:
         split_digits: bool = False,
         special_tokens: Optional[List[str]] = None,
         compress_indents: bool = False,
+        ranking_strategy: str = "char_savings",
+        adaptive_multiplier: bool = False,
+        max_edges_per_node: Optional[int] = None,
+        min_edge_log_prob: Optional[float] = None,
+        convergence_tolerance: float = 1e-4,
         verbose: bool = True,
     ) -> CustomTokenizer:
         normalizer = Normalizer()
@@ -199,6 +222,11 @@ class CustomTokenizer:
             min_frequency=min_frequency,
             byte_fallback=byte_fallback,
             special_tokens=combined_special if combined_special else None,
+            ranking_strategy=ranking_strategy,
+            adaptive_multiplier=adaptive_multiplier,
+            max_edges_per_node=max_edges_per_node,
+            min_edge_log_prob=min_edge_log_prob,
+            convergence_tolerance=convergence_tolerance,
         )
 
         model = trainer.train(chunks, verbose=verbose)
@@ -333,6 +361,46 @@ class CustomTokenizer:
                     result.append(Token(text=st, id=t_id, raw_span=raw_span))
 
         return self._apply_cross_word_merges_with_spans(result)
+
+    def encode_with_metrics(
+        self,
+        text: str,
+        allowed_special: Union[str, Set[str], List[str]] = "none",
+        disallowed_special_action: str = "escape",
+    ) -> TokenizationReport:
+        """
+        Encodes text and computes runtime diagnostic metrics (byte-fallback rate, compression ratio).
+        """
+        tokens_with_offsets = self.encode_with_offsets(
+            text,
+            allowed_special=allowed_special,
+            disallowed_special_action=disallowed_special_action,
+        )
+        tokens = [t.text for t in tokens_with_offsets]
+        token_ids = [t.id for t in tokens_with_offsets]
+        token_spans = [t.raw_span for t in tokens_with_offsets]
+        raw_bytes = text.encode("utf-8")
+        num_tokens = len(tokens)
+        num_bytes = len(raw_bytes)
+        num_chars = len(text)
+
+        byte_fallback_tokens = sum(1 for t in tokens if t.startswith("<0x") and t.endswith(">") and len(t) == 6)
+        byte_fallback_rate = (byte_fallback_tokens / num_tokens) if num_tokens > 0 else 0.0
+        compression_ratio = (num_bytes / num_tokens) if num_tokens > 0 else 0.0
+        avg_token_len = (sum(len(t) for t in tokens) / num_tokens) if num_tokens > 0 else 0.0
+
+        return TokenizationReport(
+            tokens=tokens,
+            token_ids=token_ids,
+            token_spans=token_spans,
+            num_tokens=num_tokens,
+            num_bytes=num_bytes,
+            num_chars=num_chars,
+            byte_fallback_tokens=byte_fallback_tokens,
+            byte_fallback_rate=byte_fallback_rate,
+            compression_ratio_bytes_per_token=compression_ratio,
+            avg_token_length=avg_token_len,
+        )
 
     @property
     def _indent_compression_enabled(self) -> bool:

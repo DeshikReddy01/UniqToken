@@ -8,7 +8,7 @@ from tempfile import TemporaryDirectory
 from byte_codec import ByteFallbackEngine
 from batch_collator import BatchCollator
 from pre_tokenizer import Normalizer, RegexPreTokenizer
-from tokenizer import CustomTokenizer
+from tokenizer import CustomTokenizer, TokenizationReport
 from unigram_trainer import UnigramModel, UnigramTrainer
 from unigram_lattice import UnigramLattice
 from vocab_adapter import VocabularyAdapter
@@ -19,6 +19,7 @@ from bpe_trainer import BPETrainer
 from hf_exporter import HuggingFaceExporter
 from indentation_compressor import IndentationCompressor
 from security_shield import SecurityShield
+from seed_builder import SeedVocabularyBuilder
 from streaming_decoder import StreamingDecoder
 from cem_merger import CrossEntropyMerging
 
@@ -904,6 +905,109 @@ class SuperBPETests(unittest.TestCase):
         for tok, lp in adapted.model.vocab.items():
             self.assertFalse(math.isnan(lp))
             self.assertFalse(math.isinf(lp))
+
+
+class PhaseOneOptimizationTests(unittest.TestCase):
+    def test_seed_builder_pmi_ranking_and_adaptive_sizing(self):
+        builder = SeedVocabularyBuilder(
+            target_vocab_size=300,
+            seed_multiplier=2.0,
+            ranking_strategy="pmi",
+            adaptive_multiplier=True,
+            min_frequency=1,
+        )
+        chunks = ["neural", "network", "language", "model", "neural", "model", "transformer"]
+        seed_vocab = builder.build_seed_vocab(chunks)
+        self.assertGreater(len(seed_vocab), 0)
+        tokens = [t.token for t in seed_vocab]
+        self.assertIn("model", tokens)
+
+        # Invalid ranking strategy check
+        with self.assertRaises(ValueError):
+            SeedVocabularyBuilder(ranking_strategy="invalid_strategy")
+
+    def test_lattice_beam_pruning_and_min_edge_threshold(self):
+        vocab = {
+            "a": log(0.3),
+            "b": log(0.3),
+            "ab": log(0.2),
+            "c": log(0.1),
+            "abc": log(0.05),
+            "rare": log(1e-6),
+        }
+        # Beam pruning: max 1 incoming edge per node
+        lattice = UnigramLattice(
+            "abc",
+            vocab,
+            max_subword_len=3,
+            byte_fallback=True,
+            max_edges_per_node=1,
+            min_edge_log_prob=log(0.01),
+        )
+        for j in range(1, len("abc") + 1):
+            self.assertLessEqual(len(lattice.end_nodes[j]), 1)
+
+        # Invalid max_edges_per_node check
+        with self.assertRaises(ValueError):
+            UnigramLattice("abc", vocab, max_edges_per_node=0)
+
+    def test_unigram_trainer_convergence_early_stopping(self):
+        corpus = [
+            "the quick brown fox jumps over the lazy dog",
+            "the quick brown fox jumps",
+            "brown fox jumps over",
+        ]
+        tok = CustomTokenizer.train_from_corpus(
+            corpus,
+            target_vocab_size=320,
+            ranking_strategy="pmi",
+            adaptive_multiplier=True,
+            max_edges_per_node=5,
+            convergence_tolerance=1e-3,
+            verbose=False,
+        )
+        self.assertIsInstance(tok, CustomTokenizer)
+        encoded = tok.encode("the quick brown fox")
+        self.assertTrue(len(encoded) > 0)
+        decoded = tok.decode(tok.encode_to_ids("the quick brown fox"))
+        self.assertEqual(decoded, "the quick brown fox")
+
+    def test_encode_with_metrics_diagnostic_report(self):
+        corpus = ["standard test sentence with normal alphabet"]
+        tok = CustomTokenizer.train_from_corpus(corpus, target_vocab_size=320, verbose=False)
+        report = tok.encode_with_metrics("standard test sentence 🚀")
+        self.assertIsInstance(report, TokenizationReport)
+        self.assertGreater(report.num_tokens, 0)
+        self.assertGreater(report.num_bytes, 0)
+        self.assertGreater(report.num_chars, 0)
+        # Byte fallback should catch emoji 🚀 if not in alphabet
+        self.assertGreaterEqual(report.byte_fallback_tokens, 0)
+        self.assertGreaterEqual(report.byte_fallback_rate, 0.0)
+        self.assertLessEqual(report.byte_fallback_rate, 1.0)
+        self.assertGreater(report.compression_ratio_bytes_per_token, 0.0)
+
+    def test_complex_indic_and_arabic_unicode_offsets(self):
+        corpus = [
+            "प्राकृतिक भाषा प्रसंस्करण नमस्ते दुनिया",
+            "تعتبر معالجة اللغات الطبيعية الحديثة",
+        ]
+        tok = CustomTokenizer.train_from_corpus(corpus, target_vocab_size=350, verbose=False)
+
+        for text in corpus:
+            tokens = tok.encode_with_offsets(text)
+            self.assertTrue(len(tokens) > 0)
+            self.assertEqual(tokens[0].raw_span[0], 0)
+            self.assertEqual(tokens[-1].raw_span[1], len(text))
+            for t in tokens:
+                self.assertGreaterEqual(t.raw_span[0], 0)
+                self.assertLessEqual(t.raw_span[1], len(text))
+                self.assertLessEqual(t.raw_span[0], t.raw_span[1])
+            # Monotonic start span progression
+            for i in range(len(tokens) - 1):
+                self.assertLessEqual(tokens[i].raw_span[0], tokens[i + 1].raw_span[0])
+            # Lossless roundtrip
+            decoded = tok.decode([t.id for t in tokens])
+            self.assertEqual(decoded, text)
 
 
 if __name__ == "__main__":

@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import sys
 import time
+import tracemalloc
 from dataclasses import dataclass
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -30,6 +31,8 @@ class BenchmarkMetrics:
     encode_speed_tokens_sec: float
     decode_speed_kbs: float
     offset_overhead_ratio: float  # (time_with_offsets / time_without_offsets)
+    peak_ram_mb: float = 0.0
+    fallback_rate_pct: float = 0.0
 
 
 class TokenizerBenchmarkSuite:
@@ -122,12 +125,16 @@ class TokenizerBenchmarkSuite:
         for _ in range(warmup):
             _ = self.tokenizer.encode_to_ids(text)
 
-        # 1. Encode Speed
+        # 1. Encode Speed & RAM Profiling
+        tracemalloc.start()
         t0 = time.perf_counter()
         token_ids: List[int] = []
         for _ in range(iterations):
             token_ids = self.tokenizer.encode_to_ids(text)
         t_encode = (time.perf_counter() - t0) / iterations
+        current_mem, peak_mem = tracemalloc.get_traced_memory()
+        tracemalloc.stop()
+        peak_ram_mb = peak_mem / (1024.0 * 1024.0)
 
         num_tokens = len(token_ids)
         encode_kbs = (num_bytes / 1024.0) / max(t_encode, 1e-6)
@@ -140,12 +147,18 @@ class TokenizerBenchmarkSuite:
         t_decode = (time.perf_counter() - t0) / iterations
         decode_kbs = (num_bytes / 1024.0) / max(t_decode, 1e-6)
 
-        # 3. Offset Mapping Overhead
+        # 3. Offset Mapping Overhead & Fallback Rate
         t0 = time.perf_counter()
+        tokens_with_offsets = []
         for _ in range(iterations):
-            _ = self.tokenizer.encode_with_offsets(text)
+            tokens_with_offsets = self.tokenizer.encode_with_offsets(text)
         t_offsets = (time.perf_counter() - t0) / iterations
         offset_overhead = t_offsets / max(t_encode, 1e-6)
+
+        fallback_tokens = sum(
+            1 for t in tokens_with_offsets if t.text.startswith("<0x") and t.text.endswith(">") and len(t.text) == 6
+        )
+        fallback_rate_pct = (fallback_tokens / max(num_tokens, 1)) * 100.0
 
         bytes_per_token = num_bytes / max(num_tokens, 1)
         tokens_per_word = num_tokens / max(num_words, 1)
@@ -162,6 +175,8 @@ class TokenizerBenchmarkSuite:
             encode_speed_tokens_sec=round(encode_tokens_sec, 1),
             decode_speed_kbs=round(decode_kbs, 2),
             offset_overhead_ratio=round(offset_overhead, 2),
+            peak_ram_mb=round(peak_ram_mb, 3),
+            fallback_rate_pct=round(fallback_rate_pct, 2),
         )
 
     def run_all_benchmarks(self) -> List[BenchmarkMetrics]:
@@ -441,13 +456,13 @@ class TokenizerBenchmarkSuite:
         return results
 
     def print_summary_report(self, include_large_payloads: bool = False) -> None:
-        print("=" * 85)
+        print("=" * 115)
         print("CALIPER TOKENIZER EMPIRICAL BENCHMARK REPORT")
-        print("=" * 85)
+        print("=" * 115)
 
         results = self.run_all_benchmarks()
 
-        header = f"{'Dataset':<18} | {'Bytes':<7} | {'Tokens':<7} | {'Bytes/Tok':<10} | {'Fertility':<10} | {'Enc KB/s':<10} | {'Tok/sec':<10} | {'Offset Overhead':<15}"
+        header = f"{'Dataset':<18} | {'Bytes':<7} | {'Tokens':<7} | {'Bytes/Tok':<10} | {'Fertility':<10} | {'Enc KB/s':<10} | {'Tok/sec':<10} | {'RAM (MB)':<9} | {'Fallback %':<11} | {'Offset Overhead':<15}"
         print(header)
         print("-" * len(header))
 
@@ -456,6 +471,7 @@ class TokenizerBenchmarkSuite:
                 f"{r.dataset_name:<18} | {r.num_bytes:<7} | {r.num_tokens:<7} | "
                 f"{r.bytes_per_token:<10} | {r.tokens_per_word:<10} | "
                 f"{r.encode_speed_kbs:<10} | {r.encode_speed_tokens_sec:<10} | "
+                f"{r.peak_ram_mb:<9} | {r.fallback_rate_pct:<11} | "
                 f"{r.offset_overhead_ratio:<15}x"
             )
 

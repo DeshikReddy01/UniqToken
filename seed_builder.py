@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import math
 from collections import Counter
 from dataclasses import dataclass
-from typing import Dict, Iterable, List, Set
+from typing import Dict, Iterable, List, Optional, Set
 
 
 @dataclass(frozen=True)
@@ -23,7 +24,8 @@ class SeedToken:
 
 class SeedVocabularyBuilder:
     """
-    Deterministic Seed Vocabulary Builder with Irreducible Floor Validation.
+    Deterministic Seed Vocabulary Builder with Irreducible Floor Validation,
+    Pointwise Mutual Information (PMI) filtering, and Adaptive Pool Sizing.
     """
 
     DEFAULT_SPECIAL_TOKENS = [
@@ -46,6 +48,7 @@ class SeedVocabularyBuilder:
         byte_fallback: bool = True,
         special_tokens: List[str] | None = None,
         ranking_strategy: str = "char_savings",
+        adaptive_multiplier: bool = False,
     ):
         if target_vocab_size <= 0:
             raise ValueError("target_vocab_size must be greater than zero")
@@ -55,10 +58,11 @@ class SeedVocabularyBuilder:
             raise ValueError("max_ngram_length must be at least one")
         if min_frequency < 1:
             raise ValueError("min_frequency must be at least one")
-        if ranking_strategy not in {"char_savings", "frequency"}:
-            raise ValueError("ranking_strategy must be 'char_savings' or 'frequency'")
+        if ranking_strategy not in {"char_savings", "frequency", "pmi"}:
+            raise ValueError("ranking_strategy must be 'char_savings', 'frequency', or 'pmi'")
         self.target_vocab_size = target_vocab_size
         self.seed_multiplier = seed_multiplier
+        self.adaptive_multiplier = adaptive_multiplier
         self.seed_vocab_size = int(target_vocab_size * seed_multiplier)
         self.max_ngram_length = max_ngram_length
         self.min_frequency = min_frequency
@@ -146,15 +150,41 @@ class SeedVocabularyBuilder:
                 filtered[token] = count
         return filtered
 
-    def rank_candidates(self, candidate_counts: Dict[str, int]) -> List[str]:
+    def rank_candidates(
+        self,
+        candidate_counts: Dict[str, int],
+        unigram_counts: Optional[Dict[str, int]] = None,
+        total_unigrams: Optional[int] = None,
+    ) -> List[str]:
         """
         Deterministic Candidate Ranking:
-        - Primary key: Score (character savings or frequency) descending.
-        - Secondary key: Frequency descending.
-        - Tertiary key: Length descending.
-        - Quaternary tie-breaker: Lexicographical string ascending.
+        - "char_savings": (len(t) - 1) * freq
+        - "frequency": raw freq
+        - "pmi": Pointwise Mutual Information cohesion scaled by savings
         """
-        if self.ranking_strategy == "char_savings":
+        if self.ranking_strategy == "pmi" and unigram_counts and total_unigrams and total_unigrams > 0:
+            tot = float(total_unigrams)
+            log_tot = math.log(tot)
+            char_log_p = {c: math.log(max(cnt, 1)) - log_tot for c, cnt in unigram_counts.items()}
+
+            def pmi_score(t: str) -> float:
+                freq = candidate_counts[t]
+                log_p_t = math.log(max(freq, 1)) - log_tot
+                sum_char_log_p = sum(char_log_p.get(c, -10.0) for c in t)
+                pmi = log_p_t - sum_char_log_p
+                # Scale cohesion by character length savings
+                return (len(t) - 1) * freq * max(0.1, pmi)
+
+            return sorted(
+                candidate_counts.keys(),
+                key=lambda t: (
+                    -pmi_score(t),
+                    -candidate_counts[t],
+                    -len(t),
+                    t,
+                ),
+            )
+        elif self.ranking_strategy == "char_savings":
             return sorted(
                 candidate_counts.keys(),
                 key=lambda t: (
@@ -191,7 +221,8 @@ class SeedVocabularyBuilder:
                 seed_vocab.append(entry)
                 seen_tokens.add(entry.token)
 
-        for entry in self.collect_base_alphabet(chunk_counts):
+        alphabet_tokens = self.collect_base_alphabet(chunk_counts)
+        for entry in alphabet_tokens:
             if entry.token not in seen_tokens:
                 seed_vocab.append(entry)
                 seen_tokens.add(entry.token)
@@ -205,13 +236,28 @@ class SeedVocabularyBuilder:
                 f"Set target_vocab_size >= {num_required} or disable byte_fallback / reduce special tokens."
             )
 
+        # Compute unigram statistics for PMI ranking if needed
+        unigram_counts = {t.token: t.frequency for t in alphabet_tokens}
+        total_unigrams = sum(unigram_counts.values())
+
         # 3. Mine, Filter, and Rank Candidates
         raw_ngrams = self.mine_ngrams(chunk_counts)
         filtered_candidates = self.filter_candidates(raw_ngrams, seen_tokens)
-        ranked_candidates = self.rank_candidates(filtered_candidates)
+        ranked_candidates = self.rank_candidates(
+            filtered_candidates,
+            unigram_counts=unigram_counts,
+            total_unigrams=total_unigrams,
+        )
 
-        # 4. Fill Seed Capacity
-        candidate_budget = max(0, self.seed_vocab_size - len(seed_vocab))
+        # 4. Fill Seed Capacity (with adaptive scaling if enabled)
+        if self.adaptive_multiplier:
+            num_chunks = len(chunk_counts)
+            scale = min(4.5, max(1.5, 1.0 + math.log10(max(num_chunks, 10))))
+            effective_seed_size = max(num_required, int(self.target_vocab_size * scale))
+        else:
+            effective_seed_size = self.seed_vocab_size
+
+        candidate_budget = max(0, effective_seed_size - len(seed_vocab))
         for token in ranked_candidates[:candidate_budget]:
             if token in seen_tokens:
                 continue
