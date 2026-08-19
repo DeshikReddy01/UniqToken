@@ -132,10 +132,18 @@ class CustomTokenizerTests(unittest.TestCase):
             verbose=False,
         )
 
-        self.assertEqual(updated.model.max_subword_len, 3)
+        added_tokens = set(updated.model.vocab) - set(self.model.vocab)
+        self.assertTrue(added_tokens)
+        self.assertEqual(updated.model.max_subword_len, max(3, max(map(len, added_tokens))))
         self.assertFalse(updated.model.byte_fallback)
         self.assertEqual(updated.model.token_to_id["tok"], self.model.token_to_id["tok"])
         self.assertEqual(updated.model.token_to_id["en"], self.model.token_to_id["en"])
+
+    def test_vocabulary_adapter_zero_additions_is_a_noop(self):
+        self.assertIs(
+            VocabularyAdapter.expand_vocabulary(self.tokenizer, ["new domain"], num_new_tokens=0),
+            self.tokenizer,
+        )
 
 
 class LatticeTests(unittest.TestCase):
@@ -245,6 +253,25 @@ class MultimodalTests(unittest.TestCase):
             )
             seq2 = loaded.encode_interleaved(["test", img_elem, "test"])
             self.assertEqual(len(seq2.token_strings), len(seq.token_strings))
+
+    def test_freeze_state_survives_save_load(self):
+        self.mm_tok.freeze()
+        with TemporaryDirectory() as directory:
+            self.mm_tok.save(directory)
+            loaded = MultimodalTokenizer.load(directory)
+        with self.assertRaises(KeyError):
+            loaded._assign_id("<|new_metadata|>")
+
+    def test_nonzero_pixel_range_uses_normalized_zero_padding(self):
+        from multimodal.image_patcher import DynamicImagePatcher
+
+        patcher = DynamicImagePatcher(patch_size=2, channels=1, pixel_range=(10.0, 20.0))
+        patches, _ = patcher.extract_patches([[[15.0]]])
+        self.assertEqual(patches[0].pixels, [0.5, 0.0, 0.0, 0.0])
+
+    def test_rejects_zero_sized_image_grid_metadata(self):
+        with self.assertRaises(ValueError):
+            self.mm_tok.decode_text_and_images(["<|image_start|>", "<|grid_0x0|>", "<|vis_0000|>", "<|image_end|>"])
 
     def test_rejects_invalid_element_type(self):
         from typing import Any, cast
@@ -691,6 +718,28 @@ class CrossEntropyMergingTests(unittest.TestCase):
         for merged in (m[2] for m in optimizer.merges):
             self.assertGreaterEqual(improved.token_to_id[merged], len(model.vocab))
 
+    def test_cem_allocates_above_sparse_existing_ids(self):
+        model = UnigramModel(
+            vocab={"a": log(0.5), "b": log(0.5)},
+            token_to_id={"a": 0, "b": 2},
+            id_to_token={0: "a", 2: "b"},
+            special_tokens=[],
+            max_subword_len=2,
+            byte_fallback=False,
+        )
+        optimizer = CrossEntropyMerging(max_merges=1)
+        improved = optimizer.optimize(model, ["ab"] * 5)
+        self.assertEqual(improved.token_to_id["ab"], 3)
+        self.assertEqual(improved.id_to_token[2], "b")
+
+    def test_cem_resets_merge_history_between_runs(self):
+        _, _, _, model, chunks = self._make_pipeline()
+        optimizer = CrossEntropyMerging(max_merges=1)
+        optimizer.optimize(model, chunks)
+        self.assertLessEqual(len(optimizer.merges), 1)
+        optimizer.optimize(model, chunks)
+        self.assertLessEqual(len(optimizer.merges), 1)
+
     def test_cem_roundtrip_is_lossless_through_full_pipeline(self):
         docs, normalizer, pre_tokenizer, model, chunks = self._make_pipeline()
         optimizer = CrossEntropyMerging(max_merges=50)
@@ -757,6 +806,28 @@ class SuperBPETests(unittest.TestCase):
             self.assertIn(self.SPACE, merged)
             self.assertNotIn(a, ("<|unk|>", "<|pad|>", "<|bos|>", "<|eos|>"))
             self.assertNotIn(b, ("<|unk|>", "<|pad|>", "<|bos|>", "<|eos|>"))
+
+    def test_superbpe_replays_hierarchical_merges(self):
+        vocab = {
+            "a": log(0.2),
+            self.SPACE: log(0.2),
+            "b": log(0.2),
+            "a" + self.SPACE: log(0.2),
+            "a" + self.SPACE + "b": log(0.2),
+        }
+        token_to_id = {token: index for index, token in enumerate(vocab)}
+        model = UnigramModel(
+            vocab=vocab,
+            token_to_id=token_to_id,
+            id_to_token={index: token for token, index in token_to_id.items()},
+            special_tokens=[],
+            max_subword_len=3,
+            byte_fallback=False,
+        )
+        tokenizer = CustomTokenizer(Normalizer(normalize_unicode=False), RegexPreTokenizer(), model)
+        self.assertEqual(tokenizer.encode("a b"), ["a" + self.SPACE + "b"])
+        token = tokenizer.encode_with_offsets("a b")[0]
+        self.assertEqual(token.raw_span, (0, 3))
 
     def test_superbpe_reduces_token_count_through_pipeline(self):
         docs, _, _, base_tok, improved_tok, _ = self._make_pipeline()

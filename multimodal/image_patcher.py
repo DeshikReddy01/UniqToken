@@ -117,8 +117,8 @@ class DynamicImagePatcher:
                         if r < h and c < w:
                             pixel_vals = image_pixels[r][c]
                         else:
-                            # Zero padding for boundary edges
-                            pixel_vals = [0.0] * self.channels
+                            # Use the raw lower bound so padding is zero after normalization.
+                            pixel_vals = [offset] * self.channels
 
                         for val in pixel_vals:
                             # Normalize: (val - offset) / scale

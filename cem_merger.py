@@ -53,6 +53,7 @@ class CrossEntropyMerging:
 
     def optimize(self, model: UnigramModel, chunks: Iterable[str]) -> UnigramModel:
         """Returns a new model with CEM/SuperBPE-merged tokens; IDs of existing tokens are unchanged."""
+        self.merges.clear()
         if self.max_merges == 0:
             return model
 
@@ -81,7 +82,7 @@ class CrossEntropyMerging:
             streams = [model.encode(chunk) for chunk in chunks if chunk]
 
         for _ in range(self.max_merges):
-            pair_counts: Counter = Counter()
+            pair_counts: Counter[Tuple[str, str]] = Counter()
             for stream in streams:
                 for a, b in zip(stream, stream[1:]):
                     pair_counts[(a, b)] += 1
@@ -149,7 +150,7 @@ class CrossEntropyMerging:
 
         token_to_id = dict(model.token_to_id)
         id_to_token = dict(model.id_to_token)
-        next_id = len(token_to_id)
+        next_id = max(id_to_token, default=-1) + 1
         for tok in new_probs:
             token_to_id[tok] = next_id
             id_to_token[next_id] = tok

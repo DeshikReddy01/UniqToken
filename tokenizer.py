@@ -8,6 +8,7 @@ from typing import List, Optional, Sequence, Set, Tuple, Union
 from indentation_compressor import IndentationCompressor
 from pre_tokenizer import Normalizer, RegexPreTokenizer
 from security_shield import SecurityShield
+from seed_builder import SeedVocabularyBuilder
 from streaming_decoder import StreamingDecoder
 from unigram_trainer import UnigramModel, UnigramTrainer
 
@@ -77,46 +78,55 @@ class CustomTokenizer:
         return self._cross_word_set
 
     def _apply_cross_word_merges(self, tokens: List[str]) -> List[str]:
-        """Deterministic greedy pass that fuses adjacent tokens into SuperBPE
-        spanning tokens (e.g. ``the`` + ``\u2581`` + ``quick`` -> ``the\u2581quick``)."""
+        """Greedily fuses adjacent tokens until no SuperBPE merge remains."""
         cross = self._cross_word_tokens()
         if not cross:
             return tokens
-        merged: List[str] = []
-        i = 0
-        n = len(tokens)
-        while i < n:
-            if i + 1 < n and tokens[i] + tokens[i + 1] in cross:
-                merged.append(tokens[i] + tokens[i + 1])
-                i += 2
-            else:
-                merged.append(tokens[i])
-                i += 1
-        return merged
+        current = tokens
+        while True:
+            merged: List[str] = []
+            changed = False
+            i = 0
+            while i < len(current):
+                if i + 1 < len(current) and current[i] + current[i + 1] in cross:
+                    merged.append(current[i] + current[i + 1])
+                    i += 2
+                    changed = True
+                else:
+                    merged.append(current[i])
+                    i += 1
+            if not changed:
+                return merged
+            current = merged
 
     def _apply_cross_word_merges_with_spans(self, tokens: List[Token]) -> List[Token]:
         cross = self._cross_word_tokens()
         if not cross:
             return tokens
-        merged: List[Token] = []
-        i = 0
-        n = len(tokens)
-        while i < n:
-            if i + 1 < n and tokens[i].text + tokens[i + 1].text in cross:
-                a, b = tokens[i], tokens[i + 1]
-                text = a.text + b.text
-                merged.append(
-                    Token(
-                        text=text,
-                        id=self.model.token_to_id.get(text, a.id),
-                        raw_span=(a.raw_span[0], b.raw_span[1]),
+        current = tokens
+        while True:
+            merged: List[Token] = []
+            changed = False
+            i = 0
+            while i < len(current):
+                if i + 1 < len(current) and current[i].text + current[i + 1].text in cross:
+                    a, b = current[i], current[i + 1]
+                    text = a.text + b.text
+                    merged.append(
+                        Token(
+                            text=text,
+                            id=self.model.token_to_id[text],
+                            raw_span=(a.raw_span[0], b.raw_span[1]),
+                        )
                     )
-                )
-                i += 2
-            else:
-                merged.append(tokens[i])
-                i += 1
-        return merged
+                    i += 2
+                    changed = True
+                else:
+                    merged.append(current[i])
+                    i += 1
+            if not changed:
+                return merged
+            current = merged
 
     def _prepare_text(
         self,
@@ -167,7 +177,9 @@ class CustomTokenizer:
         normalizer = Normalizer()
         pre_tokenizer = RegexPreTokenizer(split_digits=split_digits)
 
-        combined_special = list(special_tokens or [])
+        combined_special = (
+            list(SeedVocabularyBuilder.DEFAULT_SPECIAL_TOKENS) if special_tokens is None else list(special_tokens)
+        )
         if compress_indents:
             for it in IndentationCompressor.INDENT_SPECIAL_TOKENS:
                 if it not in combined_special:
@@ -198,6 +210,8 @@ class CustomTokenizer:
         allowed_special: Union[str, Set[str], List[str]] = "none",
         disallowed_special_action: str = "escape",
     ) -> List[str]:
+        if not isinstance(text, str):
+            raise TypeError(f"text must be a string, got {type(text).__name__}")
         if not text:
             return []
 
@@ -226,6 +240,8 @@ class CustomTokenizer:
         allowed_special: Union[str, Set[str], List[str]] = "none",
         disallowed_special_action: str = "escape",
     ) -> List[str]:
+        if not isinstance(text, str):
+            raise TypeError(f"text must be a string, got {type(text).__name__}")
         if not text:
             return []
 
@@ -282,6 +298,8 @@ class CustomTokenizer:
         allowed_special: Union[str, Set[str], List[str]] = "none",
         disallowed_special_action: str = "escape",
     ) -> List[Token]:
+        if not isinstance(text, str):
+            raise TypeError(f"text must be a string, got {type(text).__name__}")
         if not text:
             return []
 

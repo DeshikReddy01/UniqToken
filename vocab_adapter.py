@@ -36,6 +36,8 @@ class VocabularyAdapter:
             raise ValueError("min_frequency must be at least one")
         if max_ngram_length < 1:
             raise ValueError("max_ngram_length must be at least one")
+        if num_new_tokens == 0:
+            return tokenizer
 
         normalizer = tokenizer.normalizer
         pre_tokenizer = tokenizer.pre_tokenizer
@@ -72,8 +74,8 @@ class VocabularyAdapter:
         if not new_tokens_to_add:
             return tokenizer
 
-        # 4. Assign new contiguous IDs (starting at old_vocab_size)
-        start_id = len(old_model.token_to_id)
+        # 4. Assign IDs above the current maximum (existing IDs may be sparse).
+        start_id = max(old_model.id_to_token, default=-1) + 1
         new_token_to_id = dict(old_model.token_to_id)
         new_id_to_token = dict(old_model.id_to_token)
 
@@ -102,7 +104,7 @@ class VocabularyAdapter:
             token_to_id=new_token_to_id,
             id_to_token=new_id_to_token,
             special_tokens=list(old_model.special_tokens),
-            max_subword_len=old_model.max_subword_len,
+            max_subword_len=max(old_model.max_subword_len, max(map(len, new_tokens_to_add))),
             byte_fallback=old_model.byte_fallback,
         )
 

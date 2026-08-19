@@ -81,7 +81,7 @@ class MultimodalTokenizer:
 
         # Unified ID space: text -> multimodal specials -> visual tokens -> audio tokens
         self._token_to_id: Dict[str, int] = dict(text_tokenizer.model.token_to_id)
-        next_id = len(self._token_to_id)
+        next_id = max(self._token_to_id.values(), default=-1) + 1
         for tok in self.multimodal_specials:
             if tok not in self._token_to_id:
                 self._token_to_id[tok] = next_id
@@ -101,7 +101,8 @@ class MultimodalTokenizer:
 
     @property
     def vocab_size(self) -> int:
-        return len(self._token_to_id)
+        """Size required for an embedding table spanning the unified ID space."""
+        return max(self._token_to_id.values(), default=-1) + 1
 
     def _assign_id(self, token: str) -> int:
         """Returns the ID for a token, registering metadata tokens or enforcing frozen vocabulary."""
@@ -109,7 +110,7 @@ class MultimodalTokenizer:
         if tid is None:
             if self._frozen:
                 raise KeyError(f"Cannot register new token '{token}' on a frozen MultimodalTokenizer vocabulary.")
-            tid = len(self._token_to_id)
+            tid = max(self._token_to_id.values(), default=-1) + 1
             self._token_to_id[token] = tid
         return tid
 
@@ -274,6 +275,8 @@ class MultimodalTokenizer:
 
         if grid:
             grid_h, grid_w = grid
+            if grid_h <= 0 or grid_w <= 0:
+                raise ValueError("image grid dimensions must be positive")
         elif img_h and img_w:
             grid_h = math.ceil(img_h / p)
             grid_w = math.ceil(img_w / p)
@@ -281,9 +284,10 @@ class MultimodalTokenizer:
             grid_h = grid_w = math.ceil(math.sqrt(len(visual_tokens)))
 
         reconstructed_patches: List[ImagePatch] = []
-        for idx, v_tok in enumerate(visual_tokens):
-            if not (v_tok.startswith("<|vis_") and v_tok.endswith("|>")):
-                continue
+        valid_tokens = [token for token in visual_tokens if token.startswith("<|vis_") and token.endswith("|>")]
+        if len(valid_tokens) > grid_h * grid_w:
+            raise ValueError("image contains more visual tokens than its declared grid can hold")
+        for idx, v_tok in enumerate(valid_tokens):
             pixels = self.codebook.dequantize_token(v_tok)
             row = idx // grid_w
             col = idx % grid_w
@@ -333,6 +337,7 @@ class MultimodalTokenizer:
             "token_to_id": self._token_to_id,
             "codebook_state": self.codebook.get_codebook_state(),
             "audio_codebook_state": self.audio_quantizer.get_state(),
+            "frozen": self._frozen,
         }
 
         with open(dir_path / "multimodal_config.json", "w", encoding="utf-8") as f:
@@ -370,7 +375,8 @@ class MultimodalTokenizer:
             mm_tok.audio_tokens = mm_tok.audio_quantizer.get_special_tokens()
 
         # Restore token mappings
-        mm_tok._token_to_id = mm_config["token_to_id"]
+        mm_tok._token_to_id = {str(token): int(token_id) for token, token_id in mm_config["token_to_id"].items()}
+        mm_tok._frozen = bool(mm_config.get("frozen", False))
 
         return mm_tok
 
@@ -383,4 +389,4 @@ class ImageElement:
     """
 
     pixels: List[List[List[float]]]
-    metadata: Optional[dict] = None
+    metadata: Optional[dict[str, object]] = None

@@ -179,7 +179,7 @@ from security_shield import SecurityShield
 shield = SecurityShield(special_tokens=["<|endoftext|>", "<|system|>", "<|user|>"])
 safe = shield.sanitize(
     untrusted_input,
-    allowed_special="none",              # or {"<|user|>"} to whitelist
+    allowed_special="none",  # or {"<|user|>"} to whitelist
     disallowed_special_action="escape",  # "escape" | "raise" | "ignore"
 )
 ```

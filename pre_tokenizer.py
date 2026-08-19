@@ -1,29 +1,35 @@
 import re
 import unicodedata
 from dataclasses import dataclass
-from typing import List, Optional, Sequence, Tuple, Union
-
-
-RawSpan = Tuple[int, int]
-AlignmentEntry = Union[int, RawSpan]
+from typing import Iterator, List, Optional, Sequence, Tuple, Union
 
 
 @dataclass(frozen=True)
 class PreToken:
-    """
-    Represents an atomic chunk of text with dual offset spans:
-    - norm_span: Character slice in the normalized string.
-    - raw_span: Exact slice in the original source string (for QA/NER).
-    """
+    """An atomic normalized chunk with normalized and original-text spans."""
 
     text: str
-    norm_span: Tuple[int, int]
+    start: int
+    end: int
     raw_span: Tuple[int, int]
+
+    @property
+    def span(self) -> Tuple[int, int]:
+        return (self.start, self.end)
+
+    @property
+    def norm_span(self) -> Tuple[int, int]:
+        return self.span
 
 
 class Normalizer:
     """
-    Standardizes raw text before tokenization with exact source-to-normalized offset tracking.
+    Standardizes raw text before tokenization.
+
+    NOTE ON REVERSIBILITY:
+    - Normalization with NFKC is *canonical*, not byte-exact lossless.
+      Compatibility characters (e.g. 'ﬁ' -> 'fi', '²' -> '2') are intentionally transformed.
+    - If exact raw string reconstruction is required, disable NFKC (`normalize_unicode=False`).
     """
 
     PUNCT_MAP = str.maketrans(
@@ -41,8 +47,7 @@ class Normalizer:
         }
     )
 
-    # Explicit mapping for common non-standard Unicode whitespaces
-    UNICODE_SPACES = " \u00a0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u202f\u205f\u3000"
+    UNICODE_SPACES = re.compile(r"[\u00A0\u1680\u2000-\u200A\u202F\u205F\u3000]")
     _ESCAPE_PREFIX = "\ue000"
     _ESCAPED_METASPACE = "\ue001"
 
@@ -56,10 +61,10 @@ class Normalizer:
         collapse_whitespaces: bool = False,
         strip_whitespace: bool = False,
     ):
-        if len(space_char) != 1 or space_char.isspace():
-            raise ValueError("space_char must be a single, non-whitespace character")
+        if not isinstance(space_char, str) or len(space_char) != 1:
+            raise ValueError("space_char must be exactly one character")
         if space_char in {self._ESCAPE_PREFIX, self._ESCAPED_METASPACE}:
-            raise ValueError("space_char uses a reserved normalization escape character")
+            raise ValueError("space_char conflicts with reserved metaspace escape characters")
         self.space_char = space_char
         self.lowercase = lowercase
         self.normalize_unicode = normalize_unicode
@@ -68,213 +73,114 @@ class Normalizer:
         self.collapse_whitespaces = collapse_whitespaces
         self.strip_whitespace = strip_whitespace
 
-    def normalize(self, text: str) -> str:
-        norm_text, _ = self.normalize_with_alignment(text)
-        return norm_text
-
-    def restore_escaped_metaspace(self, text: str) -> str:
-        """Restore literal metaspaces and escape prefixes after token decoding."""
-        output: List[str] = []
-        index = 0
-        while index < len(text):
-            char = text[index]
-            if char == self._ESCAPE_PREFIX and index + 1 < len(text):
-                escaped = text[index + 1]
-                if escaped == self._ESCAPE_PREFIX:
-                    output.append(self._ESCAPE_PREFIX)
-                    index += 2
-                    continue
-                if escaped == self._ESCAPED_METASPACE:
-                    output.append(self.space_char)
-                    index += 2
-                    continue
-            output.append(char)
-            index += 1
-        return "".join(output)
-
     @staticmethod
-    def _is_hangul_jamo(char: str) -> bool:
-        codepoint = ord(char)
-        return 0x1100 <= codepoint <= 0x11FF or 0xA960 <= codepoint <= 0xA97C or 0xD7B0 <= codepoint <= 0xD7FB
+    def _expand(value: str, span: Tuple[int, int]) -> List[Tuple[str, Tuple[int, int]]]:
+        return [(char, span) for char in value]
 
-    def _normalize_nfkc_with_alignment(self, text: str) -> Tuple[List[str], List[RawSpan]]:
-        """Apply NFKC by normalization-safe clusters and retain source spans."""
-        normalized_chars: List[str] = []
-        alignment_map: List[RawSpan] = []
-        cluster_start = 0
-
-        def flush_cluster(end: int) -> None:
-            cluster = text[cluster_start:end]
-            normalized = unicodedata.normalize("NFKC", cluster)
-            raw_span = (cluster_start, end)
-            normalized_chars.extend(normalized)
-            alignment_map.extend([raw_span] * len(normalized))
-
-        index = 0
-        n = len(text)
-        while index < n:
-            char = text[index]
-            if ord(char) < 128:
-                # Fast path: ASCII characters are NFKC-stable and never
-                # combining, so a run of them can be emitted directly.
-                run_end = index
-                while run_end < n and ord(text[run_end]) < 128:
-                    run_end += 1
-                # A combining mark immediately after the run must stay
-                # clustered with the preceding ASCII base character, so roll
-                # that base char back into the slow path.
-                if run_end < n and unicodedata.combining(text[run_end]) != 0:
-                    run_end -= 1
-                if run_end > index:
-                    if index > cluster_start:
-                        flush_cluster(index)
-                    normalized_chars.extend(text[index:run_end])
-                    alignment_map.extend((pos, pos + 1) for pos in range(index, run_end))
-                    cluster_start = run_end
-                    index = run_end
-                    continue
-
-            normalized_char = unicodedata.normalize("NFKC", char)
-            starts_with_combining_mark = bool(normalized_char) and unicodedata.combining(normalized_char[0]) != 0
-            continues_cluster = index > cluster_start and (
-                unicodedata.combining(char) != 0
-                or starts_with_combining_mark
-                or (self._is_hangul_jamo(text[index - 1]) and self._is_hangul_jamo(char))
-            )
-            if index > cluster_start and not continues_cluster:
-                flush_cluster(index)
-                cluster_start = index
-            index += 1
-
-        if text:
-            flush_cluster(n)
-
-        # The cluster strategy handles the normal cases while this fallback keeps
-        # normalization correct for rare Unicode sequences with unusual boundaries.
-        full_normalized = unicodedata.normalize("NFKC", text)
-        if "".join(normalized_chars) != full_normalized:
-            return list(full_normalized), [(0, len(text))] * len(full_normalized)
-
-        return normalized_chars, alignment_map
-
-    @staticmethod
-    def _replace_characters(
-        chars: Sequence[str], spans: Sequence[RawSpan], transform
-    ) -> Tuple[List[str], List[RawSpan]]:
-        output_chars: List[str] = []
-        output_spans: List[RawSpan] = []
-        for char, span in zip(chars, spans):
-            replacement = transform(char)
-            output_chars.extend(replacement)
-            output_spans.extend([span] * len(replacement))
-        return output_chars, output_spans
-
-    def normalize_with_alignment(self, text: str) -> Tuple[str, List[RawSpan]]:
-        """
-        Normalizes text and returns an alignment map where:
-        alignment_map[norm_char_idx] -> (raw_start, raw_end) in the original text.
-        """
+    def normalize_with_alignment(self, text: str) -> Tuple[str, List[Tuple[int, int]]]:
+        """Normalizes text and maps every output character to its raw source span."""
         if not isinstance(text, str):
             raise TypeError(f"text must be a string, got {type(text).__name__}")
 
-        if self.normalize_unicode:
-            normalized_chars, alignment_map = self._normalize_nfkc_with_alignment(text)
-        else:
-            normalized_chars = list(text)
-            alignment_map = [(index, index + 1) for index in range(len(text))]
+        units: List[Tuple[str, Tuple[int, int]]] = [(char, (i, i + 1)) for i, char in enumerate(text)]
 
-        if self.normalize_unicode_spaces and any(
-            char != " " and char in self.UNICODE_SPACES for char in normalized_chars
-        ):
-            normalized_chars, alignment_map = self._replace_characters(
-                normalized_chars,
-                alignment_map,
-                lambda char: " " if char in self.UNICODE_SPACES else char,
-            )
+        if self.normalize_unicode:
+            normalized: List[Tuple[str, Tuple[int, int]]] = []
+            i = 0
+            while i < len(text):
+                end = i + 1
+                while end < len(text) and unicodedata.combining(text[end]):
+                    end += 1
+                value = unicodedata.normalize("NFKC", text[i:end])
+                normalized.extend(self._expand(value, (i, end)))
+                i = end
+            units = normalized
+
+        if self.normalize_unicode_spaces:
+            units = [(" " if self.UNICODE_SPACES.fullmatch(char) else char, span) for char, span in units]
 
         if self.normalize_punctuation:
-            normalized_chars, alignment_map = self._replace_characters(
-                normalized_chars,
-                alignment_map,
-                lambda char: char.translate(self.PUNCT_MAP),
-            )
+            translated: List[Tuple[str, Tuple[int, int]]] = []
+            for char, span in units:
+                translated.extend(self._expand(char.translate(self.PUNCT_MAP), span))
+            units = translated
 
         if self.lowercase:
-            lowered_by_char, lowered_spans = self._replace_characters(
-                normalized_chars,
-                alignment_map,
-                lambda char: char.lower(),
-            )
-            normalized_chars = list("".join(normalized_chars).lower())
-            if len(normalized_chars) != len(lowered_by_char):
-                raise ValueError("lowercase normalization produced an unsupported alignment change")
-            alignment_map = lowered_spans
+            lowered: List[Tuple[str, Tuple[int, int]]] = []
+            for char, span in units:
+                lowered.extend(self._expand(char.lower(), span))
+            units = lowered
 
         if self.collapse_whitespaces:
-            collapsed_chars: List[str] = []
-            collapsed_spans: List[RawSpan] = []
-            index = 0
-            while index < len(normalized_chars):
-                char = normalized_chars[index]
+            collapsed: List[Tuple[str, Tuple[int, int]]] = []
+            i = 0
+            while i < len(units):
+                char, span = units[i]
                 if char not in {" ", "\t"}:
-                    collapsed_chars.append(char)
-                    collapsed_spans.append(alignment_map[index])
-                    index += 1
+                    collapsed.append((char, span))
+                    i += 1
                     continue
-
-                end = index + 1
-                while end < len(normalized_chars) and normalized_chars[end] in {
-                    " ",
-                    "\t",
-                }:
+                end = i + 1
+                while end < len(units) and units[end][0] in {" ", "\t"}:
                     end += 1
-                collapsed_chars.append(" ")
-                collapsed_spans.append(
-                    (
-                        min(span[0] for span in alignment_map[index:end]),
-                        max(span[1] for span in alignment_map[index:end]),
-                    )
-                )
-                index = end
-            normalized_chars, alignment_map = collapsed_chars, collapsed_spans
+                collapsed.append((" ", (span[0], units[end - 1][1][1])))
+                i = end
+            units = collapsed
 
         if self.strip_whitespace:
             start = 0
-            end = len(normalized_chars)
-            while start < end and normalized_chars[start].isspace():
+            end = len(units)
+            while start < end and units[start][0].isspace():
                 start += 1
-            while end > start and normalized_chars[end - 1].isspace():
+            while end > start and units[end - 1][0].isspace():
                 end -= 1
-            normalized_chars = normalized_chars[start:end]
-            alignment_map = alignment_map[start:end]
+            units = units[start:end]
 
-        def encode_metaspace(char: str) -> str:
+        escaped: List[Tuple[str, Tuple[int, int]]] = []
+        for char, span in units:
             if char == self._ESCAPE_PREFIX:
-                return self._ESCAPE_PREFIX + self._ESCAPE_PREFIX
-            if char == self.space_char:
-                return self._ESCAPE_PREFIX + self._ESCAPED_METASPACE
-            if char == " ":
-                return self.space_char
-            return char
+                escaped.extend(self._expand(self._ESCAPE_PREFIX * 2, span))
+            elif char == self.space_char:
+                escaped.extend(self._expand(self._ESCAPE_PREFIX + self._ESCAPED_METASPACE, span))
+            elif char == " ":
+                escaped.append((self.space_char, span))
+            else:
+                escaped.append((char, span))
 
-        normalized_chars, alignment_map = self._replace_characters(
-            normalized_chars,
-            alignment_map,
-            encode_metaspace,
-        )
-        return "".join(normalized_chars), alignment_map
+        return "".join(char for char, _ in escaped), [span for _, span in escaped]
+
+    def normalize(self, text: str) -> str:
+        return self.normalize_with_alignment(text)[0]
+
+    def restore_escaped_metaspace(self, text: str) -> str:
+        """Restores literal metaspace and escape-prefix characters after decoding."""
+        restored: List[str] = []
+        i = 0
+        while i < len(text):
+            if text[i] != self._ESCAPE_PREFIX or i + 1 >= len(text):
+                restored.append(text[i])
+                i += 1
+                continue
+            marker = text[i + 1]
+            if marker == self._ESCAPED_METASPACE:
+                restored.append(self.space_char)
+                i += 2
+            elif marker == self._ESCAPE_PREFIX:
+                restored.append(self._ESCAPE_PREFIX)
+                i += 2
+            else:
+                restored.append(text[i])
+                i += 1
+        return "".join(restored)
 
 
 class RegexPreTokenizer:
     """
-    Dual-Offset Regex Pre-Tokenizer with Multilingual Combining Mark & RFC URL Support.
-    """
+    Offset-preserving, regex-based Pre-Tokenizer.
 
-    # Combining Marks: Indic (Devanagari, Bengali, Tamil, etc.), Arabic, Hebrew, Thai, Latin Diacritics
-    COMBINING_MARKS = (
-        r"\u0300-\u036F\u0590-\u08FF\u0900-\u0DFF\u0E00-\u0E7F"
-        r"\u1DC0-\u1DFF\u20D0-\u20FF\uFE20-\uFE2F"
-    )
+    Uses compiled C-level regex iteration (`finditer`) to slice input text into
+    atomic chunks while preserving character spans for downstream tasks.
+    """
 
     def __init__(
         self,
@@ -291,25 +197,14 @@ class RegexPreTokenizer:
         self.special_token_pattern = special_token_pattern
 
         escaped_space = re.escape(self.space_char)
-
-        # 1. Special Control Tokens (<|user|>, <|endoftext|>, etc.)
         special_token = special_token_pattern if self.keep_special_tokens else r"(?!x)x"
+        url = r"https?://[a-zA-Z0-9][-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b(?:[-a-zA-Z0-9()@:%_\+.~#?&/=]*)"
 
-        # 2. URLs: RFC-compliant matching that strictly terminates on alphanumeric/slash (excludes trailing . , ; ! ? )
-        url = (
-            r"https?://[a-zA-Z0-9][-a-zA-Z0-9@:%._\+~#=]{1,256}"
-            r"\.[a-zA-Z0-9()]{1,6}\b"
-            r"(?:[-a-zA-Z0-9()@:%_\+.~#?&/=]*[a-zA-Z0-9/])?"
-        )
-
-        # 3. Emails
         email = r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+"
 
-        # 4. Social Tags
         hashtag = r"#\w+"
         mention = r"@\w+"
 
-        # 5. Emoji with full ZWJ (\u200D), skin tone modifiers, and variation selectors
         emoji = (
             r"(?:[\U0001F300-\U0001FAFF]|[\u2600-\u26FF]|[\u2700-\u27BF])"
             r"(?:[\uFE0E\uFE0F])?"
@@ -317,23 +212,15 @@ class RegexPreTokenizer:
             r"(?:\u200D(?:[\U0001F300-\U0001FAFF]|[\u2600-\u26FF]|[\u2700-\u27BF])(?:[\uFE0E\uFE0F])?(?:[\U0001F3FB-\U0001F3FF])?)*"
         )
 
-        # 6. CJK and East Asian Scripts (Individual characters to prevent monolithic block tokens)
         cjk = r"[\u4e00-\u9fff\u3400-\u4dbf\u3040-\u30ff\uac00-\ud7af]"
 
-        # 7. Multilingual Alphabetic Words (Includes Unicode combining marks / viramas / matras)
-        word = (
-            rf"(?:[^\W\d_\s{escaped_space}]|[{self.COMBINING_MARKS}])+"
-            rf"(?:['’](?:[^\W\d_\s{escaped_space}]|[{self.COMBINING_MARKS}])+)*"
-        )
+        word = rf"[^\W\d_\s{escaped_space}]+(?:['’][^\W\d_\s{escaped_space}]+)*"
 
-        # 8. Numbers (Single digit if split_digits=True, or continuous digit chunks if False)
         number = r"\d" if self.split_digits else r"\d+"
 
-        # 9. Metaspaces & Whitespace sequences
         space_marker = rf"{escaped_space}+"
         whitespace = r"\s+"
 
-        # 10. Punctuation & Symbols (including underscore '_')
         if self.split_punctuation:
             punctuation = rf"[^\w\s{escaped_space}]|_"
         else:
@@ -357,48 +244,57 @@ class RegexPreTokenizer:
         combined_pattern = "|".join(f"(?:{p})" for p in self.patterns)
         self.regex = re.compile(combined_pattern)
 
-    def pre_tokenize_with_offsets(
+    def pre_tokenize_iter(
         self,
-        normalized_text: str,
-        alignment_map: Optional[Sequence[AlignmentEntry]] = None,
-    ) -> List[PreToken]:
-        """
-        Emits PreToken instances with both normalized and source raw character spans.
-        """
-        if not isinstance(normalized_text, str):
-            raise TypeError(f"normalized_text must be a string, got {type(normalized_text).__name__}")
-        if alignment_map is not None and len(alignment_map) != len(normalized_text):
-            raise ValueError("alignment_map must have one entry for every normalized character")
+        text: str,
+        alignment: Optional[Sequence[Union[int, Tuple[int, int]]]] = None,
+    ) -> Iterator[PreToken]:
+        """Yields chunks with normalized and raw-text offsets."""
+        if not isinstance(text, str):
+            raise TypeError(f"text must be a string, got {type(text).__name__}")
+        if alignment is not None and len(alignment) != len(text):
+            raise ValueError("alignment length must match normalized text length")
 
-        tokens: List[PreToken] = []
-
-        for match in self.regex.finditer(normalized_text):
-            norm_start, norm_end = match.start(), match.end()
-
-            if alignment_map is not None:
-                token_spans: List[RawSpan] = []
-                for entry in alignment_map[norm_start:norm_end]:
-                    if isinstance(entry, int):
-                        token_spans.append((entry, entry + 1))
-                    else:
-                        token_spans.append(entry)
-                raw_start = min(span[0] for span in token_spans)
-                raw_end = max(span[1] for span in token_spans)
+        for match in self.regex.finditer(text):
+            start, end = match.span()
+            if alignment is None:
+                raw_span = (start, end)
             else:
-                raw_start, raw_end = norm_start, norm_end
-
-            tokens.append(
-                PreToken(
-                    text=match.group(0),
-                    norm_span=(norm_start, norm_end),
-                    raw_span=(raw_start, raw_end),
+                source_spans = [
+                    entry if isinstance(entry, tuple) else (entry, entry + 1) for entry in alignment[start:end]
+                ]
+                if not source_spans:
+                    continue
+                raw_span = (
+                    min(span[0] for span in source_spans),
+                    max(span[1] for span in source_spans),
                 )
-            )
-
-        return tokens
+            yield PreToken(text=match.group(0), start=start, end=end, raw_span=raw_span)
 
     def pre_tokenize(self, text: str) -> List[str]:
-        return [match.group(0) for match in self.regex.finditer(text)]
+        """
+        Returns a flat list of pre-tokenized chunk strings.
+        """
+        return [pt.text for pt in self.pre_tokenize_iter(text)]
+
+    def pre_tokenize_with_offsets(
+        self,
+        text: str,
+        alignment: Optional[Sequence[Union[int, Tuple[int, int]]]] = None,
+    ) -> List[PreToken]:
+        """Returns chunks with normalized and, when supplied, original spans."""
+        return list(self.pre_tokenize_iter(text, alignment))
+
+    def explain(self, text: str) -> None:
+        """
+        Diagnostic display showing how the text is sliced into chunks with character offsets.
+        """
+        tokens = self.pre_tokenize_with_offsets(text)
+        print(f"\nInput: {text!r}")
+        print("Tokens with Spans:")
+        for idx, tok in enumerate(tokens):
+            print(f"  {idx:>3}: {tok.text!r:<20} Span: {tok.span}")
+        print(f"Total Chunks: {len(tokens)}\n")
 
 
 if __name__ == "__main__":
@@ -406,24 +302,25 @@ if __name__ == "__main__":
 
     if sys.stdout.encoding != "utf-8":
         reconfigure = getattr(sys.stdout, "reconfigure", None)
-        if callable(reconfigure):
+        if reconfigure is not None:
             reconfigure(encoding="utf-8")
 
     normalizer = Normalizer()
     pre_tokenizer = RegexPreTokenizer(split_digits=False)
 
     samples = [
-        "ﬁx the bug in 2024 (visit https://example.com.)",
-        "नमस्ते दुनिया and شكراً",
-        "Cost is ½ price for Ａpple",
+        "def compute_sum(a: int, b: int) -> int:\n    return a + b  # 100% precision",
+        "Cost is $1,499.99 for iPhone 15 Pro (visit https://apple.com, or email dev@apple.com)!",
+        "Emoji test: 👨‍👩‍👧‍👦 family and 👍🏽 thumbs up",
+        "我喜欢自然语言处理 and नमस्ते दुनिया",
+        "<|user|> Calculate 1.5e-10 + 42 = ? <|endoftext|>",
     ]
 
     for sample in samples:
-        norm, alignment = normalizer.normalize_with_alignment(sample)
-        tokens = pre_tokenizer.pre_tokenize_with_offsets(norm, alignment)
-        print("=" * 65)
-        print(f"RAW TEXT   : {sample!r}")
-        print(f"NORMALIZED : {norm!r}")
-        for t in tokens:
-            raw_slice = sample[t.raw_span[0] : t.raw_span[1]]
-            print(f"  {t.text!r:<15} NormSpan={t.norm_span} RawSpan={t.raw_span} RawSlice={raw_slice!r}")
+        norm = normalizer.normalize(sample)
+        tokens = pre_tokenizer.pre_tokenize_with_offsets(norm)
+        print("=" * 70)
+        print(f"ORIGINAL : {sample}")
+        print(f"NORMALIZED: {norm}")
+        print(f"CHUNKS   : {[t.text for t in tokens]}")
+        print(f"OFFSETS  : {[t.span for t in tokens[:5]]} ... (total: {len(tokens)})")
