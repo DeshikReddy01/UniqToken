@@ -20,11 +20,36 @@ from typing import List, Optional
 from benchmarks.benchmark_suite import TokenizerBenchmarkSuite
 from benchmarks.downstream_eval import DownstreamEvaluator
 from cem_merger import CrossEntropyMerging
+from indentation_compressor import IndentationCompressor
 from tokenizer import CustomTokenizer
+
+
+def _reconfigure_stdio() -> None:
+    """Force UTF-8 on stdio so non-ASCII text survives piped stdin/stdout (Windows)."""
+    for stream in (sys.stdin, sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if callable(reconfigure):
+            try:
+                reconfigure(encoding="utf-8")
+            except (OSError, ValueError):
+                pass
 
 
 def train_command(args: argparse.Namespace) -> int:
     """Handles 'caliper train'."""
+    if args.vocab_size < 1:
+        print("Error: --vocab-size must be a positive integer.", file=sys.stderr)
+        return 1
+    if args.superbpe_merges < 0:
+        print("Error: --superbpe-merges must not be negative.", file=sys.stderr)
+        return 1
+    if args.script_temp is not None and args.script_temp < 0:
+        print("Error: --script-temp must not be negative.", file=sys.stderr)
+        return 1
+    if args.min_boundary_entropy is not None and args.min_boundary_entropy < 0:
+        print("Error: --min-boundary-entropy must not be negative.", file=sys.stderr)
+        return 1
+
     corpus: List[str] = []
     for path in args.corpus:
         p = Path(path)
@@ -51,10 +76,12 @@ def train_command(args: argparse.Namespace) -> int:
         verbose=args.verbose,
     )
 
-    if args.superbpe_merges and args.superbpe_merges > 0:
+    if args.superbpe_merges > 0:
         print(f"Optimizing vocabulary with SuperBPE ({args.superbpe_merges} merges)...")
         pretok_chunks: List[str] = []
         for doc in corpus:
+            if args.compress_indents:
+                doc = IndentationCompressor.compress_indents(doc)
             norm = tok.normalizer.normalize(doc)
             pretok_chunks.extend(tok.pre_tokenizer.pre_tokenize(norm))
         cem = CrossEntropyMerging(max_merges=args.superbpe_merges, cross_word=True, verbose=args.verbose)
@@ -72,6 +99,17 @@ def train_command(args: argparse.Namespace) -> int:
     return 0
 
 
+def _load_input(args: argparse.Namespace) -> str:
+    """Reads --input (string or file path) or stdin; empty strings are honored."""
+    if args.input is not None:
+        p = Path(args.input)
+        if p.exists() and p.is_file():
+            with open(p, "r", encoding="utf-8", errors="replace") as f:
+                return f.read()
+        return args.input
+    return sys.stdin.read()
+
+
 def encode_command(args: argparse.Namespace) -> int:
     """Handles 'caliper encode'."""
     model_path = Path(args.model)
@@ -79,18 +117,13 @@ def encode_command(args: argparse.Namespace) -> int:
         print(f"Error: Model directory not found: {args.model}", file=sys.stderr)
         return 1
 
-    tok = CustomTokenizer.load(str(model_path))
+    try:
+        tok = CustomTokenizer.load(str(model_path))
+    except (FileNotFoundError, json.JSONDecodeError, KeyError) as e:
+        print(f"Error: Failed to load model from {args.model}: {e}", file=sys.stderr)
+        return 1
 
-    text_input = ""
-    if args.input:
-        p = Path(args.input)
-        if p.exists() and p.is_file():
-            with open(p, "r", encoding="utf-8", errors="replace") as f:
-                text_input = f.read()
-        else:
-            text_input = args.input
-    else:
-        text_input = sys.stdin.read()
+    text_input = _load_input(args)
 
     if args.with_metrics:
         report = tok.encode_with_metrics(text_input)
@@ -118,7 +151,9 @@ def encode_command(args: argparse.Namespace) -> int:
         output_str = json.dumps(tokens, ensure_ascii=False) if args.json else " ".join(tokens)
 
     if args.out:
-        with open(args.out, "w", encoding="utf-8") as f:
+        out_path = Path(args.out)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(out_path, "w", encoding="utf-8") as f:
             f.write(output_str + "\n")
     else:
         print(output_str)
@@ -133,32 +168,34 @@ def decode_command(args: argparse.Namespace) -> int:
         print(f"Error: Model directory not found: {args.model}", file=sys.stderr)
         return 1
 
-    tok = CustomTokenizer.load(str(model_path))
+    try:
+        tok = CustomTokenizer.load(str(model_path))
+    except (FileNotFoundError, json.JSONDecodeError, KeyError) as e:
+        print(f"Error: Failed to load model from {args.model}: {e}", file=sys.stderr)
+        return 1
 
-    input_data = ""
-    if args.input:
-        p = Path(args.input)
-        if p.exists() and p.is_file():
-            with open(p, "r", encoding="utf-8", errors="replace") as f:
-                input_data = f.read().strip()
-        else:
-            input_data = args.input.strip()
-    else:
-        input_data = sys.stdin.read().strip()
+    input_data = _load_input(args).strip()
 
     # Parse integer IDs
     try:
         if input_data.startswith("[") and input_data.endswith("]"):
             token_ids = json.loads(input_data)
+            if not isinstance(token_ids, list) or not all(
+                isinstance(i, int) and not isinstance(i, bool) for i in token_ids
+            ):
+                raise ValueError("token ID list must contain only integers")
         else:
             token_ids = [int(x) for x in input_data.split()]
-        decoded = tok.decode(token_ids)
-    except Exception as e:
+    except (ValueError, json.JSONDecodeError) as e:
         print(f"Error parsing token IDs: {e}", file=sys.stderr)
         return 1
 
+    decoded = tok.decode(token_ids)
+
     if args.out:
-        with open(args.out, "w", encoding="utf-8") as f:
+        out_path = Path(args.out)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(out_path, "w", encoding="utf-8") as f:
             f.write(decoded + "\n")
     else:
         print(decoded)
@@ -221,9 +258,10 @@ def build_parser() -> argparse.ArgumentParser:
     p_encode.add_argument("--model", type=str, required=True, help="Path to saved model directory")
     p_encode.add_argument("--input", type=str, default=None, help="Input string or path to text file")
     p_encode.add_argument("--out", type=str, default=None, help="Output file path (default: stdout)")
-    p_encode.add_argument("--to-ids", action="store_true", help="Output integer token IDs")
-    p_encode.add_argument("--with-offsets", action="store_true", help="Output tokens with exact character spans")
-    p_encode.add_argument("--with-metrics", action="store_true", help="Output diagnostic compression metrics")
+    output_group = p_encode.add_mutually_exclusive_group()
+    output_group.add_argument("--to-ids", action="store_true", help="Output integer token IDs")
+    output_group.add_argument("--with-offsets", action="store_true", help="Output tokens with exact character spans")
+    output_group.add_argument("--with-metrics", action="store_true", help="Output diagnostic compression metrics")
     p_encode.add_argument("--json", action="store_true", help="Format output as JSON array")
     p_encode.set_defaults(func=encode_command)
 
@@ -252,9 +290,17 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Optional[List[str]] = None) -> int:
+    _reconfigure_stdio()
     parser = build_parser()
     args = parser.parse_args(argv)
-    return args.func(args)
+    try:
+        return args.func(args)
+    except KeyboardInterrupt:
+        print("Interrupted.", file=sys.stderr)
+        return 130
+    except Exception as e:  # noqa: BLE001 - top-level guard converts unexpected errors to exit code 1
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":

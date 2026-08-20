@@ -191,24 +191,20 @@ def train_toy_transformer(
         data_tensor = torch.tensor(flat_tokens, dtype=torch.long)
         max_idx = len(flat_tokens) - seq_len - 1
 
+        torch.manual_seed(42)
+
         final_loss = 0.0
         model.train()
         for step in range(steps):
             optimizer.zero_grad()
-            # Sample batch
+            # Sample batch (each row is a distinct contiguous window)
             batch_inputs = []
             batch_targets = []
-            for _ in range(batch_size):
-                idx = (step * batch_size) % max(1, max_idx)
+            for b in range(batch_size):
+                idx = (step * batch_size + b) % max(1, max_idx)
                 chunk = data_tensor[idx : idx + seq_len + 1]
-                if len(chunk) == seq_len + 1:
-                    batch_inputs.append(chunk[:-1])
-                    batch_targets.append(chunk[1:])
-                else:
-                    pad_len = (seq_len + 1) - len(chunk)
-                    chunk = torch.cat([chunk, torch.zeros(pad_len, dtype=torch.long)])
-                    batch_inputs.append(chunk[:-1])
-                    batch_targets.append(chunk[1:])
+                batch_inputs.append(chunk[:-1])
+                batch_targets.append(chunk[1:])
 
             inputs = torch.stack(batch_inputs).to(device)
             targets = torch.stack(batch_targets).to(device)

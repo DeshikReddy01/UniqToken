@@ -4,6 +4,7 @@ Unit tests for Downstream Model Pretraining & BPB Benchmark.
 
 from __future__ import annotations
 
+import math
 import unittest
 from benchmarks.train_toy_transformer import (
     create_tokenizers,
@@ -36,7 +37,11 @@ class DownstreamTransformerTests(unittest.TestCase):
         self.assertGreater(metrics.total_tokens, 0)
         self.assertGreater(metrics.compression_ratio, 0.0)
         self.assertGreater(metrics.final_loss, 0.0)
-        self.assertGreater(metrics.bits_per_byte, 0.0)
+        self.assertTrue(math.isfinite(metrics.final_loss))
+        self.assertTrue(math.isfinite(metrics.bits_per_byte))
+        # BPB must be internally consistent: loss(nats/tok)*tokens / (bytes*ln2).
+        expected_bpb = metrics.final_loss * metrics.total_tokens / (metrics.total_bytes * math.log(2.0))
+        self.assertAlmostEqual(metrics.bits_per_byte, expected_bpb, places=6)
 
 
 if __name__ == "__main__":
