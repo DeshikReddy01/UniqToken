@@ -157,7 +157,7 @@ class LatticeTests(unittest.TestCase):
 
     def test_forward_backward_rejects_disconnected_lattice(self):
         lattice = UnigramLattice("z", {}, byte_fallback=False)
-        with self.assertRaises(RuntimeError):
+        with self.assertRaises(ValueError):
             lattice.forward_backward()
 
     def test_rejects_invalid_lattice_length(self):

@@ -12,6 +12,7 @@ Stress tests the tokenizer engine under extreme conditions:
 from __future__ import annotations
 
 import unittest
+from byte_codec import ByteFallbackEngine
 from tokenizer import CustomTokenizer
 
 
@@ -95,12 +96,25 @@ class AdversarialPathologicalStressSuite(unittest.TestCase):
             self.assertEqual(decoded, lig)
 
     def test_arbitrary_binary_and_null_bytes(self):
-        # Null bytes, high UTF-8 bytes, malformed byte streams
-        raw_binary_str = "\x00\x01\x02\xff\xfe\xfd" * 10
-        tokens = self.tok.encode(raw_binary_str)
+        # Control bytes (0x00-0x1F) are valid UTF-8 and must round-trip losslessly.
+        control_str = "\x00\x01\x02\x03\x1f\x7f" * 10
+        tokens = self.tok.encode(control_str)
         self.assertTrue(len(tokens) > 0)
         decoded = self.tok.decode_tokens(tokens)
-        self.assertEqual(decoded, raw_binary_str)
+        self.assertEqual(decoded, control_str)
+
+    def test_surrogate_escaped_raw_bytes_do_not_crash(self):
+        # Raw binary read via errors='surrogateescape' (the default on POSIX file
+        # reads) produces lone surrogate chars. These must encode to byte-fallback
+        # tokens without raising. Decoding genuinely invalid UTF-8 raises by design
+        # (documented strictness in ByteFallbackEngine.decode_tokens).
+        raw = bytes(range(256)) * 3
+        raw_str = raw.decode("utf-8", errors="surrogateescape")
+        tokens = self.tok.encode(raw_str)
+        self.assertTrue(len(tokens) > 0)
+        self.assertTrue(any(ByteFallbackEngine.is_byte_token(t) for t in tokens))
+        with self.assertRaises(UnicodeDecodeError):
+            self.tok.decode_tokens(tokens)
 
     def test_viterbi_memoization_cache_invariance(self):
         test_strings = [

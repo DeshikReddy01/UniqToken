@@ -28,8 +28,19 @@ class UnigramModel:
     def vocab_size(self) -> int:
         return len(self.vocab)
 
+    def _cache_signature(self) -> Tuple[int, int]:
+        return (id(self.vocab), len(self.vocab))
+
+    def _sync_cache(self) -> None:
+        """Invalidates caches if the vocab object or size changed since they were built."""
+        sig = self._cache_signature()
+        if self.__dict__.get("_cache_sig") != sig:
+            self.clear_cache()
+            self._cache_sig = sig
+
     def _get_trie(self) -> PrefixTrie:
         """Builds (and caches) a PrefixTrie over the current vocab for fast lattice search."""
+        self._sync_cache()
         trie = self.__dict__.get("_trie")
         if trie is None:
             trie = PrefixTrie.from_vocab(self.vocab)
@@ -45,8 +56,11 @@ class UnigramModel:
             del self.__dict__["_trie"]
         if "_seg_cache" in self.__dict__:
             del self.__dict__["_seg_cache"]
+        if "_cache_sig" in self.__dict__:
+            del self.__dict__["_cache_sig"]
 
     def _get_seg_cache(self) -> Dict[str, List[Tuple[str, int, int]]]:
+        self._sync_cache()
         cache = self.__dict__.get("_seg_cache")
         if cache is None:
             cache = {}
@@ -132,7 +146,7 @@ class UnigramModel:
         cache = self._get_seg_cache()
         cached = cache.get(text)
         if cached is not None:
-            return cached
+            return list(cached)
 
         fast = self._encode_fast(text)
         if fast is not None:

@@ -48,6 +48,7 @@ class UnigramLattice:
         trie: Optional[object] = None,
         max_edges_per_node: Optional[int] = None,
         min_edge_log_prob: Optional[float] = None,
+        unk_token: str = "<|unk|>",
     ):
         if max_subword_len < 1:
             raise ValueError("max_subword_len must be at least one")
@@ -61,6 +62,7 @@ class UnigramLattice:
         self.trie = trie
         self.max_edges_per_node = max_edges_per_node
         self.min_edge_log_prob = min_edge_log_prob
+        self.unk_token = unk_token
 
         self.begin_nodes: List[List[LatticeEdge]] = [[] for _ in range(self.length + 1)]
         self.end_nodes: List[List[LatticeEdge]] = [[] for _ in range(self.length + 1)]
@@ -105,17 +107,32 @@ class UnigramLattice:
                         self.end_nodes[j].append(edge)
                         has_edge_at_i = True
 
-            if not has_edge_at_i and self.byte_fallback:
-                char = self.text[i]
-                byte_tokens = ByteFallbackEngine.char_to_byte_tokens(char)
-                total_log_p = sum(self.vocab.get(b, -self.DEFAULT_BYTE_PENALTY) for b in byte_tokens)
-                edge = LatticeEdge(
-                    start=i,
-                    end=i + 1,
-                    tokens=byte_tokens,
-                    log_prob=total_log_p,
-                    cost=-total_log_p,
-                )
+            if not has_edge_at_i:
+                if self.byte_fallback:
+                    char = self.text[i]
+                    byte_tokens = ByteFallbackEngine.char_to_byte_tokens(char)
+                    total_log_p = sum(self.vocab.get(b, -self.DEFAULT_BYTE_PENALTY) for b in byte_tokens)
+                    edge = LatticeEdge(
+                        start=i,
+                        end=i + 1,
+                        tokens=byte_tokens,
+                        log_prob=total_log_p,
+                        cost=-total_log_p,
+                    )
+                elif self.unk_token in self.vocab:
+                    # No byte fallback: map the OOV character to the unk token so
+                    # the lattice stays connected instead of crashing downstream.
+                    log_p = self.vocab[self.unk_token]
+                    edge = LatticeEdge(
+                        start=i,
+                        end=i + 1,
+                        tokens=[self.unk_token],
+                        log_prob=log_p,
+                        cost=-log_p,
+                    )
+                else:
+                    # No fallback available; node is genuinely disconnected.
+                    continue
                 self.begin_nodes[i].append(edge)
                 self.end_nodes[i + 1].append(edge)
 
@@ -152,7 +169,11 @@ class UnigramLattice:
         while curr > 0:
             selected_edge = best_edge[curr]
             if selected_edge is None:
-                raise RuntimeError(f"Lattice disconnected at index {curr} for {self.text!r}")
+                raise ValueError(
+                    f"Lattice disconnected at index {curr} of {self.text!r}: no "
+                    f"vocabulary/fallback edge covers this character. Train with "
+                    f"byte_fallback=True or ensure <|unk|> is in the vocabulary."
+                )
             edges.append(selected_edge)
             curr = selected_edge.start
 
@@ -182,7 +203,11 @@ class UnigramLattice:
 
         total_marginal_log_lik = log_alpha[self.length]
         if total_marginal_log_lik == -float("inf"):
-            raise RuntimeError(f"Lattice disconnected for {self.text!r}")
+            raise ValueError(
+                f"Lattice disconnected for {self.text!r}: no vocabulary/fallback "
+                f"edge covers every character. Train with byte_fallback=True or "
+                f"ensure <|unk|> is in the vocabulary."
+            )
 
         log_beta: List[float] = [-float("inf")] * (self.length + 1)
         log_beta[self.length] = 0.0
@@ -227,7 +252,11 @@ class UnigramLattice:
             log_alpha[j] = logsumexp(incoming)
 
         if log_alpha[self.length] == -float("inf"):
-            raise RuntimeError(f"Lattice disconnected for {self.text!r}")
+            raise ValueError(
+                f"Lattice disconnected for {self.text!r}: no vocabulary/fallback "
+                f"edge covers every character. Train with byte_fallback=True or "
+                f"ensure <|unk|> is in the vocabulary."
+            )
 
         # 2. Backward Sampling
         flat_tokens: List[str] = []
@@ -236,7 +265,11 @@ class UnigramLattice:
         while curr > 0:
             edges = self.end_nodes[curr]
             if not edges:
-                raise RuntimeError(f"Lattice disconnected at index {curr} for {self.text!r}")
+                raise ValueError(
+                    f"Lattice disconnected at index {curr} of {self.text!r}: no "
+                    f"vocabulary/fallback edge covers this character. Train with "
+                    f"byte_fallback=True or ensure <|unk|> is in the vocabulary."
+                )
 
             # Compute transition probabilities for incoming edges ending at curr
             edge_log_probs: List[float] = []

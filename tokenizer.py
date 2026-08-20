@@ -224,6 +224,13 @@ class CustomTokenizer:
             norm = normalizer.normalize(doc)
             chunks.extend(pre_tokenizer.pre_tokenize(norm))
 
+        if not chunks:
+            raise ValueError(
+                "Empty corpus: no pre-tokenized chunks were produced. "
+                "Provide non-empty text (and disable compress_indents if it "
+                "reduces everything to whitespace)."
+            )
+
         trainer = UnigramTrainer(
             target_vocab_size=target_vocab_size,
             seed_multiplier=seed_multiplier,
@@ -325,6 +332,8 @@ class CustomTokenizer:
         """Encodes a sequence of texts, parallelizing across workers when batch is large."""
         if not texts:
             return []
+        if num_workers is not None and num_workers < 1:
+            raise ValueError(f"num_workers must be >= 1 (or None), got {num_workers}")
         if len(texts) <= 64 or num_workers == 1:
             return [
                 self.encode(
@@ -358,6 +367,8 @@ class CustomTokenizer:
         """Encodes a sequence of texts to token IDs, parallelizing across workers when batch is large."""
         if not texts:
             return []
+        if num_workers is not None and num_workers < 1:
+            raise ValueError(f"num_workers must be >= 1 (or None), got {num_workers}")
         if len(texts) <= 64 or num_workers == 1:
             return [
                 self.encode_to_ids(
@@ -391,6 +402,8 @@ class CustomTokenizer:
         """Encodes a sequence of texts with exact spans, parallelizing across workers when batch is large."""
         if not texts:
             return []
+        if num_workers is not None and num_workers < 1:
+            raise ValueError(f"num_workers must be >= 1 (or None), got {num_workers}")
         if len(texts) <= 64 or num_workers == 1:
             return [
                 self.encode_with_offsets(

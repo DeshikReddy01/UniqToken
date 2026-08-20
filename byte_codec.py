@@ -34,8 +34,11 @@ class ByteFallbackEngine:
     def char_to_byte_tokens(cls, char_or_str: str) -> List[str]:
         """
         Converts an un-embedded or OOV string into a sequence of byte tokens.
+        Uses ``surrogatepass`` so raw binary decoded with Python's
+        ``errors='surrogateescape'`` (common for POSIX file reads) maps its lone
+        surrogate chars to the exact original bytes instead of raising.
         """
-        raw_bytes = char_or_str.encode("utf-8")
+        raw_bytes = char_or_str.encode("utf-8", errors="surrogatepass")
         return [cls.byte_to_token(b) for b in raw_bytes]
 
     @classmethod
