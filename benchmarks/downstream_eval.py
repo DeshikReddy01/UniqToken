@@ -14,6 +14,7 @@ import argparse
 import math
 import sys
 import time
+import warnings
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -172,8 +173,8 @@ class DownstreamEvaluator:
             enc = tiktoken.get_encoding("cl100k_base")
             m = self.evaluate_tokenizer("tiktoken (cl100k_base)", enc.encode, enc.n_vocab)
             results.append(m)
-        except Exception:
-            pass
+        except Exception as exc:  # noqa: BLE001 - baseline opt-in
+            warnings.warn(f"tiktoken baseline unavailable ({exc}); skipping")
 
         try:
             from transformers import AutoTokenizer
@@ -185,8 +186,8 @@ class DownstreamEvaluator:
                 hf_tok.vocab_size,
             )
             results.append(m)
-        except Exception:
-            pass
+        except Exception as exc:  # noqa: BLE001 - baseline opt-in
+            warnings.warn(f"HuggingFace GPT-2 baseline unavailable ({exc}); skipping")
 
         return results
 

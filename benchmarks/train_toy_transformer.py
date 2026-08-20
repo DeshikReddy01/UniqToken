@@ -59,17 +59,31 @@ PRETRAINING_CORPUS = [
 
 
 class BPETokenizerAdapter:
-    def __init__(self, model: bpe_trainer.BPEModel):
+    def __init__(
+        self,
+        model: bpe_trainer.BPEModel,
+        normalizer: Any = None,
+        pre_tokenizer: Any = None,
+    ):
         self.model = model
+        self.normalizer = normalizer
+        self.pre_tokenizer = pre_tokenizer
 
     @property
     def vocab_size(self) -> int:
         return len(self.model.vocab)
 
     def encode_to_ids(self, text: str) -> List[int]:
-        tokens = self.model.encode(text)
+        if self.normalizer is None or self.pre_tokenizer is None:
+            chunks = [text]
+        else:
+            norm = self.normalizer.normalize(text)
+            chunks = self.pre_tokenizer.pre_tokenize(norm)
         unk_id = self.model.token_to_id.get("<|unk|>", 0)
-        return [self.model.token_to_id.get(t, unk_id) for t in tokens]
+        ids: List[int] = []
+        for chunk in chunks:
+            ids.extend(self.model.token_to_id.get(t, unk_id) for t in self.model.encode(chunk))
+        return ids
 
     def decode(self, token_ids: List[int]) -> str:
         return self.model.decode(token_ids)
@@ -102,13 +116,22 @@ def create_tokenizers(target_vocab: int = 500) -> Dict[str, Any]:
         model=sbp_model,
     )
 
-    # 3. Standard BPE
+    # 3. Standard BPE — trained and applied on the same pre-tokenized chunks
+    #    as the Caliper variants so the baseline is directly comparable.
+    bpe_chunks: List[str] = []
+    for doc in PRETRAINING_CORPUS:
+        norm = unigram_tok.normalizer.normalize(doc)
+        bpe_chunks.extend(unigram_tok.pre_tokenizer.pre_tokenize(norm))
     bpe_trainer_inst = bpe_trainer.BPETrainer(
         target_vocab_size=target_vocab,
         byte_fallback=True,
     )
-    bpe_model = bpe_trainer_inst.train(PRETRAINING_CORPUS, verbose=False)
-    tokenizers["Standard BPE"] = BPETokenizerAdapter(bpe_model)
+    bpe_model = bpe_trainer_inst.train(bpe_chunks, verbose=False)
+    tokenizers["Standard BPE"] = BPETokenizerAdapter(
+        bpe_model,
+        normalizer=unigram_tok.normalizer,
+        pre_tokenizer=unigram_tok.pre_tokenizer,
+    )
 
     return tokenizers
 
@@ -129,10 +152,25 @@ def train_toy_transformer(
     and measures cross-entropy loss and bits-per-byte (BPB).
     """
     # 1. Tokenize entire corpus
-    encoded_docs = [tok.encode_to_ids(doc) for doc in corpus]
-    flat_tokens: List[int] = []
-    for d in encoded_docs:
-        flat_tokens.extend(d)
+    # Held-out validation split (last 20%, at least one doc) so final_loss is
+    # measured on text the model never trained on, not on the training set.
+    val_size = max(1, len(corpus) // 5)
+    if len(corpus) > val_size:
+        train_docs = corpus[:-val_size]
+        val_docs = corpus[-val_size:]
+    else:
+        train_docs = list(corpus)
+        val_docs = list(corpus)
+
+    def _flatten_ids(docs: List[str]) -> List[int]:
+        flat: List[int] = []
+        for doc in docs:
+            flat.extend(tok.encode_to_ids(doc))
+        return flat
+
+    flat_tokens = _flatten_ids(corpus)
+    train_flat = _flatten_ids(train_docs)
+    val_flat = _flatten_ids(val_docs)
 
     total_tokens = len(flat_tokens)
     total_bytes = sum(len(doc.encode("utf-8")) for doc in corpus)
@@ -152,7 +190,7 @@ def train_toy_transformer(
 
     start_time = time.perf_counter()
 
-    if has_torch and total_tokens > seq_len:
+    if has_torch and len(train_flat) > seq_len:
         import torch
         import torch.nn as nn
 
@@ -188,12 +226,12 @@ def train_toy_transformer(
         optimizer = torch.optim.AdamW(model.parameters(), lr=3e-3, weight_decay=1e-2)
         loss_fn = nn.CrossEntropyLoss()
 
-        data_tensor = torch.tensor(flat_tokens, dtype=torch.long)
-        max_idx = len(flat_tokens) - seq_len - 1
+        data_tensor = torch.tensor(train_flat, dtype=torch.long)
+        max_idx = len(train_flat) - seq_len - 1
 
         torch.manual_seed(42)
 
-        final_loss = 0.0
+        last_train_loss = 0.0
         model.train()
         for step in range(steps):
             optimizer.zero_grad()
@@ -213,14 +251,35 @@ def train_toy_transformer(
             loss = loss_fn(logits.view(-1, vocab_size), targets.view(-1))
             loss.backward()
             optimizer.step()
-            final_loss = float(loss.item())
+            last_train_loss = float(loss.item())
+
+        # Evaluate on held-out validation windows
+        model.eval()
+        final_loss = last_train_loss
+        if len(val_flat) >= seq_len + 1:
+            val_tensor = torch.tensor(val_flat, dtype=torch.long)
+            val_max = len(val_flat) - seq_len - 1
+            vlosses: List[float] = []
+            with torch.no_grad():
+                for vi in range(0, val_max + 1, max(1, val_max // 8)):
+                    chunk = val_tensor[vi : vi + seq_len + 1]
+                    vlogits = model(chunk[:-1].unsqueeze(0))
+                    vloss = loss_fn(vlogits.view(-1, vocab_size), chunk[1:].unsqueeze(0).view(-1))
+                    vlosses.append(float(vloss.item()))
+            if vlosses:
+                final_loss = sum(vlosses) / len(vlosses)
     else:
         # Probabilistic N-Gram / Bigram smoothing baseline for fallback
+        # Entropy is estimated on held-out validation tokens when available.
+        eval_tokens = val_flat if val_flat else train_flat
         unigram_counts: Dict[int, int] = {}
-        for t in flat_tokens:
+        for t in eval_tokens:
             unigram_counts[t] = unigram_counts.get(t, 0) + 1
-        tot_cnt = float(total_tokens)
-        entropy = -sum((c / tot_cnt) * math.log(c / tot_cnt) for c in unigram_counts.values())
+        tot_cnt = float(len(eval_tokens))
+        if tot_cnt > 0:
+            entropy = -sum((c / tot_cnt) * math.log(c / tot_cnt) for c in unigram_counts.values())
+        else:
+            entropy = 0.0
         final_loss = entropy
 
     elapsed = max(time.perf_counter() - start_time, 1e-6)
