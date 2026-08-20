@@ -264,6 +264,12 @@ caliper/
 ├── byte_codec.py              # ByteFallbackEngine — UTF-8 ↔ <0xHH> codec
 ├── trie.py                    # PrefixTrie — slots-optimized O(L) prefix matching
 │
+├── caliper_core/              # Native Rust acceleration crate (PyO3 C-extension)
+│   ├── Cargo.toml             # Rust package manifest (pyo3, rayon, ahash)
+│   ├── src/trie.rs            # Native Double-Array / PrefixTrie matching
+│   ├── src/viterbi.rs         # Native dynamic programming Viterbi & EM expectations
+│   └── src/lib.rs             # PyO3 module interface
+│
 ├── seed_builder.py            # SeedVocabularyBuilder — PMI + script balancing + entropy
 ├── unigram_lattice.py         # UnigramLattice — DAG, beam pruning, EM stats, FFBS
 ├── unigram_trainer.py         # UnigramTrainer — EM early-stopping + Viterbi memoization
@@ -289,12 +295,14 @@ caliper/
 │
 ├── benchmarks/
 │   ├── benchmark_suite.py     # TokenizerBenchmarkSuite — 7-axis empirical evaluation
-│   └── downstream_eval.py     # DownstreamEvaluator — context efficiency & bits/byte
+│   ├── downstream_eval.py     # DownstreamEvaluator — context efficiency & bits/byte
+│   └── train_toy_transformer.py # Downstream LLM pretraining & BPB validation
 │
 ├── test_tokenizer.py          # 73 unit tests across 19 test classes
 ├── test_adversarial_stress.py # 6 pathological input & 100K-char stress tests
 ├── test_cli.py                # 4 CLI integration & roundtrip tests
-├── test_fuzz_properties.py    # 7 property-based fuzz tests (83 tests total)
+├── test_downstream_model.py   # 2 Downstream transformer pretraining & BPB tests
+├── test_fuzz_properties.py    # 7 property-based fuzz tests (85 tests total)
 ├── pyproject.toml             # Package config, CLI console_scripts, extras
 └── .github/workflows/ci.yml  # CI: 3 OS × 4 Python versions = 12-cell matrix
 ```
@@ -318,6 +326,8 @@ graph TD
     UT --> TR["trie.py<br/>PrefixTrie"]
     UL --> BC
     UL --> TR
+    TR -.-> RC["caliper_core<br/>Rust Native Extension"]
+    UL -.-> RC
 
     CEM["cem_merger.py<br/>CrossEntropyMerging"] --> UT
     VA["vocab_adapter.py<br/>VocabularyAdapter"] --> UT
@@ -369,8 +379,9 @@ The `allowed_special` parameter accepts `"all"`, `"none"`, or a specific `set` o
 | `test_tokenizer.py` | 73 | 19 test classes covering normalization, byte-fallback, encoding/decoding, lattice construction, training validation, batch collation, multimodal, trie, BPE, fast-path parity, HuggingFace export, security shield, indentation compression, streaming decode, audio codecs, neural codecs, CEM, SuperBPE, PMI ranking, and parallel batching |
 | `test_adversarial_stress.py` | 6 | Pathological inputs: 100K-char repetitions, nested delimiter injections, Indic ZWJ/ZWNJ ligatures, raw binary streams, memoization cache invariance |
 | `test_cli.py` | 4 | Complete CLI train/encode/decode roundtrip, metrics reporting, SuperBPE training, downstream eval |
+| `test_downstream_model.py` | 2 | End-to-end downstream mini-transformer pretraining and Bits-Per-Byte (BPB) convergence validation |
 | `test_fuzz_properties.py` | 7 | Property-based fuzzing: roundtrip integrity, offset validity, Unicode resilience, determinism |
-| **Total** | **83** | **Zero failures, zero warnings** |
+| **Total** | **85** | **Zero failures, zero warnings** |
 
 ### CI Pipeline
 

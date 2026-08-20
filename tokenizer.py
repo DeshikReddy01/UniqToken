@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional, Sequence, Set, Tuple, Union
 
+from bpe_model import BPEModel
 from indentation_compressor import IndentationCompressor
 from pre_tokenizer import Normalizer, RegexPreTokenizer
 from security_shield import SecurityShield

@@ -103,6 +103,7 @@ exclude = [
     ".mypy_cache",
     ".ruff_cache",
     "caliper_tokenizer.egg-info",
+    "caliper_core",
 ]
 
 [tool.ruff.lint]

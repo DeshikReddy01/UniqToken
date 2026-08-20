@@ -1,0 +1,23 @@
+[package]
+name = "caliper-core"
+version = "1.0.0"
+edition = "2021"
+authors = ["Caliper Authors"]
+description = "High-performance native Rust core acceleration engine for Caliper Tokenizer"
+license = "MIT"
+
+[lib]
+name = "caliper_core"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+pyo3 = { version = "0.21", features = ["extension-module", "abi3-py39"] }
+rayon = "1.10"
+parking_lot = "0.12"
+ahash = "0.8"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
