@@ -88,6 +88,8 @@ class SecurityShield:
                 escaped = f"<\\|{token[2:-2]}\\|>"
                 output.append(escaped)
                 alignment.extend([(match.start(), match.end())] * len(escaped))
+            elif disallowed_special_action == "ignore":
+                pass  # delete token; alignment already excludes it
             cursor = match.end()
 
         append_literal(cursor, len(text))

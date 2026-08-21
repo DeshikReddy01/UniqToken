@@ -81,19 +81,19 @@ class MultimodalTokenizer:
 
         # Unified ID space: text -> multimodal specials -> visual tokens -> audio tokens
         self._token_to_id: Dict[str, int] = dict(text_tokenizer.model.token_to_id)
-        next_id = max(self._token_to_id.values(), default=-1) + 1
+        self._next_id = max(self._token_to_id.values(), default=-1) + 1
         for tok in self.multimodal_specials:
             if tok not in self._token_to_id:
-                self._token_to_id[tok] = next_id
-                next_id += 1
+                self._token_to_id[tok] = self._next_id
+                self._next_id += 1
         for tok in self.visual_tokens:
             if tok not in self._token_to_id:
-                self._token_to_id[tok] = next_id
-                next_id += 1
+                self._token_to_id[tok] = self._next_id
+                self._next_id += 1
         for tok in self.audio_tokens:
             if tok not in self._token_to_id:
-                self._token_to_id[tok] = next_id
-                next_id += 1
+                self._token_to_id[tok] = self._next_id
+                self._next_id += 1
 
     def freeze(self) -> None:
         """Freezes the vocabulary, preventing dynamic token registration during training or inference."""
@@ -110,8 +110,9 @@ class MultimodalTokenizer:
         if tid is None:
             if self._frozen:
                 raise KeyError(f"Cannot register new token '{token}' on a frozen MultimodalTokenizer vocabulary.")
-            tid = max(self._token_to_id.values(), default=-1) + 1
+            tid = self._next_id
             self._token_to_id[token] = tid
+            self._next_id += 1
         return tid
 
     def encode_image(
@@ -376,6 +377,7 @@ class MultimodalTokenizer:
 
         # Restore token mappings
         mm_tok._token_to_id = {str(token): int(token_id) for token, token_id in mm_config["token_to_id"].items()}
+        mm_tok._next_id = max(mm_tok._token_to_id.values(), default=-1) + 1
         mm_tok._frozen = bool(mm_config.get("frozen", False))
 
         return mm_tok

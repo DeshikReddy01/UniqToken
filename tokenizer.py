@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import List, Optional, Sequence, Set, Tuple, Union
 
 from bpe_model import BPEModel
+from byte_codec import ByteFallbackEngine
 from indentation_compressor import IndentationCompressor
 from pre_tokenizer import Normalizer, RegexPreTokenizer
 from security_shield import SecurityShield
@@ -330,6 +331,7 @@ class CustomTokenizer:
         num_workers: Optional[int] = None,
     ) -> List[List[str]]:
         """Encodes a sequence of texts, parallelizing across workers when batch is large."""
+        # ponytail: ThreadPool for encode_batch (GIL-bound lattice); ProcessPool if CPU-bound and profiling shows gain
         if not texts:
             return []
         if num_workers is not None and num_workers < 1:
@@ -507,7 +509,7 @@ class CustomTokenizer:
         num_bytes = len(raw_bytes)
         num_chars = len(text)
 
-        byte_fallback_tokens = sum(1 for t in tokens if t.startswith("<0x") and t.endswith(">") and len(t) == 6)
+        byte_fallback_tokens = sum(1 for t in tokens if ByteFallbackEngine.is_byte_token(t))
         byte_fallback_rate = (byte_fallback_tokens / num_tokens) if num_tokens > 0 else 0.0
         compression_ratio = (num_bytes / num_tokens) if num_tokens > 0 else 0.0
         avg_token_len = (sum(len(t) for t in tokens) / num_tokens) if num_tokens > 0 else 0.0

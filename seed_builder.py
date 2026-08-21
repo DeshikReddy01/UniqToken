@@ -342,6 +342,7 @@ class SeedVocabularyBuilder:
         )
 
         # 4. Fill Seed Capacity (with adaptive scaling if enabled)
+        # ponytail: adaptive 1.5-4.5x heuristic; tune if vocab starvation observed
         if self.adaptive_multiplier:
             num_chunks = len(chunk_counts)
             scale = min(4.5, max(1.5, 1.0 + math.log10(max(num_chunks, 10))))

@@ -52,6 +52,7 @@ class BPEModel:
         if len(symbols) <= 1:
             return symbols
 
+        # ponytail: greedy O(n^2) merges; heap if latency matters (vocab>5k or seq>1k)
         while len(symbols) > 1:
             pairs = self._get_pairs(symbols)
             # Find the pair with the lowest merge rank

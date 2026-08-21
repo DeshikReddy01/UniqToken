@@ -137,6 +137,7 @@ class UnigramLattice:
                 self.end_nodes[i + 1].append(edge)
 
         # Beam Pruning: Cap incoming edges per node if max_edges_per_node is specified
+        # ponytail: O(n*k) pruning (scan i<j per node); per-node filter with single pass if n>10k
         if self.max_edges_per_node is not None:
             k = self.max_edges_per_node
             for j in range(1, self.length + 1):

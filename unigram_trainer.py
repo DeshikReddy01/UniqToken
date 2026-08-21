@@ -29,6 +29,7 @@ class UnigramModel:
         return len(self.vocab)
 
     def _cache_signature(self) -> Tuple[int, int]:
+        # ponytail: assumes vocab dict replaced not mutated in-place; add version counter if external mutation needed
         return (id(self.vocab), len(self.vocab))
 
     def _sync_cache(self) -> None:
