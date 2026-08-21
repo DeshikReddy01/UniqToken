@@ -93,6 +93,10 @@ if HAS_TORCH:
             num_tokens: int = 512,
             beta_commit: float = 0.25,
         ):
+            if num_tokens < 1:
+                raise ValueError(f"num_tokens must be >= 1, got {num_tokens}")
+            if latent_dim < 1 or hidden_dim < 1 or in_channels < 1:
+                raise ValueError("in_channels, hidden_dim, latent_dim must be >= 1")
             super().__init__()
             self.encoder = VisualEncoder(in_channels, hidden_dim, latent_dim)
             self.decoder = VisualDecoder(in_channels, hidden_dim, latent_dim)
@@ -293,6 +297,12 @@ if HAS_TORCH:
             num_quantizers: int = 4,
             codebook_size: int = 256,
         ):
+            if num_quantizers < 1:
+                raise ValueError(f"num_quantizers must be >= 1, got {num_quantizers}")
+            if codebook_size < 1:
+                raise ValueError(f"codebook_size must be >= 1, got {codebook_size}")
+            if latent_dim < 1 or hidden_dim < 1 or in_channels < 1:
+                raise ValueError("in_channels, hidden_dim, latent_dim must be >= 1")
             super().__init__()
             self.encoder = AudioEncoder(in_channels, hidden_dim, latent_dim)
             self.decoder = AudioDecoder(in_channels, hidden_dim, latent_dim)
