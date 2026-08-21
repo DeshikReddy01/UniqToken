@@ -212,7 +212,7 @@ class RegexPreTokenizer:
             r"(?:\u200D(?:[\U0001F300-\U0001FAFF]|[\u2600-\u26FF]|[\u2700-\u27BF])(?:[\uFE0E\uFE0F])?(?:[\U0001F3FB-\U0001F3FF])?)*"
         )
 
-        cjk = r"[\u4e00-\u9fff\u3400-\u4dbf\u3040-\u30ff\uac00-\ud7af]"
+        cjk = r"[\u4e00-\u9fff\u3400-\u4dbf\u3040-\u30ff\uac00-\ud7af]+"
 
         word = rf"[^\W\d_\s{escaped_space}]+(?:['’][^\W\d_\s{escaped_space}]+)*"
 

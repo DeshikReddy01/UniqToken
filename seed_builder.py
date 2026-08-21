@@ -137,17 +137,23 @@ class SeedVocabularyBuilder:
         """Categorizes a token into a script family based on Unicode codepoints."""
         for ch in token:
             cp = ord(ch)
+            # Skip metaspace, space markers, and private use prefixes
+            if cp in {0x2581, 0x0020, 0x0009, 0x000A, 0x000D} or (0xE000 <= cp <= 0xF8FF):
+                continue
             if (0x0041 <= cp <= 0x005A) or (0x0061 <= cp <= 0x007A) or (0x00C0 <= cp <= 0x024F):
                 return "latin"
             elif 0x0900 <= cp <= 0x0D7F:
                 return "indic"
-            elif (0x4E00 <= cp <= 0x9FFF) or (0x3040 <= cp <= 0x30FF) or (0xAC00 <= cp <= 0xD7AF):
+            elif (0x4E00 <= cp <= 0x9FFF) or (0x3400 <= cp <= 0x4DBF) or (0x3040 <= cp <= 0x30FF) or (0xAC00 <= cp <= 0xD7AF):
                 return "cjk"
             elif (0x0600 <= cp <= 0x06FF) or (0x0750 <= cp <= 0x077F):
                 return "arabic"
-            elif 0x0400 <= cp <= 0x04FF:
+            elif (0x0400 <= cp <= 0x04FF) or (0x0500 <= cp <= 0x052F):
                 return "cyrillic"
+            elif 0x0E00 <= cp <= 0x0E7F:
+                return "thai"
         return "symbol"
+
 
     def mine_ngrams(self, chunk_counts: Counter[str]) -> Counter[str]:
         counts, _ = self.mine_ngrams_with_entropy(chunk_counts)

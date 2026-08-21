@@ -176,13 +176,13 @@ def run_single_seed_eval(
         corpus=train_docs,
         target_vocab_size=target_vocab,
         ranking_strategy="byte_savings",
-        script_balance_temperature=0.7,
+        script_balance_temperature=0.9,
         min_frequency=1,
         verbose=False,
     )
 
     # 2. Caliper (SuperBPE) — Script-Balanced Byte-Savings
-    sbp_merges = min(target_vocab // 20, 80)
+    sbp_merges = min(target_vocab // 10, 200)
     base_target = max(target_vocab - sbp_merges, 800)
     actual_merges = target_vocab - base_target
 
@@ -190,7 +190,7 @@ def run_single_seed_eval(
         corpus=train_docs,
         target_vocab_size=base_target,
         ranking_strategy="byte_savings",
-        script_balance_temperature=0.7,
+        script_balance_temperature=0.9,
         min_frequency=1,
         verbose=False,
     )
