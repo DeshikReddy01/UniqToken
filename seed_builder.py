@@ -155,6 +155,16 @@ class SeedVocabularyBuilder:
         return "symbol"
 
 
+    @staticmethod
+    def _get_max_ngram_for_chunk(chunk: str, default_max: int) -> int:
+        """Determines script-appropriate maximum n-gram mining length."""
+        script = SeedVocabularyBuilder._detect_script(chunk)
+        if script == "cjk":
+            return min(default_max, 4)
+        elif script in {"indic", "thai"}:
+            return min(default_max, 8)
+        return default_max
+
     def mine_ngrams(self, chunk_counts: Counter[str]) -> Counter[str]:
         counts, _ = self.mine_ngrams_with_entropy(chunk_counts)
         return counts
@@ -163,13 +173,14 @@ class SeedVocabularyBuilder:
         ngram_counts: Counter[str] = Counter()
         left_ctx: Dict[str, Counter[str]] = {}
         right_ctx: Dict[str, Counter[str]] = {}
-        max_len = self.max_ngram_length
+        default_max = self.max_ngram_length
 
         for chunk, chunk_freq in chunk_counts.items():
             if chunk in self.special_tokens or (chunk.startswith("<|") and chunk.endswith("|>")):
                 continue
 
             chunk_len = len(chunk)
+            max_len = self._get_max_ngram_for_chunk(chunk, default_max)
             for start in range(chunk_len):
                 end_limit = min(chunk_len + 1, start + max_len + 1)
                 l_char = chunk[start - 1] if start > 0 else "^"
@@ -226,8 +237,9 @@ class SeedVocabularyBuilder:
         total_unigrams: Optional[int] = None,
     ) -> List[str]:
         """
-        Deterministic Candidate Ranking with optional script balancing:
+        Deterministic Candidate Ranking with optional script balancing and length regularization:
         - "char_savings": (len(t) - 1) * freq
+        - "byte_savings": freq * ln(1 + byte_len) (marginal subword compression with memorization penalty)
         - "frequency": raw freq
         - "pmi": Pointwise Mutual Information cohesion scaled by savings
         """
@@ -272,11 +284,16 @@ class SeedVocabularyBuilder:
             is_byte = self.ranking_strategy == "byte_savings"
 
             def savings_score(t: str) -> float:
-                token_len = len(t.encode("utf-8")) if is_byte else len(t)
-                base = (token_len - 1) * candidate_counts[t]
+                if is_byte:
+                    byte_len = len(t.encode("utf-8"))
+                    # Sub-linear marginal compression gain to prevent memorization runaway
+                    base = float(candidate_counts[t]) * math.log(1.0 + byte_len)
+                else:
+                    base = float((len(t) - 1) * candidate_counts[t])
+
                 if self.script_balance_temperature is not None:
                     return base * script_weights.get(self._detect_script(t), 1.0)
-                return float(base)
+                return base
 
             return sorted(
                 candidate_counts.keys(),
@@ -304,7 +321,7 @@ class SeedVocabularyBuilder:
         self, pre_tokenized_chunks: Iterable[str], enforce_target_floor: bool = True
     ) -> List[SeedToken]:
         """
-        Assembles the complete Seed Vocabulary pool.
+        Assembles the complete Seed Vocabulary pool with script-stratified quota allocation.
         """
         chunk_counts: Counter[str] = Counter(pre_tokenized_chunks)
         seen_tokens: Set[str] = set()
@@ -349,8 +366,7 @@ class SeedVocabularyBuilder:
             total_unigrams=total_unigrams,
         )
 
-        # 4. Fill Seed Capacity (with adaptive scaling if enabled)
-        # ponytail: adaptive 1.5-4.5x heuristic; tune if vocab starvation observed
+        # 4. Fill Seed Capacity with Script-Stratified Quotas
         if self.adaptive_multiplier:
             num_chunks = len(chunk_counts)
             scale = min(4.5, max(1.5, 1.0 + math.log10(max(num_chunks, 10))))
@@ -359,10 +375,31 @@ class SeedVocabularyBuilder:
             effective_seed_size = self.seed_vocab_size
 
         candidate_budget = max(0, effective_seed_size - len(seed_vocab))
-        for token in ranked_candidates[:candidate_budget]:
-            if token in seen_tokens:
-                continue
 
+        # Bucket candidates by script family
+        script_buckets: Dict[str, List[str]] = {}
+        for token in ranked_candidates:
+            if token not in seen_tokens:
+                s = self._detect_script(token)
+                if s not in script_buckets:
+                    script_buckets[s] = []
+                script_buckets[s].append(token)
+
+        # Interleave candidates across active scripts (round-robin stratified quotas)
+        selected_candidates: List[str] = []
+        if script_buckets:
+            active_scripts = list(script_buckets.keys())
+            idx = 0
+            while len(selected_candidates) < candidate_budget and any(script_buckets.values()):
+                s = active_scripts[idx % len(active_scripts)]
+                if script_buckets[s]:
+                    tok = script_buckets[s].pop(0)
+                    selected_candidates.append(tok)
+                idx += 1
+                if all(len(b) == 0 for b in script_buckets.values()):
+                    break
+
+        for token in selected_candidates:
             seed_vocab.append(
                 SeedToken(
                     token=token,
@@ -373,6 +410,8 @@ class SeedVocabularyBuilder:
                 )
             )
             seen_tokens.add(token)
+            if len(seed_vocab) >= effective_seed_size:
+                break
 
         return seed_vocab
 
