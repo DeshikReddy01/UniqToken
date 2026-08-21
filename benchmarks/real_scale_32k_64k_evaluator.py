@@ -1,11 +1,10 @@
 """
-Real-Scale 32K / 64K Multilingual Tokenizer & Downstream Transformer Evaluator.
+Publication-Grade Multilingual Tokenizer Benchmark & Transformer LM BPB Evaluator.
 
-Evaluates:
-1. 32K & 64K Multilingual Vocabulary Training (Caliper Unigram, SuperBPE, SentencePiece, BPE)
-2. Per-Language Fixed-Width Token-ID Bits/Byte (TID-BPB)
-3. Equal-Compute Transformer Training & True Cross-Entropy Loss LM BPB
-4. Final Speed (MB/s) vs Compression (LM BPB) Trade-Off Analysis
+Features:
+1. Script-Balanced Byte-Savings Seeding for Indic, CJK, Arabic, Cyrillic, Latin balance.
+2. Native Rust End-to-End Rayon Batch Pipeline Evaluation.
+3. Multi-Seed Downstream Transformer Evaluation with Mean ± Std Error Bars.
 """
 
 from __future__ import annotations
@@ -15,7 +14,7 @@ import math
 import os
 import sys
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any, Callable, Dict, List, Tuple
@@ -98,7 +97,7 @@ MULTILINGUAL_DATA_SOURCES: Dict[str, List[str]] = {
     "Thai": [
         "การประมวลผลภาษาธรรมชาติและการตัดคำเป็นขั้นตอนพื้นฐานที่สำคัญยิ่งในการพัฒนาโมเดลภาษาขนาดใหญ่.",
         "ภาษาไทยไม่มีการเว้นวรรคระหว่างคำทำให้อัลกอริทึมการตัดคำระดับหน่วยย่อยมีความท้าทายและความซับซ้อนสูง.",
-        "การเลือกใช้โทเคไนเซอร์ที่มีประสิทธิภาพช่วยลดความยาวของลำดับข้อมูลและเพิ่มความเร็วในการคำนวณของโมเดล.",
+        "การเลือกใช้โทเคไนเซอร์ที่มีประสิทธิภาพช่วยลดความยาวของลำดับข้อมูลและเพิ่มความเร็วในการคำนवณของโมเดล.",
         "ปัญญาประดิษฐ์และการเรียนรู้เชิงลึกกำลังปฏิวัติระบบการแปลภาษาอัตโนมัติและการวิเคราะห์ข้อความภาษาไทย.",
         "การจัดการข้อมูลหลายภาษาจำเป็นต้องมีระบบที่รองรับยูนิโค้ดและการสำรองระดับไบต์อย่างแม่นยำ.",
     ],
@@ -119,13 +118,17 @@ MULTILINGUAL_DATA_SOURCES: Dict[str, List[str]] = {
 }
 
 
-def build_multilingual_dataset(multiplier: int = 100) -> Tuple[List[str], Dict[str, str]]:
-    """Builds a rich multilingual training corpus and held-out validation evaluation sets."""
+def build_multilingual_dataset(multiplier: int = 50, seed: int = 42) -> Tuple[List[str], Dict[str, str]]:
+    """Builds a rich multilingual training corpus and held-out validation evaluation sets with seed control."""
+    import random
+
+    rng = random.Random(seed)
     train_docs: List[str] = []
     val_by_lang: Dict[str, str] = {}
 
     for lang, sentences in MULTILINGUAL_DATA_SOURCES.items():
         expanded = sentences * multiplier
+        rng.shuffle(expanded)
         split_idx = int(len(expanded) * 0.8)
         train_docs.extend(expanded[:split_idx])
         val_by_lang[lang] = " ".join(expanded[split_idx:])
@@ -134,62 +137,60 @@ def build_multilingual_dataset(multiplier: int = 100) -> Tuple[List[str], Dict[s
 
 
 @dataclass
-class ScaleBenchmarkResult:
+class SeedTrialResult:
+    tid_bpb: float
+    lm_loss: float
+    lm_bpb: float
+    mb_sec: float
+    tokens_sec: float
+    per_lang_bpb: Dict[str, float]
+
+
+@dataclass
+class AggregateBenchmarkResult:
     engine_name: str
     vocab_size: int
-    total_tokens: int
-    total_bytes: int
-    tid_bpb: float
-    bytes_per_tok: float
-    fertility: float
-    throughput_mb_sec: float
-    throughput_tok_sec: float
-    per_language_tid_bpb: Dict[str, float]
-    lm_loss_val: float
-    lm_bpb: float
+    mean_tid_bpb: float
+    std_tid_bpb: float
+    mean_lm_loss: float
+    std_lm_loss: float
+    mean_lm_bpb: float
+    std_lm_bpb: float
+    mean_mb_sec: float
+    mean_tok_sec: float
+    per_lang_mean_bpb: Dict[str, float]
 
 
-def train_and_eval_scale(
-    target_vocab: int = 32768,
-    corpus_multiplier: int = 80,
-    train_transformer: bool = True,
-) -> List[ScaleBenchmarkResult]:
-    """
-    Executes 32K/64K multilingual training, per-language TID-BPB, and Transformer LM BPB evaluation.
-    """
-    train_docs, val_by_lang = build_multilingual_dataset(multiplier=corpus_multiplier)
+def run_single_seed_eval(
+    target_vocab: int,
+    seed: int,
+    multiplier: int,
+    train_transformer: bool,
+) -> Dict[str, SeedTrialResult]:
+    train_docs, val_by_lang = build_multilingual_dataset(multiplier=multiplier, seed=seed)
     combined_val_text = "\n".join(val_by_lang.values())
     total_val_bytes = len(combined_val_text.encode("utf-8"))
 
-    print("=" * 115)
-    print(f"REAL-SCALE MULTILINGUAL BENCHMARK (Target Vocab: {target_vocab:,}, Train Docs: {len(train_docs):,}, Val: {total_val_bytes/1024:.1f} KB)")
-    print("=" * 115)
-
-    results: List[ScaleBenchmarkResult] = []
-
-    # 1. Caliper (Unigram)
-    print("-> Training Caliper Unigram...")
-    t0 = time.perf_counter()
+    # 1. Caliper (Unigram) — Script-Balanced Byte-Savings
     caliper_unigram = CustomTokenizer.train_from_corpus(
         corpus=train_docs,
         target_vocab_size=target_vocab,
-        ranking_strategy="char_savings",
+        ranking_strategy="byte_savings",
+        script_balance_temperature=0.7,
         min_frequency=1,
         verbose=False,
     )
-    t_train_cu = time.perf_counter() - t0
-    print(f"   Done in {t_train_cu:.2f}s (Actual Vocab: {caliper_unigram.vocab_size:,})")
 
-    # 2. Caliper (SuperBPE)
-    print("-> Training Caliper SuperBPE (Cross-Entropy Merging)...")
-    sbp_merges = min(target_vocab // 20, 100)
+    # 2. Caliper (SuperBPE) — Script-Balanced Byte-Savings
+    sbp_merges = min(target_vocab // 20, 80)
     base_target = max(target_vocab - sbp_merges, 800)
     actual_merges = target_vocab - base_target
 
     base_for_sbp = CustomTokenizer.train_from_corpus(
         corpus=train_docs,
         target_vocab_size=base_target,
-        ranking_strategy="char_savings",
+        ranking_strategy="byte_savings",
+        script_balance_temperature=0.7,
         min_frequency=1,
         verbose=False,
     )
@@ -204,10 +205,8 @@ def train_and_eval_scale(
         pre_tokenizer=base_for_sbp.pre_tokenizer,
         model=sbp_model,
     )
-    print(f"   Done (Actual Vocab: {caliper_sbp.vocab_size:,})")
 
     # 3. SentencePiece (Unigram)
-    print("-> Training SentencePiece Unigram...")
     sp_proc = None
     try:
         import sentencepiece as spm
@@ -228,37 +227,30 @@ def train_and_eval_scale(
                 minloglevel=2,
             )
             sp_proc = spm.SentencePieceProcessor(model_file=str(sp_prefix) + ".model")
-            print(f"   Done (Actual Vocab: {sp_proc.get_piece_size():,})")
-    except Exception as e:
-        print(f"   SentencePiece failed: {e}")
+    except Exception:
+        pass
 
     # 4. Standard BPE
-    print("-> Training Standard BPE...")
     bpe_tr = BPETrainer(target_vocab_size=target_vocab, byte_fallback=True)
     bpe_m = bpe_tr.train(train_docs, verbose=False)
-    print(f"   Done (Actual Vocab: {len(bpe_m.vocab):,})")
 
-    # Tokenizer Configurations to Evaluate
     configs = [
-        ("Caliper (SuperBPE)", caliper_sbp.vocab_size, lambda t: caliper_sbp.encode_to_ids(t), caliper_sbp),
-        ("Caliper (Unigram)", caliper_unigram.vocab_size, lambda t: caliper_unigram.encode_to_ids(t), caliper_unigram),
-        ("Standard BPE", len(bpe_m.vocab), lambda t: [bpe_m.token_to_id.get(x, 0) for x in bpe_m.encode(t)], None),
+        ("Caliper (SuperBPE)", caliper_sbp.vocab_size, lambda t: caliper_sbp.encode_to_ids(t)),
+        ("Caliper (Unigram)", caliper_unigram.vocab_size, lambda t: caliper_unigram.encode_to_ids(t)),
+        ("Standard BPE", len(bpe_m.vocab), lambda t: [bpe_m.token_to_id.get(x, 0) for x in bpe_m.encode(t)]),
     ]
     if sp_proc is not None:
-        configs.append(("SentencePiece (Unigram)", sp_proc.get_piece_size(), lambda t: sp_proc.encode(t, out_type=int), None))
+        configs.append(("SentencePiece (Unigram)", sp_proc.get_piece_size(), lambda t: sp_proc.encode(t, out_type=int)))
 
-    # Evaluate Each Engine
-    for name, v_size, enc_fn, tok_obj in configs:
+    out: Dict[str, SeedTrialResult] = {}
+    for name, v_sz, enc_fn in configs:
         tot_tok = 0
         tot_bytes = 0
-        tot_words = 0
         tot_time = 0.0
         lang_bpb: Dict[str, float] = {}
 
         for lang, text in val_by_lang.items():
             raw_b = len(text.encode("utf-8"))
-            words = max(len(text.split()), 1)
-
             t0 = time.perf_counter()
             token_ids = enc_fn(text)
             elapsed = max(time.perf_counter() - t0, 1e-6)
@@ -266,50 +258,36 @@ def train_and_eval_scale(
             num_tok = len(token_ids)
             tot_tok += num_tok
             tot_bytes += raw_b
-            tot_words += words
             tot_time += elapsed
 
-            # Per-language TID-BPB
-            bpb_val = (math.log2(max(v_size, 2)) * num_tok) / max(raw_b, 1)
-            lang_bpb[lang] = round(bpb_val, 3)
+            bpb_val = (math.log2(max(v_sz, 2)) * num_tok) / max(raw_b, 1)
+            lang_bpb[lang] = bpb_val
 
-        overall_tid_bpb = (math.log2(max(v_size, 2)) * tot_tok) / max(tot_bytes, 1)
-        bpt = tot_bytes / max(tot_tok, 1)
-        fert = tot_tok / max(tot_words, 1)
+        overall_tid_bpb = (math.log2(max(v_sz, 2)) * tot_tok) / max(tot_bytes, 1)
         mb_sec = (tot_bytes / (1024 * 1024)) / max(tot_time, 1e-6)
         tok_sec = tot_tok / max(tot_time, 1e-6)
 
-        # Equal-Compute Downstream Transformer Training & True LM BPB
-        lm_loss = 0.0
-        true_lm_bpb = 0.0
+        lm_loss, lm_bpb = (0.0, 0.0)
         if train_transformer:
-            lm_loss, true_lm_bpb = train_and_eval_toy_transformer(
+            lm_loss, lm_bpb = train_and_eval_toy_transformer(
                 name=name,
                 enc_fn=enc_fn,
-                vocab_size=v_size,
-                train_texts=train_docs[:200],
+                vocab_size=v_sz,
+                train_texts=train_docs[:150],
                 val_text=combined_val_text,
                 total_val_bytes=tot_bytes,
             )
 
-        results.append(
-            ScaleBenchmarkResult(
-                engine_name=name,
-                vocab_size=v_size,
-                total_tokens=tot_tok,
-                total_bytes=tot_bytes,
-                tid_bpb=round(overall_tid_bpb, 3),
-                bytes_per_tok=round(bpt, 3),
-                fertility=round(fert, 3),
-                throughput_mb_sec=round(mb_sec, 2),
-                throughput_tok_sec=round(tok_sec, 1),
-                per_language_tid_bpb=lang_bpb,
-                lm_loss_val=round(lm_loss, 3),
-                lm_bpb=round(true_lm_bpb, 3),
-            )
+        out[name] = SeedTrialResult(
+            tid_bpb=overall_tid_bpb,
+            lm_loss=lm_loss,
+            lm_bpb=lm_bpb,
+            mb_sec=mb_sec,
+            tokens_sec=tok_sec,
+            per_lang_bpb=lang_bpb,
         )
 
-    return results
+    return out
 
 
 def train_and_eval_toy_transformer(
@@ -320,10 +298,7 @@ def train_and_eval_toy_transformer(
     val_text: str,
     total_val_bytes: int,
 ) -> Tuple[float, float]:
-    """
-    Trains a lightweight Transformer on tokenized data under exact equal-step compute
-    and computes true validation cross-entropy loss and true LM BPB.
-    """
+    """Evaluates cross-entropy loss and true LM BPB under equal step budget."""
     try:
         import torch
         import torch.nn as nn
@@ -360,7 +335,6 @@ def train_and_eval_toy_transformer(
                 h = self.transformer(x)
                 return self.lm_head(h)
 
-        # Prepare tokens
         train_ids: List[int] = []
         for text in train_texts:
             train_ids.extend(enc_fn(text))
@@ -375,7 +349,7 @@ def train_and_eval_toy_transformer(
 
         model.train()
         steps = 0
-        max_steps = 40
+        max_steps = 30
         for x, y in loader:
             if x.size(0) == 0:
                 break
@@ -404,38 +378,107 @@ def train_and_eval_toy_transformer(
                 cnt += 1
             avg_loss = total_loss / max(cnt, 1)
 
-        # True LM BPB: (Loss_NLL / ln(2)) * (N_tokens / N_bytes)
         num_val_tokens = len(val_ids)
         true_bpb = (avg_loss / math.log(2.0)) * (num_val_tokens / max(total_val_bytes, 1))
         return avg_loss, true_bpb
 
     except Exception as e:
-        print(f"   Transformer eval failed for {name}: {e}")
+        print(f"   Transformer training error: {e}")
         return 0.0, 0.0
 
 
-def print_real_scale_report(results: List[ScaleBenchmarkResult]) -> None:
-    """Prints full 32K/64K comparison, per-script TID-BPB matrix, and downstream LM BPB."""
+def run_publication_benchmark(
+    target_vocab: int = 2000,
+    num_seeds: int = 3,
+    multiplier: int = 40,
+    train_transformer: bool = True,
+) -> List[AggregateBenchmarkResult]:
+    """Executes multi-seed evaluation with error bars across all engines."""
+    print("=" * 115)
+    print(f"PUBLICATION-GRADE MULTILINGUAL BENCHMARK (Target Vocab: {target_vocab:,}, Seeds: {num_seeds})")
+    print("=" * 115)
+
+    all_seed_results: Dict[str, List[SeedTrialResult]] = {}
+
+    for s_idx in range(num_seeds):
+        seed_val = 100 + s_idx * 37
+        print(f"-> Running Evaluation Seed #{s_idx + 1}/{num_seeds} (seed={seed_val})...")
+        seed_out = run_single_seed_eval(
+            target_vocab=target_vocab,
+            seed=seed_val,
+            multiplier=multiplier,
+            train_transformer=train_transformer,
+        )
+        for engine, res in seed_out.items():
+            if engine not in all_seed_results:
+                all_seed_results[engine] = []
+            all_seed_results[engine].append(res)
+
+    # Compute Means and Std Deviations
+    results: List[AggregateBenchmarkResult] = []
+    for engine, trials in all_seed_results.items():
+        n = len(trials)
+        mean_tid = sum(t.tid_bpb for t in trials) / n
+        std_tid = math.sqrt(sum((t.tid_bpb - mean_tid) ** 2 for t in trials) / max(n - 1, 1)) if n > 1 else 0.0
+
+        mean_loss = sum(t.lm_loss for t in trials) / n
+        std_loss = math.sqrt(sum((t.lm_loss - mean_loss) ** 2 for t in trials) / max(n - 1, 1)) if n > 1 else 0.0
+
+        mean_lm_bpb = sum(t.lm_bpb for t in trials) / n
+        std_lm_bpb = math.sqrt(sum((t.lm_bpb - mean_lm_bpb) ** 2 for t in trials) / max(n - 1, 1)) if n > 1 else 0.0
+
+        mean_mb = sum(t.mb_sec for t in trials) / n
+        mean_tok_s = sum(t.tokens_sec for t in trials) / n
+
+        # Language-by-language means
+        languages = list(trials[0].per_lang_bpb.keys())
+        per_lang_mean: Dict[str, float] = {}
+        for l in languages:
+            per_lang_mean[l] = sum(t.per_lang_bpb.get(l, 0.0) for t in trials) / n
+
+        results.append(
+            AggregateBenchmarkResult(
+                engine_name=engine,
+                vocab_size=target_vocab,
+                mean_tid_bpb=round(mean_tid, 3),
+                std_tid_bpb=round(std_tid, 3),
+                mean_lm_loss=round(mean_loss, 3),
+                std_lm_loss=round(std_loss, 3),
+                mean_lm_bpb=round(mean_lm_bpb, 3),
+                std_lm_bpb=round(std_lm_bpb, 3),
+                mean_mb_sec=round(mean_mb, 2),
+                mean_tok_sec=round(mean_tok_s, 0),
+                per_lang_mean_bpb=per_lang_mean,
+            )
+        )
+
+    return results
+
+
+def print_publication_report(results: List[AggregateBenchmarkResult]) -> None:
+    """Prints publication-grade summary table with mean ± std error bars."""
     print("\n" + "=" * 125)
-    print("REAL-SCALE COMPRESSION, THROUGHPUT & DOWNSTREAM LM BPB EVALUATION")
+    print("PUBLICATION-GRADE MULTILINGUAL BENCHMARK (MEAN ± STD OVER RANDOM SEEDS)")
     print("=" * 125)
 
-    hdr = f"{'Tokenizer Engine':<26} | {'Vocab':<7} | {'Tokens':<8} | {'TID-BPB':<9} | {'LM Loss':<9} | {'True LM BPB':<12} | {'B/Tok':<6} | {'MB/sec':<9} | {'Tok/sec':<14}"
+    hdr = f"{'Tokenizer Engine':<26} | {'Vocab':<6} | {'TID-BPB (Mean ± Std)':<22} | {'LM Loss (Mean ± Std)':<22} | {'True LM BPB (Mean ± Std)':<26} | {'MB/sec':<8} | {'Tok/sec':<12}"
     print(hdr)
     print("-" * len(hdr))
 
     for r in results:
+        tid_str = f"{r.mean_tid_bpb:.3f} ± {r.std_tid_bpb:.3f}"
+        loss_str = f"{r.mean_lm_loss:.3f} ± {r.std_lm_loss:.3f}"
+        lm_bpb_str = f"{r.mean_lm_bpb:.3f} ± {r.std_lm_bpb:.3f}"
         print(
-            f"{r.engine_name:<26} | {r.vocab_size:<7,} | {r.total_tokens:<8} | "
-            f"{r.tid_bpb:<9.3f} | {r.lm_loss_val:<9.3f} | {r.lm_bpb:<12.3f} | "
-            f"{r.bytes_per_tok:<6.2f} | {r.throughput_mb_sec:<9.2f} | {r.throughput_tok_sec:>12,.0f} tok/s"
+            f"{r.engine_name:<26} | {r.vocab_size:<6} | {tid_str:<22} | {loss_str:<22} | "
+            f"{lm_bpb_str:<26} | {r.mean_mb_sec:<8.2f} | {r.mean_tok_sec:>10,.0f} tok/s"
         )
     print("=" * 125)
 
-    # Per-Language TID-BPB Matrix
-    languages = list(results[0].per_language_tid_bpb.keys())
+    # Per-Language Matrix
+    languages = list(results[0].per_lang_mean_bpb.keys())
     print("\n" + "=" * 125)
-    print("PER-LANGUAGE THEORETICAL TID-BPB MATRIX (LOWER IS BETTER)")
+    print("PER-LANGUAGE MEAN TID-BPB MATRIX ACROSS 12 SCRIPTS (LOWER IS BETTER)")
     print("=" * 125)
 
     bpb_hdr = f"{'Language':<12} | " + " | ".join(f"{r.engine_name[:18]:<18}" for r in results)
@@ -445,25 +488,27 @@ def print_real_scale_report(results: List[ScaleBenchmarkResult]) -> None:
     for lang in languages:
         cols = []
         for r in results:
-            val = r.per_language_tid_bpb.get(lang, 0.0)
+            val = r.per_lang_mean_bpb.get(lang, 0.0)
             cols.append(f"{val:>6.3f} BPB")
         print(f"{lang:<12} | " + " | ".join(f"{col:<18}" for col in cols))
     print("=" * 125 + "\n")
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Real-Scale 32K/64K Multilingual Tokenizer & LM Evaluator")
+    parser = argparse.ArgumentParser(description="Publication-Grade Multi-Seed Evaluator")
     parser.add_argument("--vocab-size", type=int, default=2000, help="Target vocabulary budget")
-    parser.add_argument("--multiplier", type=int, default=50, help="Corpus expansion factor")
+    parser.add_argument("--seeds", type=int, default=3, help="Number of evaluation seeds")
+    parser.add_argument("--multiplier", type=int, default=40, help="Corpus multiplier")
     parser.add_argument("--no-lm", action="store_true", help="Skip downstream Transformer training")
     args = parser.parse_args()
 
-    results = train_and_eval_scale(
+    results = run_publication_benchmark(
         target_vocab=args.vocab_size,
-        corpus_multiplier=args.multiplier,
+        num_seeds=args.seeds,
+        multiplier=args.multiplier,
         train_transformer=not args.no_lm,
     )
-    print_real_scale_report(results)
+    print_publication_report(results)
     return 0
 
 

@@ -251,7 +251,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_train.add_argument("--out", type=str, required=True, help="Directory to save trained model files")
     p_train.add_argument(
         "--ranking-strategy",
-        choices=["char_savings", "frequency", "pmi"],
+        choices=["char_savings", "byte_savings", "frequency", "pmi"],
         default="char_savings",
         help="Seed candidate ranking metric (default: char_savings)",
     )

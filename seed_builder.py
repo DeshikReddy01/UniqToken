@@ -60,8 +60,8 @@ class SeedVocabularyBuilder:
             raise ValueError("max_ngram_length must be at least one")
         if min_frequency < 1:
             raise ValueError("min_frequency must be at least one")
-        if ranking_strategy not in {"char_savings", "frequency", "pmi"}:
-            raise ValueError("ranking_strategy must be 'char_savings', 'frequency', or 'pmi'")
+        if ranking_strategy not in {"char_savings", "byte_savings", "frequency", "pmi"}:
+            raise ValueError("ranking_strategy must be 'char_savings', 'byte_savings', 'frequency', or 'pmi'")
         if script_balance_temperature is not None and script_balance_temperature <= 0:
             raise ValueError("script_balance_temperature must be greater than zero")
         if min_boundary_entropy is not None and min_boundary_entropy < 0:
@@ -262,10 +262,12 @@ class SeedVocabularyBuilder:
                     t,
                 ),
             )
-        elif self.ranking_strategy == "char_savings":
+        elif self.ranking_strategy in {"char_savings", "byte_savings"}:
+            is_byte = self.ranking_strategy == "byte_savings"
 
             def savings_score(t: str) -> float:
-                base = (len(t) - 1) * candidate_counts[t]
+                token_len = len(t.encode("utf-8")) if is_byte else len(t)
+                base = (token_len - 1) * candidate_counts[t]
                 if self.script_balance_temperature is not None:
                     return base * script_weights.get(self._detect_script(t), 1.0)
                 return float(base)

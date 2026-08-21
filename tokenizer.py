@@ -493,6 +493,122 @@ class CustomTokenizer:
 
         return self._apply_cross_word_merges_with_spans(result)
 
+    def encode_batch(
+        self,
+        texts: Sequence[str],
+        allowed_special: Union[str, Set[str], List[str]] = "none",
+        disallowed_special_action: str = "escape",
+        num_workers: Optional[int] = None,
+    ) -> List[List[str]]:
+        """
+        Encodes a batch of strings into lists of token strings.
+        """
+        if num_workers is not None and num_workers > 1:
+            with ThreadPoolExecutor(max_workers=num_workers) as pool:
+                return list(
+                    pool.map(
+                        lambda t: self.encode(
+                            t,
+                            allowed_special=allowed_special,
+                            disallowed_special_action=disallowed_special_action,
+                        ),
+                        texts,
+                    )
+                )
+        return [
+            self.encode(
+                t,
+                allowed_special=allowed_special,
+                disallowed_special_action=disallowed_special_action,
+            )
+            for t in texts
+        ]
+
+    def encode_to_ids_batch(
+        self,
+        texts: Sequence[str],
+        allowed_special: Union[str, Set[str], List[str]] = "none",
+        disallowed_special_action: str = "escape",
+        num_workers: Optional[int] = None,
+    ) -> List[List[int]]:
+        """
+        High-throughput multi-string batch tokenization to integer IDs.
+        Dispatches to native parallel Rust pipeline when available.
+        """
+        if (
+            num_workers is None
+            and hasattr(self.model, "_get_rust_trie")
+            and not self._cross_word_tokens
+            and allowed_special == "none"
+        ):
+            rust_trie = self.model._get_rust_trie()
+            if rust_trie is not None:
+                try:
+                    import caliper_core
+
+                    return caliper_core.rust_encode_text_batch(
+                        list(texts),
+                        rust_trie,
+                        self.model.byte_fallback,
+                        self.normalizer.space_char,
+                    )
+                except Exception:
+                    pass
+
+        if num_workers is not None and num_workers > 1:
+            with ThreadPoolExecutor(max_workers=num_workers) as pool:
+                return list(
+                    pool.map(
+                        lambda t: self.encode_to_ids(
+                            t,
+                            allowed_special=allowed_special,
+                            disallowed_special_action=disallowed_special_action,
+                        ),
+                        texts,
+                    )
+                )
+        return [
+            self.encode_to_ids(
+                t,
+                allowed_special=allowed_special,
+                disallowed_special_action=disallowed_special_action,
+            )
+            for t in texts
+        ]
+
+    def encode_with_offsets_batch(
+        self,
+        texts: Sequence[str],
+        allowed_special: Union[str, Set[str], List[str]] = "none",
+        disallowed_special_action: str = "escape",
+        num_workers: Optional[int] = None,
+    ) -> List[List[Token]]:
+        """
+        Encodes a batch of strings into lists of Tokens with character spans.
+        """
+        if num_workers is not None and num_workers > 1:
+            with ThreadPoolExecutor(max_workers=num_workers) as pool:
+                return list(
+                    pool.map(
+                        lambda t: self.encode_with_offsets(
+                            t,
+                            allowed_special=allowed_special,
+                            disallowed_special_action=disallowed_special_action,
+                        ),
+                        texts,
+                    )
+                )
+        return [
+            self.encode_with_offsets(
+                t,
+                allowed_special=allowed_special,
+                disallowed_special_action=disallowed_special_action,
+            )
+            for t in texts
+        ]
+
+
+
     def encode_with_metrics(
         self,
         text: str,
