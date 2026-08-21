@@ -15,3 +15,5 @@ dist/
 artifacts/
 saved_model/
 *.log
+target/
+caliper_core/target/
