@@ -5,6 +5,8 @@ use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use std::collections::HashMap;
 
+use rayon::prelude::*;
+
 const DEFAULT_BYTE_LOG_P: f64 = -10.0;
 
 #[derive(Clone, Debug)]
@@ -40,32 +42,20 @@ pub struct ViterbiSpan {
     pub end: usize,
 }
 
-/// Computes the most probable segmentation using Python character offsets.
-#[pyfunction]
-#[pyo3(signature = (text, trie, byte_fallback, max_edges_per_node=None))]
-pub fn rust_viterbi_decode(
-    text: &str,
+fn viterbi_decode_chars(
+    chars: &[char],
     trie: &RustPrefixTrie,
     byte_fallback: bool,
     max_edges_per_node: Option<usize>,
-) -> PyResult<Vec<ViterbiSpan>> {
-    if matches!(max_edges_per_node, Some(0)) {
-        return Err(PyValueError::new_err(
-            "max_edges_per_node must be greater than zero",
-        ));
-    }
-
-    let chars: Vec<char> = text.chars().collect();
+) -> Result<Vec<ViterbiSpan>, String> {
     let n = chars.len();
     if n == 0 {
         return Ok(Vec::new());
     }
 
-    // Build all incoming edges before pruning so backpointers never reference
-    // a vector that is subsequently sorted or truncated.
     let mut incoming: Vec<Vec<Edge>> = vec![Vec::new(); n + 1];
     for i in 0..n {
-        let matches = trie.common_prefix_search_chars(&chars, i);
+        let matches = trie.common_prefix_search_chars(chars, i);
         if matches.is_empty() && byte_fallback {
             let mut pieces = Vec::new();
             let mut edge_log_p = 0.0;
@@ -131,21 +121,17 @@ pub fn rust_viterbi_decode(
     }
 
     if nodes[n].best_edge.is_none() {
-        return Err(PyValueError::new_err(format!(
+        return Err(format!(
             "lattice disconnected at character index {n}; enable byte fallback or provide complete vocabulary coverage"
-        )));
+        ));
     }
 
     let mut spans = Vec::new();
     let mut end = n;
     while end > 0 {
         let edge = nodes[end].best_edge.as_ref().ok_or_else(|| {
-            PyValueError::new_err(format!(
-                "lattice backpointer missing at character index {end}"
-            ))
+            format!("lattice backpointer missing at character index {end}")
         })?;
-        // The full path is reversed below, so add pieces in reverse to preserve
-        // the original UTF-8 byte order for a grouped fallback edge.
         for piece in edge.pieces.iter().rev() {
             spans.push(ViterbiSpan {
                 token: piece.token.clone(),
@@ -160,6 +146,96 @@ pub fn rust_viterbi_decode(
     spans.reverse();
     Ok(spans)
 }
+
+fn viterbi_ids_chars(
+    chars: &[char],
+    trie: &RustPrefixTrie,
+    byte_fallback: bool,
+    max_edges_per_node: Option<usize>,
+) -> Result<Vec<u32>, String> {
+    let spans = viterbi_decode_chars(chars, trie, byte_fallback, max_edges_per_node)?;
+    let mut ids = Vec::with_capacity(spans.len());
+    for s in spans {
+        if let Some(id) = s.token_id {
+            ids.push(id);
+        }
+    }
+    Ok(ids)
+}
+
+/// Computes the most probable segmentation using Python character offsets.
+#[pyfunction]
+#[pyo3(signature = (text, trie, byte_fallback, max_edges_per_node=None))]
+pub fn rust_viterbi_decode(
+    text: &str,
+    trie: &RustPrefixTrie,
+    byte_fallback: bool,
+    max_edges_per_node: Option<usize>,
+) -> PyResult<Vec<ViterbiSpan>> {
+    if matches!(max_edges_per_node, Some(0)) {
+        return Err(PyValueError::new_err(
+            "max_edges_per_node must be greater than zero",
+        ));
+    }
+    let chars: Vec<char> = text.chars().collect();
+    viterbi_decode_chars(&chars, trie, byte_fallback, max_edges_per_node)
+        .map_err(PyValueError::new_err)
+}
+
+/// Computes most probable segmentations for a batch of strings concurrently using Rayon (releases GIL).
+#[pyfunction]
+#[pyo3(signature = (texts, trie, byte_fallback, max_edges_per_node=None))]
+pub fn rust_viterbi_decode_batch(
+    py: Python<'_>,
+    texts: Vec<String>,
+    trie: &RustPrefixTrie,
+    byte_fallback: bool,
+    max_edges_per_node: Option<usize>,
+) -> PyResult<Vec<Vec<ViterbiSpan>>> {
+    if matches!(max_edges_per_node, Some(0)) {
+        return Err(PyValueError::new_err(
+            "max_edges_per_node must be greater than zero",
+        ));
+    }
+    py.allow_threads(|| {
+        texts
+            .par_iter()
+            .map(|text| {
+                let chars: Vec<char> = text.chars().collect();
+                viterbi_decode_chars(&chars, trie, byte_fallback, max_edges_per_node)
+                    .map_err(PyValueError::new_err)
+            })
+            .collect()
+    })
+}
+
+/// Batch encodes strings directly to token integer IDs using parallel Rayon workers (releases GIL).
+#[pyfunction]
+#[pyo3(signature = (texts, trie, byte_fallback, max_edges_per_node=None))]
+pub fn rust_encode_ids_batch(
+    py: Python<'_>,
+    texts: Vec<String>,
+    trie: &RustPrefixTrie,
+    byte_fallback: bool,
+    max_edges_per_node: Option<usize>,
+) -> PyResult<Vec<Vec<u32>>> {
+    if matches!(max_edges_per_node, Some(0)) {
+        return Err(PyValueError::new_err(
+            "max_edges_per_node must be greater than zero",
+        ));
+    }
+    py.allow_threads(|| {
+        texts
+            .par_iter()
+            .map(|text| {
+                let chars: Vec<char> = text.chars().collect();
+                viterbi_ids_chars(&chars, trie, byte_fallback, max_edges_per_node)
+                    .map_err(PyValueError::new_err)
+            })
+            .collect()
+    })
+}
+
 
 /// Forward-backward statistics for text fully covered by the supplied trie.
 #[pyfunction]

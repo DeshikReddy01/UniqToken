@@ -1,0 +1,173 @@
+"""
+Throughput Benchmark: Single-String vs Rayon Batch vs Production Baselines.
+
+Evaluates raw tokenization throughput across:
+- Caliper (Single-String Rust Viterbi)
+- Caliper (Rayon Multi-Threaded Batch)
+- SentencePiece (C++)
+- HuggingFace Tokenizers (Rust Fast Tokenizer)
+- tiktoken (Rust)
+"""
+
+from __future__ import annotations
+
+import os
+import sys
+import time
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from typing import Dict, List
+
+# Ensure UTF-8 output on Windows consoles
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from batch_collator import BatchCollator
+from tokenizer import CustomTokenizer
+
+
+def run_throughput_benchmark(num_sentences: int = 5000) -> None:
+    corpus = [
+        "The transformer architecture relies on subword tokenization to compress sequence length.",
+        "Exact offset alignment is essential for accurate span extraction and structured decoding.",
+        "High performance native Rust modules allow multi-threaded parallel batch execution without GIL lock.",
+        "Neural language modeling balances vocabulary size against computational embedding cost.",
+    ]
+    texts = corpus * (num_sentences // len(corpus))
+
+    print("=" * 105)
+    print(f"CALIPER THROUGHPUT BENCHMARK (Workload: {len(texts):,} sentences, ~{len(' '.join(texts).encode('utf-8')) / (1024*1024):.2f} MB text)")
+    print("=" * 105)
+
+    # 1. Train 1K Caliper Model
+    tok = CustomTokenizer.train_from_corpus(
+        corpus=corpus * 50,
+        target_vocab_size=1000,
+        ranking_strategy="char_savings",
+        min_frequency=1,
+        verbose=False,
+    )
+    collator = BatchCollator(tok)
+
+    # Measure Caliper Single-String Python -> Rust Dispatch
+    t0 = time.perf_counter()
+    single_tokens_count = 0
+    for text in texts:
+        single_tokens_count += len(tok.encode(text))
+    t_single = time.perf_counter() - t0
+    rate_single = single_tokens_count / max(t_single, 1e-6)
+
+    # Measure Caliper Collator Batch (Python Normalization + Rayon Spans)
+    t0 = time.perf_counter()
+    batch_enc = collator.batch_encode(texts, padding=False, add_special_tokens=False)
+    t_batch = time.perf_counter() - t0
+    batch_tokens_count = sum(len(seq) for seq in batch_enc.input_ids)
+    rate_batch = batch_tokens_count / max(t_batch, 1e-6)
+
+    # Measure Caliper Pure Native Rayon Batch (Zero-Copy Integer Stream)
+    rate_raw_rayon = 0.0
+    raw_rayon_count = 0
+    t_raw_rayon = 0.0
+    try:
+        import caliper_core
+
+        rust_trie = tok.model._get_rust_trie()
+        if rust_trie is not None:
+            t0 = time.perf_counter()
+            raw_ids = caliper_core.rust_encode_ids_batch(texts, rust_trie, tok.model.byte_fallback)
+            t_raw_rayon = time.perf_counter() - t0
+            raw_rayon_count = sum(len(x) for x in raw_ids)
+            rate_raw_rayon = raw_rayon_count / max(t_raw_rayon, 1e-6)
+    except Exception as e:
+        print(f"Raw Rayon error: {e}")
+
+    # Measure SentencePiece (C++)
+    rate_sp = 0.0
+    sp_tokens_count = 0
+    t_sp = 0.0
+    try:
+        import sentencepiece as spm
+
+        with TemporaryDirectory() as tmp_dir:
+            tmp = Path(tmp_dir)
+            sp_corpus = tmp / "train.txt"
+            sp_corpus.write_text("\n".join(corpus * 50), encoding="utf-8")
+            sp_prefix = tmp / "sp_model"
+            spm.SentencePieceTrainer.train(
+                input=str(sp_corpus),
+                model_prefix=str(sp_prefix),
+                model_type="unigram",
+                vocab_size=1000,
+                character_coverage=1.0,
+                byte_fallback=True,
+                hard_vocab_limit=False,
+                minloglevel=2,
+            )
+            sp_proc = spm.SentencePieceProcessor(model_file=str(sp_prefix) + ".model")
+            t0 = time.perf_counter()
+            sp_res = sp_proc.encode(texts, out_type=int)
+            t_sp = time.perf_counter() - t0
+            sp_tokens_count = sum(len(x) for x in sp_res)
+            rate_sp = sp_tokens_count / max(t_sp, 1e-6)
+    except Exception as e:
+        print(f"SentencePiece baseline error: {e}")
+
+    # Measure Hugging Face Fast Tokenizers (Rust)
+    rate_hf = 0.0
+    hf_tokens_count = 0
+    t_hf = 0.0
+    try:
+        import json
+        from tokenizers import Tokenizer
+        from hf_exporter import HuggingFaceExporter
+
+        with TemporaryDirectory() as tmp_dir:
+            hf_dict = HuggingFaceExporter.export_to_hf_dict(tok)
+            path = Path(tmp_dir) / "hf_tok.json"
+            path.write_text(json.dumps(hf_dict), encoding="utf-8")
+            hf_tok = Tokenizer.from_file(str(path))
+            t0 = time.perf_counter()
+            hf_res = hf_tok.encode_batch(texts)
+            t_hf = time.perf_counter() - t0
+            hf_tokens_count = sum(len(x.ids) for x in hf_res)
+            rate_hf = hf_tokens_count / max(t_hf, 1e-6)
+    except Exception as e:
+        print(f"HuggingFace baseline error: {e}")
+
+    # Measure tiktoken (Rust)
+    rate_tiktoken = 0.0
+    tiktoken_count = 0
+    t_tiktoken = 0.0
+    try:
+        import tiktoken
+
+        enc = tiktoken.get_encoding("cl100k_base")
+        t0 = time.perf_counter()
+        res_tt = enc.encode_batch(texts)
+        t_tiktoken = time.perf_counter() - t0
+        tiktoken_count = sum(len(x) for x in res_tt)
+        rate_tiktoken = tiktoken_count / max(t_tiktoken, 1e-6)
+    except Exception as e:
+        print(f"tiktoken baseline error: {e}")
+
+    # Output Clean Comparison Table
+    hdr = f"{'Tokenizer Engine':<32} | {'Tokens':<10} | {'Time (sec)':<12} | {'Throughput (tok/sec)':<22} | {'Speedup vs Single':<18}"
+    print(hdr)
+    print("-" * len(hdr))
+    print(f"{'Caliper (Single Python Dispatch)':<32} | {single_tokens_count:<10} | {t_single:<12.4f} | {rate_single:>16,.1f} tok/s | {'1.0x (baseline)':<18}")
+    print(f"{'Caliper (Collator + Rayon Spans)':<32} | {batch_tokens_count:<10} | {t_batch:<12.4f} | {rate_batch:>16,.1f} tok/s | {f'{rate_batch/max(rate_single, 1e-6):.2f}x faster':<18}")
+    if rate_raw_rayon > 0:
+        print(f"{'Caliper (Rayon Parallel Stream)':<32} | {raw_rayon_count:<10} | {t_raw_rayon:<12.4f} | {rate_raw_rayon:>16,.1f} tok/s | {f'{rate_raw_rayon/max(rate_single, 1e-6):.2f}x faster':<18}")
+    if rate_hf > 0:
+        print(f"{'HuggingFace Tokenizers (Rust)':<32} | {hf_tokens_count:<10} | {t_hf:<12.4f} | {rate_hf:>16,.1f} tok/s | {f'{rate_hf/max(rate_single, 1e-6):.2f}x faster':<18}")
+    if rate_sp > 0:
+        print(f"{'SentencePiece (C++ Batch)':<32} | {sp_tokens_count:<10} | {t_sp:<12.4f} | {rate_sp:>16,.1f} tok/s | {f'{rate_sp/max(rate_single, 1e-6):.2f}x faster':<18}")
+    if rate_tiktoken > 0:
+        print(f"{'tiktoken (cl100k_base Rust)':<32} | {tiktoken_count:<10} | {t_tiktoken:<12.4f} | {rate_tiktoken:>16,.1f} tok/s | {f'{rate_tiktoken/max(rate_single, 1e-6):.2f}x faster':<18}")
+    print("=" * 105 + "\n")
+
+
+if __name__ == "__main__":
+    run_throughput_benchmark(num_sentences=10000)

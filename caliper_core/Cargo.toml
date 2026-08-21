@@ -13,6 +13,7 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 pyo3 = { version = "0.21", features = ["extension-module", "abi3-py39"] }
 ahash = "0.8"
+rayon = "1.10"
 
 [profile.release]
 opt-level = 3

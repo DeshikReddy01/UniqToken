@@ -79,32 +79,70 @@ class BatchCollator:
 
         batch_ids: List[List[int]] = []
         batch_tokens: List[List[str]] = []
+        unk_id = self.tokenizer.model.token_to_id.get("<|unk|>", 0)
 
-        for text in texts:
-            if sample:
-                tokens = self.tokenizer.sample(text, alpha=alpha)
-            else:
-                tokens = self.tokenizer.encode(text)
+        # 1. Check if native Rust Rayon batch acceleration is available
+        use_rust_batch = False
+        if not sample and hasattr(self.tokenizer.model, "_get_rust_trie"):
+            try:
+                import caliper_core
 
-            unk_id = self.tokenizer.model.token_to_id.get("<|unk|>", 0)
-            ids = [self.tokenizer.model.token_to_id.get(t, unk_id) for t in tokens]
+                rust_trie = self.tokenizer.model._get_rust_trie()
+                if rust_trie is not None and len(texts) > 1:
+                    # Preprocess / normalize chunks
+                    norm_texts = [self.tokenizer.normalizer.normalize(t) for t in texts]
+                    raw_spans_batch = caliper_core.rust_viterbi_decode_batch(
+                        norm_texts,
+                        rust_trie,
+                        self.tokenizer.model.byte_fallback,
+                    )
+                    for spans in raw_spans_batch:
+                        tokens = [s.token for s in spans]
+                        ids = [s.token_id if s.token_id is not None else unk_id for s in spans]
 
-            # Inject BOS / EOS if requested
-            if add_special_tokens:
-                if self.bos_id is not None and self.bos_token:
-                    ids = [self.bos_id] + ids
-                    tokens = [self.bos_token] + tokens
-                if self.eos_id is not None and self.eos_token:
-                    ids = ids + [self.eos_id]
-                    tokens = tokens + [self.eos_token]
+                        if add_special_tokens:
+                            if self.bos_id is not None and self.bos_token:
+                                ids = [self.bos_id] + ids
+                                tokens = [self.bos_token] + tokens
+                            if self.eos_id is not None and self.eos_token:
+                                ids = ids + [self.eos_id]
+                                tokens = tokens + [self.eos_token]
 
-            # Truncation
-            if truncation and max_length is not None:
-                ids = ids[:max_length]
-                tokens = tokens[:max_length]
+                        if truncation and max_length is not None:
+                            ids = ids[:max_length]
+                            tokens = tokens[:max_length]
 
-            batch_ids.append(ids)
-            batch_tokens.append(tokens)
+                        batch_ids.append(ids)
+                        batch_tokens.append(tokens)
+                    use_rust_batch = True
+            except Exception:
+                use_rust_batch = False
+
+        if not use_rust_batch:
+            for text in texts:
+                if sample:
+                    tokens = self.tokenizer.sample(text, alpha=alpha)
+                else:
+                    tokens = self.tokenizer.encode(text)
+
+                ids = [self.tokenizer.model.token_to_id.get(t, unk_id) for t in tokens]
+
+                # Inject BOS / EOS if requested
+                if add_special_tokens:
+                    if self.bos_id is not None and self.bos_token:
+                        ids = [self.bos_id] + ids
+                        tokens = [self.bos_token] + tokens
+                    if self.eos_id is not None and self.eos_token:
+                        ids = ids + [self.eos_id]
+                        tokens = tokens + [self.eos_token]
+
+                # Truncation
+                if truncation and max_length is not None:
+                    ids = ids[:max_length]
+                    tokens = tokens[:max_length]
+
+                batch_ids.append(ids)
+                batch_tokens.append(tokens)
 
         # Determine target sequence length
         if max_length is not None and padding:
