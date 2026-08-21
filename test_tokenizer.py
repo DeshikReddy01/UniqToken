@@ -552,6 +552,11 @@ class StreamingDecoderTests(unittest.TestCase):
         escaped_tokens = [6, 4, 4, 6, 4, 5]
         self.assertEqual("".join(decoder.feed_token_id(token) for token in escaped_tokens), "▁")
 
+    def test_streaming_decoder_keeps_valid_byte_after_invalid_prefix(self):
+        decoder = StreamingDecoder({0: "<0xE2>", 1: "<0x41>"})
+        self.assertEqual(decoder.feed_token_id(0), "")
+        self.assertEqual(decoder.feed_token_id(1), "�A")
+
     def test_streaming_decoder_applies_indentation_replacements(self):
         decoder = StreamingDecoder(
             {0: "<|space_4|>"},

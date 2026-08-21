@@ -38,6 +38,8 @@ class PretrainingMetrics:
     vocab_size: int
     total_tokens: int
     total_bytes: int
+    evaluated_tokens: int
+    evaluated_bytes: int
     compression_ratio: float  # bytes per token
     final_loss: float
     bits_per_byte: float
@@ -136,6 +138,18 @@ def create_tokenizers(target_vocab: int = 500) -> Dict[str, Any]:
     return tokenizers
 
 
+def _split_documents(corpus: List[str]) -> Tuple[List[str], List[str]]:
+    """Splits by document identity so exact duplicates cannot cross the boundary."""
+    unique_documents = list(dict.fromkeys(corpus))
+    if len(unique_documents) < 2:
+        return list(corpus), list(corpus)
+    validation_size = max(1, len(unique_documents) // 5)
+    validation_documents = set(unique_documents[-validation_size:])
+    train_documents = [doc for doc in corpus if doc not in validation_documents]
+    held_out_documents = [doc for doc in corpus if doc in validation_documents]
+    return train_documents, held_out_documents
+
+
 def train_toy_transformer(
     tok: Any,
     model_label: str,
@@ -151,16 +165,15 @@ def train_toy_transformer(
     Trains a causal mini-transformer or lightweight probabilistic model
     and measures cross-entropy loss and bits-per-byte (BPB).
     """
-    # 1. Tokenize entire corpus
-    # Held-out validation split (last 20%, at least one doc) so final_loss is
-    # measured on text the model never trained on, not on the training set.
-    val_size = max(1, len(corpus) // 5)
-    if len(corpus) > val_size:
-        train_docs = corpus[:-val_size]
-        val_docs = corpus[-val_size:]
-    else:
-        train_docs = list(corpus)
-        val_docs = list(corpus)
+    if not corpus or not any(corpus):
+        raise ValueError("corpus must contain at least one non-empty document")
+    if steps < 1 or seq_len < 1 or batch_size < 1:
+        raise ValueError("steps, seq_len, and batch_size must be positive")
+    if dim < 1 or heads < 1 or layers < 1 or dim % heads != 0:
+        raise ValueError("dim, heads, and layers must be positive and dim must be divisible by heads")
+
+    # Keep exact duplicate documents entirely on one side of the split.
+    train_docs, val_docs = _split_documents(corpus)
 
     def _flatten_ids(docs: List[str]) -> List[int]:
         flat: List[int] = []
@@ -174,7 +187,10 @@ def train_toy_transformer(
 
     total_tokens = len(flat_tokens)
     total_bytes = sum(len(doc.encode("utf-8")) for doc in corpus)
-    compression = (total_bytes / total_tokens) if total_tokens > 0 else 1.0
+    validation_bytes = sum(len(doc.encode("utf-8")) for doc in val_docs)
+    if total_tokens == 0 or total_bytes == 0 or not val_flat or validation_bytes == 0:
+        raise ValueError("corpus must produce non-empty token and byte sequences")
+    compression = total_bytes / total_tokens
     vocab_size = tok.vocab_size
 
     # 2. Check PyTorch availability
@@ -222,14 +238,13 @@ def train_toy_transformer(
                 return self.head(out)
 
         device = torch.device("cpu")
+        torch.manual_seed(42)
         model = MiniCausalLM(vs=vocab_size, d=dim, h=heads, n_l=layers, max_s=seq_len).to(device)
         optimizer = torch.optim.AdamW(model.parameters(), lr=3e-3, weight_decay=1e-2)
         loss_fn = nn.CrossEntropyLoss()
 
         data_tensor = torch.tensor(train_flat, dtype=torch.long)
         max_idx = len(train_flat) - seq_len - 1
-
-        torch.manual_seed(42)
 
         last_train_loss = 0.0
         model.train()
@@ -256,45 +271,54 @@ def train_toy_transformer(
         # Evaluate on held-out validation windows
         model.eval()
         final_loss = last_train_loss
-        if len(val_flat) >= seq_len + 1:
+        evaluated_tokens = 0
+        if len(val_flat) >= 2:
             val_tensor = torch.tensor(val_flat, dtype=torch.long)
-            val_max = len(val_flat) - seq_len - 1
-            vlosses: List[float] = []
+            weighted_validation_loss = 0.0
             with torch.no_grad():
-                for vi in range(0, val_max + 1, max(1, val_max // 8)):
-                    chunk = val_tensor[vi : vi + seq_len + 1]
+                for start in range(0, len(val_flat) - 1, seq_len):
+                    chunk = val_tensor[start : start + seq_len + 1]
+                    prediction_count = len(chunk) - 1
+                    if prediction_count == 0:
+                        continue
                     vlogits = model(chunk[:-1].unsqueeze(0))
-                    vloss = loss_fn(vlogits.view(-1, vocab_size), chunk[1:].unsqueeze(0).view(-1))
-                    vlosses.append(float(vloss.item()))
-            if vlosses:
-                final_loss = sum(vlosses) / len(vlosses)
+                    vloss = loss_fn(vlogits.view(-1, vocab_size), chunk[1:].view(-1))
+                    weighted_validation_loss += float(vloss.item()) * prediction_count
+                    evaluated_tokens += prediction_count
+            if evaluated_tokens:
+                final_loss = weighted_validation_loss / evaluated_tokens
+        processed_tokens = steps * batch_size * seq_len
     else:
-        # Probabilistic N-Gram / Bigram smoothing baseline for fallback
-        # Entropy is estimated on held-out validation tokens when available.
-        eval_tokens = val_flat if val_flat else train_flat
-        unigram_counts: Dict[int, int] = {}
-        for t in eval_tokens:
-            unigram_counts[t] = unigram_counts.get(t, 0) + 1
-        tot_cnt = float(len(eval_tokens))
-        if tot_cnt > 0:
-            entropy = -sum((c / tot_cnt) * math.log(c / tot_cnt) for c in unigram_counts.values())
-        else:
-            entropy = 0.0
-        final_loss = entropy
+        # Fit a Laplace-smoothed unigram model on training data and evaluate it
+        # only on held-out tokens. This is a real held-out baseline, not entropy
+        # estimated from the validation distribution itself.
+        train_counts: Dict[int, int] = {}
+        for token_id in train_flat:
+            train_counts[token_id] = train_counts.get(token_id, 0) + 1
+        denominator = len(train_flat) + vocab_size
+        final_loss = sum(
+            -math.log((train_counts.get(token_id, 0) + 1) / denominator)
+            for token_id in val_flat
+        ) / len(val_flat)
+        evaluated_tokens = len(val_flat)
+        processed_tokens = len(train_flat) + len(val_flat)
 
     elapsed = max(time.perf_counter() - start_time, 1e-6)
-    tok_per_sec = total_tokens / elapsed
-    bytes_per_sec = total_bytes / elapsed
+    tok_per_sec = processed_tokens / elapsed
+    bytes_per_sec = processed_tokens * compression / elapsed
 
-    # Compute Bits-Per-Byte (BPB)
-    # BPB = Loss (nats/token) * num_tokens / (num_bytes * ln(2))
-    bits_per_byte = (final_loss * total_tokens) / (total_bytes * math.log(2.0))
+    if evaluated_tokens == 0:
+        raise ValueError("validation data must contain at least one predictable token")
+    # Use the same held-out population for loss and byte accounting.
+    bits_per_byte = (final_loss * evaluated_tokens) / (validation_bytes * math.log(2.0))
 
     return PretrainingMetrics(
         model_name=model_label,
         vocab_size=vocab_size,
         total_tokens=total_tokens,
         total_bytes=total_bytes,
+        evaluated_tokens=evaluated_tokens,
+        evaluated_bytes=validation_bytes,
         compression_ratio=compression,
         final_loss=final_loss,
         bits_per_byte=bits_per_byte,
@@ -338,6 +362,8 @@ def run_pretraining_benchmark(steps: int = 40, export_json: Optional[str] = None
                 "vocab_size": m.vocab_size,
                 "total_tokens": m.total_tokens,
                 "total_bytes": m.total_bytes,
+                "evaluated_tokens": m.evaluated_tokens,
+                "evaluated_bytes": m.evaluated_bytes,
                 "bytes_per_token": m.compression_ratio,
                 "final_loss": m.final_loss,
                 "bits_per_byte": m.bits_per_byte,
@@ -357,6 +383,8 @@ def main() -> int:
     parser.add_argument("--steps", type=int, default=40, help="Training steps (default: 40)")
     parser.add_argument("--export-json", type=str, default=None, help="Save metrics as JSON")
     args = parser.parse_args()
+    if args.steps < 1:
+        parser.error("--steps must be a positive integer")
 
     run_pretraining_benchmark(steps=args.steps, export_json=args.export_json)
     return 0

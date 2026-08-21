@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import codecs
 import re
 from typing import Dict, List, Optional, Tuple
 
@@ -31,12 +32,17 @@ class StreamingDecoder:
         self.special_replacements = dict(special_replacements or {})
         self.metaspace_escape = metaspace_escape
 
-        self.byte_buffer = bytearray()
+        # Incremental UTF-8 decoder: emits every complete codepoint as soon as
+        # it is formed and retains only a genuinely incomplete trailing partial
+        # in its internal buffer. This means a completed leading byte (e.g.
+        # ASCII 'a') is never held back waiting on a later fragmented multi-byte
+        # start, and a partial at end-of-stream is handled in flush().
+        self._utf8_decoder = codecs.getincrementaldecoder("utf-8")(errors="strict")
         self._pending_escape = ""
 
     def reset(self) -> None:
         """Resets the internal byte accumulator."""
-        self.byte_buffer.clear()
+        self._utf8_decoder.reset()
         self._pending_escape = ""
 
     def _emit_text(self, text: str) -> str:
@@ -88,33 +94,39 @@ class StreamingDecoder:
         match = self.BYTE_TOKEN_PATTERN.match(token)
         if match:
             byte_val = int(match.group(1), 16)
-            self.byte_buffer.append(byte_val)
-            return self._flush_buffer_if_valid()
+            # Feed one byte; the incremental decoder returns any complete
+            # text and retains a genuinely incomplete trailing partial. A
+            # strict decoder raises only on an *invalid* (not merely
+            # incomplete) sequence; substitute U+FFFD for that single byte
+            # and reset the incremental state so the next byte starts clean.
+            byte = bytes([byte_val])
+            try:
+                raw = self._utf8_decoder.decode(byte, final=False)
+            except UnicodeDecodeError:
+                # The new byte may be valid by itself (for example ASCII after
+                # a truncated multibyte prefix), so replace the pending invalid
+                # sequence and retry the current byte instead of dropping it.
+                self._utf8_decoder.reset()
+                try:
+                    raw = "�" + self._utf8_decoder.decode(byte, final=False)
+                except UnicodeDecodeError:
+                    self._utf8_decoder.reset()
+                    raw = "��"
+            return self._emit_text(raw) if raw else ""
 
         flushed_bytes = self._force_flush_buffer()
         subword_text = token.replace(self.space_char, " ")
         return flushed_bytes + self._emit_text(subword_text)
 
-    def _flush_buffer_if_valid(self) -> str:
-        """Decodes accumulated bytes if they form a complete, valid UTF-8 codepoint."""
-        if not self.byte_buffer:
-            return ""
-        try:
-            decoded = self.byte_buffer.decode("utf-8")
-            self.byte_buffer.clear()
-            return self._emit_text(decoded)
-        except UnicodeDecodeError:
-            return ""
-
     def _force_flush_buffer(self) -> str:
-        """Forces decoding of buffered bytes with substitution on sequence termination."""
-        if not self.byte_buffer:
-            return ""
+        """Forces decoding of any buffered bytes with substitution on sequence termination."""
         try:
-            decoded = self.byte_buffer.decode("utf-8", errors="replace")
-        finally:
-            self.byte_buffer.clear()
-        return self._emit_text(decoded)
+            raw = self._utf8_decoder.decode(b"", final=True)
+        except UnicodeDecodeError:
+            raw = "�"
+        # Re-arm the incremental decoder so subsequent tokens can keep streaming.
+        self._utf8_decoder = codecs.getincrementaldecoder("utf-8")(errors="strict")
+        return self._emit_text(raw)
 
     def flush(self) -> str:
         """Final flush called at sequence termination."""

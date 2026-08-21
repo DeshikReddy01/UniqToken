@@ -19,4 +19,4 @@ maturin develop --release
 maturin build --release
 ```
 
-When compiled, Caliper's Python layer automatically detects `caliper_core` and delegates Trie matching and Viterbi dynamic programming to native Rust; otherwise, it seamlessly runs on pure Python without error.
+The crate currently exposes an experimental Python extension API. The main Python package does not yet dispatch to it automatically; native packaging and Python/Rust parity tests must be completed before enabling that path in production.

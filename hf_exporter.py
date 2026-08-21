@@ -44,7 +44,11 @@ class HuggingFaceExporter:
         sorted_tokens = sorted(model.token_to_id.items(), key=lambda item: item[1])
         vocab_list = [[tok, model.vocab.get(tok, -10.0)] for tok, _ in sorted_tokens]
 
-        unk_id = model.token_to_id.get("<|unk|>", 0)
+        unk_id = model.token_to_id.get("<|unk|>")
+        if unk_id is None:
+            # HF Unigram requires a valid unk_id even when byte_fallback handles
+            # OOV recovery; without an <|unk|> token we can only point at id 0.
+            unk_id = 0
 
         hf_schema: Dict[str, Any] = {
             "version": "1.0",

@@ -1,6 +1,7 @@
 //! High-performance native Prefix Trie implementation for subword matching.
 
 use ahash::AHashMap;
+use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
 #[derive(Default, Clone)]
@@ -27,8 +28,15 @@ impl RustPrefixTrie {
         }
     }
 
-    /// Inserts a subword token with log probability and token ID.
-    pub fn insert(&mut self, token: &str, log_p: f64, token_id: Option<u32>) {
+    /// Inserts a non-empty subword with a finite log probability.
+    pub fn insert(&mut self, token: &str, log_p: f64, token_id: Option<u32>) -> PyResult<()> {
+        if token.is_empty() {
+            return Err(PyValueError::new_err("token must not be empty"));
+        }
+        if !log_p.is_finite() {
+            return Err(PyValueError::new_err("log_p must be finite"));
+        }
+
         let mut curr = &mut self.root;
         for ch in token.chars() {
             curr = curr.children.entry(ch).or_default();
@@ -37,6 +45,7 @@ impl RustPrefixTrie {
         curr.token = Some(token.to_string());
         curr.token_id = token_id;
         curr.log_p = log_p;
+        Ok(())
     }
 
     /// Finds all matching prefixes for a slice of text starting at position 0.
@@ -65,14 +74,38 @@ impl RustPrefixTrie {
 
     /// Checks whether the exact token exists in the Trie.
     pub fn contains(&self, token: &str) -> bool {
-        let mut curr = &self.root;
-        for ch in token.chars() {
-            if let Some(next_node) = curr.children.get(&ch) {
-                curr = next_node;
-            } else {
-                return false;
+        self.exact_metadata(token).is_some()
+    }
+}
+
+impl RustPrefixTrie {
+    pub(crate) fn common_prefix_search_chars(
+        &self,
+        chars: &[char],
+        start: usize,
+    ) -> Vec<(String, Option<u32>, f64, usize)> {
+        let mut results = Vec::with_capacity(8);
+        let mut current = &self.root;
+
+        for (offset, ch) in chars[start..].iter().enumerate() {
+            let Some(next) = current.children.get(ch) else {
+                break;
+            };
+            current = next;
+            if current.is_terminal {
+                if let Some(token) = &current.token {
+                    results.push((token.clone(), current.token_id, current.log_p, offset + 1));
+                }
             }
         }
-        curr.is_terminal
+        results
+    }
+
+    pub(crate) fn exact_metadata(&self, token: &str) -> Option<(Option<u32>, f64)> {
+        let mut current = &self.root;
+        for ch in token.chars() {
+            current = current.children.get(&ch)?;
+        }
+        current.is_terminal.then_some((current.token_id, current.log_p))
     }
 }

@@ -80,8 +80,45 @@ class CLITests(unittest.TestCase):
                 ]
             )
             self.assertEqual(ret, 0)
-            decoded_text = decoded_file.read_text(encoding="utf-8").strip()
+            decoded_text = decoded_file.read_text(encoding="utf-8")
             self.assertEqual(decoded_text, "the quick brown fox")
+
+    def test_cli_decode_empty_ids_writes_empty_file(self):
+        with TemporaryDirectory() as tmp_dir:
+            tmp = Path(tmp_dir)
+            corpus_file = tmp / "corpus.txt"
+            model_dir = tmp / "model"
+            decoded_file = tmp / "decoded.txt"
+            corpus_file.write_text("test corpus", encoding="utf-8")
+            self.assertEqual(
+                cli.main(
+                    [
+                        "train",
+                        "--corpus",
+                        str(corpus_file),
+                        "--vocab-size",
+                        "320",
+                        "--out",
+                        str(model_dir),
+                    ]
+                ),
+                0,
+            )
+            self.assertEqual(
+                cli.main(
+                    [
+                        "decode",
+                        "--model",
+                        str(model_dir),
+                        "--input",
+                        "[]",
+                        "--out",
+                        str(decoded_file),
+                    ]
+                ),
+                0,
+            )
+            self.assertEqual(decoded_file.read_text(encoding="utf-8"), "")
 
     def test_cli_encode_with_metrics_and_offsets(self):
         with TemporaryDirectory() as tmp_dir:

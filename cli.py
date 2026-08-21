@@ -161,6 +161,24 @@ def encode_command(args: argparse.Namespace) -> int:
     return 0
 
 
+def _parse_token_ids(input_data: str) -> List[int]:
+    """Parses either a JSON integer array or a whitespace-separated ID list."""
+    if input_data.startswith("[") and input_data.endswith("]"):
+        parsed = json.loads(input_data)
+        if not isinstance(parsed, list) or not all(
+            isinstance(item, int) and not isinstance(item, bool) and item >= 0 for item in parsed
+        ):
+            raise ValueError("token ID list must contain only non-negative integers")
+        return parsed
+
+    token_ids: List[int] = []
+    for part in input_data.split():
+        if not part.isascii() or not part.isdigit():
+            raise ValueError(f"invalid token ID {part!r}; expected a non-negative decimal integer")
+        token_ids.append(int(part))
+    return token_ids
+
+
 def decode_command(args: argparse.Namespace) -> int:
     """Handles 'caliper decode'."""
     model_path = Path(args.model)
@@ -176,16 +194,8 @@ def decode_command(args: argparse.Namespace) -> int:
 
     input_data = _load_input(args).strip()
 
-    # Parse integer IDs
     try:
-        if input_data.startswith("[") and input_data.endswith("]"):
-            token_ids = json.loads(input_data)
-            if not isinstance(token_ids, list) or not all(
-                isinstance(i, int) and not isinstance(i, bool) for i in token_ids
-            ):
-                raise ValueError("token ID list must contain only integers")
-        else:
-            token_ids = [int(x) for x in input_data.split()]
+        token_ids = _parse_token_ids(input_data)
     except (ValueError, json.JSONDecodeError) as e:
         print(f"Error parsing token IDs: {e}", file=sys.stderr)
         return 1
@@ -195,10 +205,11 @@ def decode_command(args: argparse.Namespace) -> int:
     if args.out:
         out_path = Path(args.out)
         out_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(out_path, "w", encoding="utf-8") as f:
-            f.write(decoded + "\n")
+        with open(out_path, "w", encoding="utf-8", newline="") as f:
+            f.write(decoded)
     else:
-        print(decoded)
+        sys.stdout.write(decoded)
+        sys.stdout.flush()
 
     return 0
 
