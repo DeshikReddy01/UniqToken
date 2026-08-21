@@ -204,6 +204,11 @@ class CLITests(unittest.TestCase):
             self.assertEqual(ret, 0)
             self.assertTrue((model_dir / "tokenizer.json").exists())
 
+    def test_cli_train_defaults_ranking_strategy_to_char_savings(self):
+        parser = cli.build_parser()
+        args = parser.parse_args(["train", "--corpus", "dummy.txt", "--out", "dummy_dir"])
+        self.assertEqual(args.ranking_strategy, "char_savings")
+
     def test_cli_downstream_eval_smoke(self):
         ret = cli.main(["eval-downstream", "--smoke-test"])
         self.assertEqual(ret, 0)

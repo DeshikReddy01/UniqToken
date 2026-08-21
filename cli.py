@@ -252,8 +252,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_train.add_argument(
         "--ranking-strategy",
         choices=["char_savings", "frequency", "pmi"],
-        default="pmi",
-        help="Seed candidate ranking metric (default: pmi)",
+        default="char_savings",
+        help="Seed candidate ranking metric (default: char_savings)",
     )
     p_train.add_argument("--adaptive-multiplier", action="store_true", help="Adapt seed pool size to corpus entropy")
     p_train.add_argument("--script-temp", type=float, default=None, help="Script temperature balancing (e.g. 0.5)")

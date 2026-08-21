@@ -890,6 +890,16 @@ class SuperBPETests(unittest.TestCase):
         ]
         self.assertEqual(improved_tok.decode(sample_ids), "the quick brown fox")
 
+    def test_superbpe_model_reassignment_invalidates_cross_word_cache(self):
+        _, _, _, base_tok, improved_tok, _ = self._make_pipeline()
+        # Warm up cache on base_tok (no cross-word tokens yet)
+        base_cw = base_tok._cross_word_tokens()
+        self.assertEqual(len(base_cw), 0)
+        # Reassign model in place to improved_tok.model (has cross-word tokens)
+        base_tok.model = improved_tok.model
+        reassigned_cw = base_tok._cross_word_tokens()
+        self.assertGreater(len(reassigned_cw), 0)
+
     def test_image_patcher_empty_nested_pixels(self):
         from multimodal.image_patcher import DynamicImagePatcher
 

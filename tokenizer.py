@@ -62,6 +62,7 @@ class CustomTokenizer:
         self.model = model
         self.security = SecurityShield(special_tokens=self.model.special_tokens)
         self._cross_word_set: Optional[frozenset[str]] = None
+        self._cross_word_model_id: Optional[int] = id(self.model)
 
     @property
     def vocab_size(self) -> int:
@@ -97,10 +98,15 @@ class CustomTokenizer:
         These can never be emitted by the per-chunk Unigram lattice (a chunk is
         ``"the"`` or ``"\u2581"``, never ``"the\u2581quick"``), so they are only
         reachable through the post-encode merge pass.
+
+        The result is cached, but invalidated whenever the model object changes
+        so a reassigned ``tokenizer.model`` (e.g. after a CEM/SuperBPE vocabulary
+        swap without constructing a fresh tokenizer) cannot leave the cache stale.
         """
-        if self._cross_word_set is None:
+        if self._cross_word_set is None or self._cross_word_model_id != id(self.model):
             sc = self.normalizer.space_char
             self._cross_word_set = frozenset(t for t in self.model.vocab if sc in t and t.strip(sc))
+            self._cross_word_model_id = id(self.model)
         return self._cross_word_set
 
     def _apply_cross_word_merges(self, tokens: List[str]) -> List[str]:
