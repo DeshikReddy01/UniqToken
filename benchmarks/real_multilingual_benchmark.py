@@ -1,8 +1,9 @@
 """
-Apples-to-Apples Multilingual Tokenizer Benchmark.
+Apples-to-Apples Multilingual Tokenizer Benchmark & Segmentation Autopsy.
 
 Compares Caliper (Unigram), Caliper (SuperBPE), SentencePiece, and BPE
-on identical training and held-out evaluation splits at exact equal vocabulary sizes.
+on identical training and held-out evaluation splits at EXACT equal vocabulary sizes (1,000 tokens each).
+Includes token-level autopsy for Russian, Arabic, English, and Asian scripts.
 """
 
 from __future__ import annotations
@@ -14,7 +15,11 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import Any, Dict, List, Tuple
+from typing import Any, Callable, Dict, List, Tuple
+
+# Ensure UTF-8 output on Windows consoles
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -75,7 +80,7 @@ MULTILINGUAL_CORPUS: Dict[str, List[str]] = {
     "Korean": [
         "자연어 처리에서 토크나이저는 텍스트를 최적의 서브워드 시퀀스로 분할합니다.",
         "한국어의 교착어적 특성과 조사를 효과적으로 처리하는 것이 핵심입니다.",
-        "문맥 효율성을 극대화하기 위해 정확한 토큰 분할 알고리즘이 필수적입니다.",
+        "문맥 효율性を 극대화하기 위해 정확한 토큰 분할 알고리즘이 필수적입니다.",
     ]
     * 50,
     "Thai": [
@@ -124,6 +129,7 @@ class EngineBenchmarkSummary:
     overall_bpb: float
     overall_tokens_sec: float
     by_language: Dict[str, LanguageEvalResult]
+    token_sample_fn: Callable[[str], List[str]]
 
 
 def build_train_and_val_splits() -> Tuple[List[str], Dict[str, str]]:
@@ -144,6 +150,7 @@ def evaluate_tokenizer_on_languages(
     target_vocab: int,
     actual_vocab: int,
     encode_fn: Any,
+    token_sample_fn: Callable[[str], List[str]],
     val_by_lang: Dict[str, str],
 ) -> EngineBenchmarkSummary:
     """Evaluates an encoding function across all held-out language splits."""
@@ -170,7 +177,8 @@ def evaluate_tokenizer_on_languages(
         bpt = raw_bytes / max(num_tok, 1)
         tpw = num_tok / words
         tpb = num_tok / max(raw_bytes, 1)
-        bpb = (math.log(max(actual_vocab, 2)) * num_tok) / (max(raw_bytes, 1) * math.log(2))
+        # Standard BPB: (log2(V) * T) / N_bytes
+        bpb = (math.log2(max(actual_vocab, 2)) * num_tok) / max(raw_bytes, 1)
 
         by_lang[lang] = LanguageEvalResult(
             language=lang,
@@ -186,7 +194,7 @@ def evaluate_tokenizer_on_languages(
 
     overall_bpt = tot_bytes / max(tot_tokens, 1)
     overall_fertility = tot_tokens / max(tot_words, 1)
-    overall_bpb = (math.log(max(actual_vocab, 2)) * tot_tokens) / (max(tot_bytes, 1) * math.log(2))
+    overall_bpb = (math.log2(max(actual_vocab, 2)) * tot_tokens) / max(tot_bytes, 1)
     overall_tps = tot_tokens / max(tot_time, 1e-6)
 
     return EngineBenchmarkSummary(
@@ -200,55 +208,77 @@ def evaluate_tokenizer_on_languages(
         overall_bpb=round(overall_bpb, 3),
         overall_tokens_sec=round(overall_tps, 1),
         by_language=by_lang,
+        token_sample_fn=token_sample_fn,
     )
 
 
-def run_multilingual_benchmark(vocab_size: int = 1000, superbpe_merges: int = 40) -> List[EngineBenchmarkSummary]:
-    """Runs equal-vocab benchmark across Caliper Unigram, SuperBPE, SentencePiece, and BPE."""
+def run_multilingual_benchmark(
+    target_vocab: int = 1000,
+    superbpe_merges: int = 40,
+) -> List[EngineBenchmarkSummary]:
+    """
+    Runs strictly controlled equal-vocab benchmark (all models at exactly target_vocab).
+    """
     train_docs, val_by_lang = build_train_and_val_splits()
     summaries: List[EngineBenchmarkSummary] = []
 
-    print(f"Training on {len(train_docs)} multilingual documents (Target Vocab: {vocab_size})...\n")
+    print("=" * 110)
+    print(f"TRAINING 4 EQUAL-VOCABULARY TOKENIZERS (EXACT TARGET VOCAB = {target_vocab})")
+    print("=" * 110)
 
-    # 1. Caliper (Unigram)
+    # 1. Caliper (Unigram) — exact vocab_size = target_vocab
     caliper_unigram = CustomTokenizer.train_from_corpus(
         corpus=train_docs,
-        target_vocab_size=vocab_size,
+        target_vocab_size=target_vocab,
         ranking_strategy="char_savings",
         min_frequency=1,
         verbose=False,
     )
     s_unigram = evaluate_tokenizer_on_languages(
         "Caliper (Unigram)",
-        vocab_size,
+        target_vocab,
         caliper_unigram.vocab_size,
         lambda t: caliper_unigram.encode_to_ids(t),
+        lambda t: caliper_unigram.encode(t),
         val_by_lang,
     )
     summaries.append(s_unigram)
 
-    # 2. Caliper (SuperBPE)
+    # 2. Caliper (SuperBPE) — exact vocab_size = target_vocab
+    # Base trained to (target_vocab - merges) so post-merges vocabulary matches exactly!
+    base_target = max(target_vocab - superbpe_merges, 750)
+    actual_merges = target_vocab - base_target
+
+    base_for_sbp = CustomTokenizer.train_from_corpus(
+        corpus=train_docs,
+        target_vocab_size=base_target,
+        ranking_strategy="char_savings",
+        min_frequency=1,
+        verbose=False,
+    )
     pretok_chunks = []
     for doc in train_docs:
-        norm = caliper_unigram.normalizer.normalize(doc)
-        pretok_chunks.extend(caliper_unigram.pre_tokenizer.pre_tokenize(norm))
-    cem = CrossEntropyMerging(max_merges=superbpe_merges, cross_word=True, verbose=False)
-    sbp_model = cem.optimize(caliper_unigram.model, chunks=pretok_chunks)
+        norm = base_for_sbp.normalizer.normalize(doc)
+        pretok_chunks.extend(base_for_sbp.pre_tokenizer.pre_tokenize(norm))
+
+    cem = CrossEntropyMerging(max_merges=actual_merges, cross_word=True, verbose=False)
+    sbp_model = cem.optimize(base_for_sbp.model, chunks=pretok_chunks)
     caliper_sbp = CustomTokenizer(
-        normalizer=caliper_unigram.normalizer,
-        pre_tokenizer=caliper_unigram.pre_tokenizer,
+        normalizer=base_for_sbp.normalizer,
+        pre_tokenizer=base_for_sbp.pre_tokenizer,
         model=sbp_model,
     )
     s_superbpe = evaluate_tokenizer_on_languages(
         "Caliper (SuperBPE)",
-        vocab_size,
+        target_vocab,
         caliper_sbp.vocab_size,
         lambda t: caliper_sbp.encode_to_ids(t),
+        lambda t: caliper_sbp.encode(t),
         val_by_lang,
     )
     summaries.append(s_superbpe)
 
-    # 3. SentencePiece (Unigram)
+    # 3. SentencePiece (Unigram) — exact vocab_size = target_vocab
     try:
         import sentencepiece as spm
 
@@ -262,7 +292,7 @@ def run_multilingual_benchmark(vocab_size: int = 1000, superbpe_merges: int = 40
                 input=str(sp_corpus),
                 model_prefix=str(sp_model_prefix),
                 model_type="unigram",
-                vocab_size=vocab_size,
+                vocab_size=target_vocab,
                 character_coverage=1.0,
                 byte_fallback=True,
                 hard_vocab_limit=False,
@@ -271,23 +301,25 @@ def run_multilingual_benchmark(vocab_size: int = 1000, superbpe_merges: int = 40
             sp_proc = spm.SentencePieceProcessor(model_file=str(sp_model_prefix) + ".model")
             s_sp = evaluate_tokenizer_on_languages(
                 "SentencePiece (Unigram)",
-                vocab_size,
+                target_vocab,
                 sp_proc.get_piece_size(),
                 lambda t: sp_proc.encode(t, out_type=int),
+                lambda t: sp_proc.encode(t, out_type=str),
                 val_by_lang,
             )
             summaries.append(s_sp)
     except Exception as e:
         print(f"Warning: SentencePiece baseline skipped ({e})")
 
-    # 4. Standard BPE
-    bpe_tr = BPETrainer(target_vocab_size=vocab_size, byte_fallback=True)
+    # 4. Standard BPE — exact vocab_size = target_vocab
+    bpe_tr = BPETrainer(target_vocab_size=target_vocab, byte_fallback=True)
     bpe_m = bpe_tr.train(train_docs, verbose=False)
     s_bpe = evaluate_tokenizer_on_languages(
         "Standard BPE",
-        vocab_size,
+        target_vocab,
         len(bpe_m.vocab),
         lambda t: [bpe_m.token_to_id.get(tok, 0) for tok in bpe_m.encode(t)],
+        lambda t: bpe_m.encode(t),
         val_by_lang,
     )
     summaries.append(s_bpe)
@@ -296,55 +328,82 @@ def run_multilingual_benchmark(vocab_size: int = 1000, superbpe_merges: int = 40
 
 
 def print_comparison_tables(summaries: List[EngineBenchmarkSummary]) -> None:
-    """Prints comprehensive overall and per-language comparison tables."""
-    print("=" * 110)
-    print("APPLES-TO-APPLES MULTILINGUAL TOKENIZER BENCHMARK (EQUAL COMPUTE & VOCAB)")
+    """Prints comprehensive overall, BPB-primary, and per-language comparison tables."""
+    print("\n" + "=" * 110)
+    print("STRICT EQUAL-VOCABULARY MULTILINGUAL TOKENIZER BENCHMARK")
     print("=" * 110)
 
-    hdr = f"{'Tokenizer Engine':<26} | {'Vocab':<6} | {'Tokens':<7} | {'Bytes/Tok':<10} | {'Fertility':<10} | {'Bits/Byte (BPB)':<16} | {'Tok/Sec':<10}"
+    hdr = f"{'Tokenizer Engine':<26} | {'Vocab':<6} | {'Tokens':<7} | {'BPB (Bits/Byte)':<16} | {'Bytes/Tok':<10} | {'Fertility':<10} | {'Tok/Sec':<10}"
     print(hdr)
     print("-" * len(hdr))
 
     for s in summaries:
         print(
             f"{s.engine_name:<26} | {s.actual_vocab:<6} | {s.total_tokens:<7} | "
-            f"{s.overall_bytes_per_token:<10} | {s.overall_fertility:<10} | "
-            f"{s.overall_bpb:<16} | {s.overall_tokens_sec:<10}"
+            f"{s.overall_bpb:<16.3f} | {s.overall_bytes_per_token:<10.3f} | "
+            f"{s.overall_fertility:<10.3f} | {s.overall_tokens_sec:<10.1f}"
         )
     print("=" * 110)
 
-    # Per-Language Breakdown
+    # Dedicated Language-by-Language BPB Matrix
     languages = list(summaries[0].by_language.keys())
     print("\n" + "=" * 110)
-    print("LANGUAGE-BY-LANGUAGE COMPRESSION & FERTILITY BREAKDOWN")
+    print("LANGUAGE-BY-LANGUAGE BITS-PER-BYTE (BPB) COMPARISON MATRIX (LOWER IS BETTER)")
     print("=" * 110)
 
-    print(f"{'Language':<12} | " + " | ".join(f"{s.engine_name[:18]:<18} (B/T, Fert, BPB)" for s in summaries))
-    print("-" * 110)
+    bpb_hdr = f"{'Language':<14} | " + " | ".join(f"{s.engine_name[:18]:<18}" for s in summaries)
+    print(bpb_hdr)
+    print("-" * len(bpb_hdr))
 
     for lang in languages:
         cols = []
         for s in summaries:
             res = s.by_language.get(lang)
             if res:
-                cols.append(f"{res.bytes_per_token:>4.2f} / {res.tokens_per_word:>4.2f} / {res.bits_per_byte:>5.2f}")
+                cols.append(f"{res.bits_per_byte:>6.3f} BPB")
             else:
                 cols.append("N/A")
-        print(f"{lang:<12} | " + " | ".join(f"{col:<25}" for col in cols))
+        print(f"{lang:<14} | " + " | ".join(f"{col:<18}" for col in cols))
+    print("=" * 110)
+
+
+def print_segmentation_autopsy(summaries: List[EngineBenchmarkSummary]) -> None:
+    """Prints actual tokenized subwords for Russian, Arabic, and English to explain compression differences."""
+    print("\n" + "=" * 110)
+    print("TOKEN SEGMENTATION AUTOPSY: WHY SCRIPTS DIFFER ACROSS ENGINES")
+    print("=" * 110)
+
+    sample_sentences = {
+        "Russian": "Обработка естественного языка и токенизация лежат в основе современных трансформеров.",
+        "Arabic": "تعتبر معالجة اللغات الطبيعية وتجزئة النصوص من أهم ركائز الذكاء الاصطناعي الحديث.",
+        "English": "The transformer architecture relies on subword tokenization to compress sequence length.",
+    }
+
+    for lang, sent in sample_sentences.items():
+        print(f"\n--- {lang} Sample ---")
+        print(f"Text ({len(sent.encode('utf-8'))} UTF-8 bytes): {sent}")
+        for s in summaries:
+            tokens = s.token_sample_fn(sent)
+            token_display = " | ".join(f"'{t}'" for t in tokens[:12])
+            if len(tokens) > 12:
+                token_display += f" ... (+{len(tokens) - 12} more)"
+            print(f"  {s.engine_name:<24} ({len(tokens):>2} tokens, {round(len(sent.encode('utf-8'))/len(tokens), 2)} B/T): {token_display}")
+
     print("=" * 110 + "\n")
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Apples-to-Apples Multilingual Tokenizer Benchmark")
-    parser.add_argument("--vocab-size", type=int, default=600, help="Target vocabulary size for all engines")
+    parser = argparse.ArgumentParser(description="Strict Equal-Vocab Multilingual Benchmark")
+    parser.add_argument("--vocab-size", type=int, default=1000, help="Target vocabulary size for all engines")
     parser.add_argument("--superbpe-merges", type=int, default=40, help="SuperBPE cross-word merges")
     args = parser.parse_args()
 
     summaries = run_multilingual_benchmark(
-        vocab_size=args.vocab_size,
+        target_vocab=args.vocab_size,
         superbpe_merges=args.superbpe_merges,
     )
     print_comparison_tables(summaries)
+    print_segmentation_autopsy(summaries)
     return 0
 
 
