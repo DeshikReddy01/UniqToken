@@ -359,12 +359,19 @@ class TokenizerBenchmarkSuite:
         text = self.BENCHMARK_CORPORA["English_Prose"]
         results: Dict[str, Any] = {}
 
-        # 1. Caliper (Pure Python + Trie)
+        # 1. Caliper (Rust C-Extension or Python fallback)
+        try:
+            import caliper_core
+
+            caliper_label = "Caliper (Rust Core)"
+        except ImportError:
+            caliper_label = "Caliper (Pure Python)"
+
         t0 = time.perf_counter()
         for _ in range(5):
             caliper_tokens = self.tokenizer.encode_to_ids(text)
         t_caliper = (time.perf_counter() - t0) / 5.0
-        results["Caliper (Python+Trie)"] = {
+        results[caliper_label] = {
             "tokens": len(caliper_tokens),
             "time_sec": round(t_caliper, 4),
             "tokens_sec": round(len(caliper_tokens) / max(t_caliper, 1e-6), 1),

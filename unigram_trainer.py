@@ -10,6 +10,13 @@ from trie import PrefixTrie
 from unigram_lattice import UnigramLattice
 from byte_codec import ByteFallbackEngine
 
+try:
+    import caliper_core
+
+    _HAS_CALIPER_CORE = True
+except ImportError:
+    _HAS_CALIPER_CORE = False
+
 
 @dataclass
 class UnigramModel:
@@ -48,6 +55,20 @@ class UnigramModel:
             self._trie = trie
         return trie
 
+    def _get_rust_trie(self) -> Optional[Any]:
+        """Builds (and caches) a native RustPrefixTrie if caliper_core is available."""
+        if not _HAS_CALIPER_CORE:
+            return None
+        self._sync_cache()
+        rust_trie = self.__dict__.get("_rust_trie")
+        if rust_trie is None:
+            rust_trie = caliper_core.RustPrefixTrie()
+            for token, log_p in self.vocab.items():
+                tid = self.token_to_id.get(token)
+                rust_trie.insert(token, log_p, tid)
+            self._rust_trie = rust_trie
+        return rust_trie
+
     _FAST_PATH_MAX_LEN = 6
     _MAX_CACHE_SIZE = 10000
 
@@ -55,6 +76,8 @@ class UnigramModel:
         """Clears cached PrefixTrie and segmentation memoization tables."""
         if "_trie" in self.__dict__:
             del self.__dict__["_trie"]
+        if "_rust_trie" in self.__dict__:
+            del self.__dict__["_rust_trie"]
         if "_seg_cache" in self.__dict__:
             del self.__dict__["_seg_cache"]
         if "_cache_sig" in self.__dict__:
@@ -149,6 +172,23 @@ class UnigramModel:
         if cached is not None:
             return list(cached)
 
+        # 1. Native Rust Viterbi engine dispatch (if caliper_core compiled)
+        rust_trie = self._get_rust_trie()
+        if rust_trie is not None:
+            try:
+                rust_spans = caliper_core.rust_viterbi_decode(
+                    text,
+                    rust_trie,
+                    self.byte_fallback,
+                )
+                spans = [(s.token, s.start, s.end) for s in rust_spans]
+                if len(text) <= 64 and len(cache) < self._MAX_CACHE_SIZE:
+                    cache[text] = spans
+                return spans
+            except Exception:
+                pass
+
+        # 2. Pure Python fast path or full lattice DAG
         fast = self._encode_fast(text)
         if fast is not None:
             spans = fast
@@ -163,7 +203,7 @@ class UnigramModel:
             edges, _ = lattice.viterbi_edges()
             spans = [(token, edge.start, edge.end) for edge in edges for token in edge.tokens]
 
-        if len(cache) < self._MAX_CACHE_SIZE and len(text) <= 64:
+        if len(text) <= 64 and len(cache) < self._MAX_CACHE_SIZE:
             cache[text] = spans
         return spans
 

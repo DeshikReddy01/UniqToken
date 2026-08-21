@@ -296,10 +296,9 @@ def train_toy_transformer(
         for token_id in train_flat:
             train_counts[token_id] = train_counts.get(token_id, 0) + 1
         denominator = len(train_flat) + vocab_size
-        final_loss = sum(
-            -math.log((train_counts.get(token_id, 0) + 1) / denominator)
-            for token_id in val_flat
-        ) / len(val_flat)
+        final_loss = sum(-math.log((train_counts.get(token_id, 0) + 1) / denominator) for token_id in val_flat) / len(
+            val_flat
+        )
         evaluated_tokens = len(val_flat)
         processed_tokens = len(train_flat) + len(val_flat)
 

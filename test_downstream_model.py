@@ -41,9 +41,7 @@ class DownstreamTransformerTests(unittest.TestCase):
         self.assertTrue(math.isfinite(metrics.final_loss))
         self.assertTrue(math.isfinite(metrics.bits_per_byte))
         # BPB must use the same held-out population as validation loss.
-        expected_bpb = metrics.final_loss * metrics.evaluated_tokens / (
-            metrics.evaluated_bytes * math.log(2.0)
-        )
+        expected_bpb = metrics.final_loss * metrics.evaluated_tokens / (metrics.evaluated_bytes * math.log(2.0))
         self.assertAlmostEqual(metrics.bits_per_byte, expected_bpb, places=6)
 
     def test_duplicate_documents_do_not_cross_validation_boundary(self):

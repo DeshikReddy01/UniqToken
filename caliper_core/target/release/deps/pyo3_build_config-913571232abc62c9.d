@@ -1,0 +1,14 @@
+C:\Users\shaik\Research\Tokenizer\caliper_core\target\release\deps\pyo3_build_config-913571232abc62c9.d: C:\Users\shaik\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\pyo3-build-config-0.21.2\src\lib.rs C:\Users\shaik\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\pyo3-build-config-0.21.2\src\errors.rs C:\Users\shaik\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\pyo3-build-config-0.21.2\src\impl_.rs C:\Users\shaik\Research\Tokenizer\caliper_core\target\release\build\pyo3-build-config-bc3a3111ed63f1be\out/pyo3-build-config-file.txt C:\Users\shaik\Research\Tokenizer\caliper_core\target\release\build\pyo3-build-config-bc3a3111ed63f1be\out/pyo3-build-config.txt
+
+C:\Users\shaik\Research\Tokenizer\caliper_core\target\release\deps\libpyo3_build_config-913571232abc62c9.rlib: C:\Users\shaik\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\pyo3-build-config-0.21.2\src\lib.rs C:\Users\shaik\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\pyo3-build-config-0.21.2\src\errors.rs C:\Users\shaik\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\pyo3-build-config-0.21.2\src\impl_.rs C:\Users\shaik\Research\Tokenizer\caliper_core\target\release\build\pyo3-build-config-bc3a3111ed63f1be\out/pyo3-build-config-file.txt C:\Users\shaik\Research\Tokenizer\caliper_core\target\release\build\pyo3-build-config-bc3a3111ed63f1be\out/pyo3-build-config.txt
+
+C:\Users\shaik\Research\Tokenizer\caliper_core\target\release\deps\libpyo3_build_config-913571232abc62c9.rmeta: C:\Users\shaik\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\pyo3-build-config-0.21.2\src\lib.rs C:\Users\shaik\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\pyo3-build-config-0.21.2\src\errors.rs C:\Users\shaik\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\pyo3-build-config-0.21.2\src\impl_.rs C:\Users\shaik\Research\Tokenizer\caliper_core\target\release\build\pyo3-build-config-bc3a3111ed63f1be\out/pyo3-build-config-file.txt C:\Users\shaik\Research\Tokenizer\caliper_core\target\release\build\pyo3-build-config-bc3a3111ed63f1be\out/pyo3-build-config.txt
+
+C:\Users\shaik\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\pyo3-build-config-0.21.2\src\lib.rs:
+C:\Users\shaik\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\pyo3-build-config-0.21.2\src\errors.rs:
+C:\Users\shaik\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\pyo3-build-config-0.21.2\src\impl_.rs:
+C:\Users\shaik\Research\Tokenizer\caliper_core\target\release\build\pyo3-build-config-bc3a3111ed63f1be\out/pyo3-build-config-file.txt:
+C:\Users\shaik\Research\Tokenizer\caliper_core\target\release\build\pyo3-build-config-bc3a3111ed63f1be\out/pyo3-build-config.txt:
+
+# env-dep:CARGO_PKG_VERSION=0.21.2
+# env-dep:OUT_DIR=C:\\Users\\shaik\\Research\\Tokenizer\\caliper_core\\target\\release\\build\\pyo3-build-config-bc3a3111ed63f1be\\out
