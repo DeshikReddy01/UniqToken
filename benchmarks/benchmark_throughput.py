@@ -152,22 +152,34 @@ def run_throughput_benchmark(num_sentences: int = 5000) -> None:
     except Exception as e:
         print(f"tiktoken baseline error: {e}")
 
+    total_input_bytes = sum(len(t.encode("utf-8")) for t in texts)
+    mb_total = total_input_bytes / (1024 * 1024)
+
+    # Compute MB/s rates
+    mb_s_single = mb_total / max(t_single, 1e-6)
+    mb_s_batch = mb_total / max(t_batch, 1e-6)
+    mb_s_raw = mb_total / max(t_raw_rayon, 1e-6) if t_raw_rayon > 0 else 0.0
+    mb_s_hf = mb_total / max(t_hf, 1e-6) if t_hf > 0 else 0.0
+    mb_s_sp = mb_total / max(t_sp, 1e-6) if t_sp > 0 else 0.0
+    mb_s_tt = mb_total / max(t_tiktoken, 1e-6) if t_tiktoken > 0 else 0.0
+
     # Output Clean Comparison Table
-    hdr = f"{'Tokenizer Engine':<32} | {'Tokens':<10} | {'Time (sec)':<12} | {'Throughput (tok/sec)':<22} | {'Speedup vs Single':<18}"
+    hdr = f"{'Tokenizer Engine':<30} | {'Tokens':<8} | {'B/Tok':<6} | {'Time (s)':<9} | {'Tok/sec':<16} | {'MB/sec':<12} | {'Speedup':<10}"
     print(hdr)
     print("-" * len(hdr))
-    print(f"{'Caliper (Single Python Dispatch)':<32} | {single_tokens_count:<10} | {t_single:<12.4f} | {rate_single:>16,.1f} tok/s | {'1.0x (baseline)':<18}")
-    print(f"{'Caliper (Collator + Rayon Spans)':<32} | {batch_tokens_count:<10} | {t_batch:<12.4f} | {rate_batch:>16,.1f} tok/s | {f'{rate_batch/max(rate_single, 1e-6):.2f}x faster':<18}")
+    print(f"{'Caliper (Single Python Dispatch)':<30} | {single_tokens_count:<8} | {total_input_bytes/max(single_tokens_count, 1):<6.2f} | {t_single:<9.4f} | {rate_single:>12,.0f} tok/s | {mb_s_single:>8.2f} MB/s | {'1.00x':<10}")
+    print(f"{'Caliper (Collator + Rayon Spans)':<30} | {batch_tokens_count:<8} | {total_input_bytes/max(batch_tokens_count, 1):<6.2f} | {t_batch:<9.4f} | {rate_batch:>12,.0f} tok/s | {mb_s_batch:>8.2f} MB/s | {f'{rate_batch/max(rate_single, 1e-6):.2f}x':<10}")
     if rate_raw_rayon > 0:
-        print(f"{'Caliper (Rayon Parallel Stream)':<32} | {raw_rayon_count:<10} | {t_raw_rayon:<12.4f} | {rate_raw_rayon:>16,.1f} tok/s | {f'{rate_raw_rayon/max(rate_single, 1e-6):.2f}x faster':<18}")
+        print(f"{'Caliper (Rayon Parallel Stream)':<30} | {raw_rayon_count:<8} | {total_input_bytes/max(raw_rayon_count, 1):<6.2f} | {t_raw_rayon:<9.4f} | {rate_raw_rayon:>12,.0f} tok/s | {mb_s_raw:>8.2f} MB/s | {f'{rate_raw_rayon/max(rate_single, 1e-6):.2f}x':<10}")
     if rate_hf > 0:
-        print(f"{'HuggingFace Tokenizers (Rust)':<32} | {hf_tokens_count:<10} | {t_hf:<12.4f} | {rate_hf:>16,.1f} tok/s | {f'{rate_hf/max(rate_single, 1e-6):.2f}x faster':<18}")
+        print(f"{'HuggingFace Tokenizers (Rust)':<30} | {hf_tokens_count:<8} | {total_input_bytes/max(hf_tokens_count, 1):<6.2f} | {t_hf:<9.4f} | {rate_hf:>12,.0f} tok/s | {mb_s_hf:>8.2f} MB/s | {f'{rate_hf/max(rate_single, 1e-6):.2f}x':<10}")
     if rate_sp > 0:
-        print(f"{'SentencePiece (C++ Batch)':<32} | {sp_tokens_count:<10} | {t_sp:<12.4f} | {rate_sp:>16,.1f} tok/s | {f'{rate_sp/max(rate_single, 1e-6):.2f}x faster':<18}")
+        print(f"{'SentencePiece (C++ Batch)':<30} | {sp_tokens_count:<8} | {total_input_bytes/max(sp_tokens_count, 1):<6.2f} | {t_sp:<9.4f} | {rate_sp:>12,.0f} tok/s | {mb_s_sp:>8.2f} MB/s | {f'{rate_sp/max(rate_single, 1e-6):.2f}x':<10}")
     if rate_tiktoken > 0:
-        print(f"{'tiktoken (cl100k_base Rust)':<32} | {tiktoken_count:<10} | {t_tiktoken:<12.4f} | {rate_tiktoken:>16,.1f} tok/s | {f'{rate_tiktoken/max(rate_single, 1e-6):.2f}x faster':<18}")
+        print(f"{'tiktoken (cl100k_base Rust)':<30} | {tiktoken_count:<8} | {total_input_bytes/max(tiktoken_count, 1):<6.2f} | {t_tiktoken:<9.4f} | {rate_tiktoken:>12,.0f} tok/s | {mb_s_tt:>8.2f} MB/s | {f'{rate_tiktoken/max(rate_single, 1e-6):.2f}x':<10}")
     print("=" * 105 + "\n")
 
 
 if __name__ == "__main__":
     run_throughput_benchmark(num_sentences=10000)
+
