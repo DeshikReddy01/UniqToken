@@ -59,6 +59,7 @@ def get_git_commit() -> str:
 
 def get_system_environment_info() -> Dict[str, str]:
     import torch
+
     return {
         "python_version": sys.version.split()[0],
         "pytorch_version": torch.__version__,
@@ -133,14 +134,43 @@ def generate_rich_multilingual_corpus(num_docs: int = 1500, seed: int = 42) -> T
     rng = random.Random(seed)
 
     scripts = {
-        "English": ("abcdefghijklmnopqrstuvwxyz", ["tion", "ing", "ness", "able", "ment", "ship", "hood", "ism", "ize", "ate", "ous", "ive", "al", "ity", "ward", "wise"]),
-        "Hindi": ("अआइईउऊऋएऐओऔकखगघङचछजझञटठडढणतथदधनपफबभमयरलवशषसह", ["कारी", "वादी", "करण", "शीलता", "पूर्वक", "त्मक", "त्व", "मय", "वान"]),
+        "English": (
+            "abcdefghijklmnopqrstuvwxyz",
+            [
+                "tion",
+                "ing",
+                "ness",
+                "able",
+                "ment",
+                "ship",
+                "hood",
+                "ism",
+                "ize",
+                "ate",
+                "ous",
+                "ive",
+                "al",
+                "ity",
+                "ward",
+                "wise",
+            ],
+        ),
+        "Hindi": (
+            "अआइईउऊऋएऐओऔकखगघङचछजझञटठडढणतथदधनपफबभमयरलवशषसह",
+            ["कारी", "वादी", "करण", "शीलता", "पूर्वक", "त्मक", "त्व", "मय", "वान"],
+        ),
         "Telugu": ("అఆఇఈఉఊఋఎఏఐఒఓఔకఖగఘఙచఛజఝఞటఠడఢణతథదధనపఫబభమయరలవశషసహ", ["త్వము", "శీలత", "పూర్వక", "మైన", "కరమైన", "వాద"]),
         "Tamil": ("அஆஇஈஉஊஎஏஐஒஓஔகஙசஞடணதநபமயரலவழளறன", ["மை", "வாதம்", "பூர்வ", "மான", "கரமான", "த்துவம்"]),
         "Bengali": ("অআইঈউঊঋএঐওঔকখগঘঙচছজঝঞটঠডঢণতথদধনপফবভমযরলবশষসহ", ["কারী", "বাদী", "করণ", "শীলতা", "মূলক", "ত্ব", "ময়"]),
         "Arabic": ("ابتثجحخدذرزسشصضطظعغفقكلمنهوي", ["ية", "يات", "يون", "ين", "ستان", "ات", "ان"]),
-        "Chinese": ("的一是在不了有和人这中大为上个国我以要他时来用们生到作地于出就分对成会可主发年动同工也能下过子说产种面而方后多定行学法所民得经十三之进着等部度家电力里如水化高自二理起小物现实加量都两体制机当使点从业本去把建争性好应各想向开特立数正日月明", []),
-        "Russian": ("абвгдеёжзийклмнопрстуфхцчшщъыьэюя", ["ость", "ение", "ация", "ический", "ованный", "тель", "ство", "изм"]),
+        "Chinese": (
+            "的一是在不了有和人这中大为上个国我以要他时来用们生到作地于出就分对成会可主发年动同工也能下过子说产种面而方后多定行学法所民得经十三之进着等部度家电力里如水化高自二理起小物现实加量都两体制机当使点从业本去把建争性好应各想向开特立数正日月明",
+            [],
+        ),
+        "Russian": (
+            "абвгдеёжзийклмнопрстуфхцчшщъыьэюя",
+            ["ость", "ение", "ация", "ический", "ованный", "тель", "ство", "изм"],
+        ),
     }
 
     train_docs: List[str] = []
@@ -246,7 +276,7 @@ def train_and_eval_strict_transformer(
     val_ids = enc_fn(val_text)
 
     model = MiniLM(vocab_size, d_model).to(device)
-    
+
     # Assert Exact Model Sizing Invariant
     assert model.embed.num_embeddings == vocab_size, f"Embedding size {model.embed.num_embeddings} != {vocab_size}"
     assert model.head.out_features == vocab_size, f"Head out_features {model.head.out_features} != {vocab_size}"
@@ -312,15 +342,17 @@ def run_phase_three_strict_matched(
     print("=" * 145)
     print("PHASE THREE: STRICT 1:1 MATCHED-VOCABULARY PREREGISTERED EXPERIMENT (5 PAIRED SEEDS)")
     print(f"Scales: {scales} | Seeds: {seeds} | Analytical FLOP Budget: {TARGET_TRAINING_FLOPS:,} FLOPs")
-    print(f"System: Python {env_info['python_version']}, PyTorch {env_info['pytorch_version']}, Git: {env_info['git_commit'][:8]}")
+    print(
+        f"System: Python {env_info['python_version']}, PyTorch {env_info['pytorch_version']}, Git: {env_info['git_commit'][:8]}"
+    )
     print("=" * 145)
 
     for V in scales:
         paired_comparison_data[V] = {"Caliper": {}, "SentencePiece": {}, "Boundary-BPE": {}}
 
-        print(f"\n==========================================================================================")
+        print("\n==========================================================================================")
         print(f"---> [STRICT MATCHED SCALE: {V:,} TOKENS (EXACT V_ACTUAL == {V:,} INVARIANT)]")
-        print(f"==========================================================================================")
+        print("==========================================================================================")
 
         for seed in seeds:
             print(f"\n  >>> Running Paired Seed: {seed} at Target V = {V:,}...")
@@ -400,7 +432,12 @@ def run_phase_three_strict_matched(
             assert bpe_v == V, f"FATAL INVARIANT BREAK: Boundary-BPE vocab ({bpe_v}) != target ({V})"
 
             engines = [
-                ("Caliper-SuperBPE", caliper_v, list(caliper_sbp.model.vocab.keys()), lambda t: caliper_sbp.encode_to_ids(t)),
+                (
+                    "Caliper-SuperBPE",
+                    caliper_v,
+                    list(caliper_sbp.model.vocab.keys()),
+                    lambda t: caliper_sbp.encode_to_ids(t),
+                ),
                 ("SentencePiece-Unigram", sp_v, sp_vocab, lambda t: sp_proc.encode(t, out_type=int)),
                 ("Boundary-BPE", bpe_v, list(bpe_model.vocab), lambda t: bpe_model.encode_to_ids(t)),
             ]
@@ -522,7 +559,9 @@ def print_strict_matched_report(
     if all_confirmed:
         print("🟢 HYPOTHESIS CONFIRMED UNDER EXACT 1:1 MATCHED VOCABULARY:")
         print("   Under identical vocabulary size, identical architecture dimensions, and matched compute budget,")
-        print("   Caliper SuperBPE achieves a statistically significant True LM BPB advantage over SentencePiece and BPE.")
+        print(
+            "   Caliper SuperBPE achieves a statistically significant True LM BPB advantage over SentencePiece and BPE."
+        )
     else:
         print("🟡 PARTIALLY CONFIRMED / REGIME-BOUNDED:")
         print("   Advantage observed only in specific matched vocabulary regimes.")

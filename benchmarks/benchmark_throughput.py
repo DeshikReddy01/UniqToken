@@ -38,7 +38,9 @@ def run_throughput_benchmark(num_sentences: int = 5000) -> None:
     texts = corpus * (num_sentences // len(corpus))
 
     print("=" * 105)
-    print(f"CALIPER THROUGHPUT BENCHMARK (Workload: {len(texts):,} sentences, ~{len(' '.join(texts).encode('utf-8')) / (1024*1024):.2f} MB text)")
+    print(
+        f"CALIPER THROUGHPUT BENCHMARK (Workload: {len(texts):,} sentences, ~{len(' '.join(texts).encode('utf-8')) / (1024 * 1024):.2f} MB text)"
+    )
     print("=" * 105)
 
     # 1. Train 1K Caliper Model
@@ -167,19 +169,30 @@ def run_throughput_benchmark(num_sentences: int = 5000) -> None:
     hdr = f"{'Tokenizer Engine':<30} | {'Tokens':<8} | {'B/Tok':<6} | {'Time (s)':<9} | {'Tok/sec':<16} | {'MB/sec':<12} | {'Speedup':<10}"
     print(hdr)
     print("-" * len(hdr))
-    print(f"{'Caliper (Single Python Dispatch)':<30} | {single_tokens_count:<8} | {total_input_bytes/max(single_tokens_count, 1):<6.2f} | {t_single:<9.4f} | {rate_single:>12,.0f} tok/s | {mb_s_single:>8.2f} MB/s | {'1.00x':<10}")
-    print(f"{'Caliper (Collator + Rayon Spans)':<30} | {batch_tokens_count:<8} | {total_input_bytes/max(batch_tokens_count, 1):<6.2f} | {t_batch:<9.4f} | {rate_batch:>12,.0f} tok/s | {mb_s_batch:>8.2f} MB/s | {f'{rate_batch/max(rate_single, 1e-6):.2f}x':<10}")
+    print(
+        f"{'Caliper (Single Python Dispatch)':<30} | {single_tokens_count:<8} | {total_input_bytes / max(single_tokens_count, 1):<6.2f} | {t_single:<9.4f} | {rate_single:>12,.0f} tok/s | {mb_s_single:>8.2f} MB/s | {'1.00x':<10}"
+    )
+    print(
+        f"{'Caliper (Collator + Rayon Spans)':<30} | {batch_tokens_count:<8} | {total_input_bytes / max(batch_tokens_count, 1):<6.2f} | {t_batch:<9.4f} | {rate_batch:>12,.0f} tok/s | {mb_s_batch:>8.2f} MB/s | {f'{rate_batch / max(rate_single, 1e-6):.2f}x':<10}"
+    )
     if rate_raw_rayon > 0:
-        print(f"{'Caliper (Rayon Parallel Stream)':<30} | {raw_rayon_count:<8} | {total_input_bytes/max(raw_rayon_count, 1):<6.2f} | {t_raw_rayon:<9.4f} | {rate_raw_rayon:>12,.0f} tok/s | {mb_s_raw:>8.2f} MB/s | {f'{rate_raw_rayon/max(rate_single, 1e-6):.2f}x':<10}")
+        print(
+            f"{'Caliper (Rayon Parallel Stream)':<30} | {raw_rayon_count:<8} | {total_input_bytes / max(raw_rayon_count, 1):<6.2f} | {t_raw_rayon:<9.4f} | {rate_raw_rayon:>12,.0f} tok/s | {mb_s_raw:>8.2f} MB/s | {f'{rate_raw_rayon / max(rate_single, 1e-6):.2f}x':<10}"
+        )
     if rate_hf > 0:
-        print(f"{'HuggingFace Tokenizers (Rust)':<30} | {hf_tokens_count:<8} | {total_input_bytes/max(hf_tokens_count, 1):<6.2f} | {t_hf:<9.4f} | {rate_hf:>12,.0f} tok/s | {mb_s_hf:>8.2f} MB/s | {f'{rate_hf/max(rate_single, 1e-6):.2f}x':<10}")
+        print(
+            f"{'HuggingFace Tokenizers (Rust)':<30} | {hf_tokens_count:<8} | {total_input_bytes / max(hf_tokens_count, 1):<6.2f} | {t_hf:<9.4f} | {rate_hf:>12,.0f} tok/s | {mb_s_hf:>8.2f} MB/s | {f'{rate_hf / max(rate_single, 1e-6):.2f}x':<10}"
+        )
     if rate_sp > 0:
-        print(f"{'SentencePiece (C++ Batch)':<30} | {sp_tokens_count:<8} | {total_input_bytes/max(sp_tokens_count, 1):<6.2f} | {t_sp:<9.4f} | {rate_sp:>12,.0f} tok/s | {mb_s_sp:>8.2f} MB/s | {f'{rate_sp/max(rate_single, 1e-6):.2f}x':<10}")
+        print(
+            f"{'SentencePiece (C++ Batch)':<30} | {sp_tokens_count:<8} | {total_input_bytes / max(sp_tokens_count, 1):<6.2f} | {t_sp:<9.4f} | {rate_sp:>12,.0f} tok/s | {mb_s_sp:>8.2f} MB/s | {f'{rate_sp / max(rate_single, 1e-6):.2f}x':<10}"
+        )
     if rate_tiktoken > 0:
-        print(f"{'tiktoken (cl100k_base Rust)':<30} | {tiktoken_count:<8} | {total_input_bytes/max(tiktoken_count, 1):<6.2f} | {t_tiktoken:<9.4f} | {rate_tiktoken:>12,.0f} tok/s | {mb_s_tt:>8.2f} MB/s | {f'{rate_tiktoken/max(rate_single, 1e-6):.2f}x':<10}")
+        print(
+            f"{'tiktoken (cl100k_base Rust)':<30} | {tiktoken_count:<8} | {total_input_bytes / max(tiktoken_count, 1):<6.2f} | {t_tiktoken:<9.4f} | {rate_tiktoken:>12,.0f} tok/s | {mb_s_tt:>8.2f} MB/s | {f'{rate_tiktoken / max(rate_single, 1e-6):.2f}x':<10}"
+        )
     print("=" * 105 + "\n")
 
 
 if __name__ == "__main__":
     run_throughput_benchmark(num_sentences=10000)
-

@@ -64,7 +64,9 @@ class MetricAccountingAuditTests(unittest.TestCase):
     def test_vocabulary_script_distribution(self):
         """Audits the exact number of vocabulary entries allocated to each writing system."""
         vocab_tokens = list(self.tokenizer.model.vocab.keys())
-        script_counts = Counter(SeedVocabularyBuilder._detect_script(tok) for tok in vocab_tokens)
+        script_counts = Counter(
+            SeedVocabularyBuilder._script_family(SeedVocabularyBuilder._detect_script(tok)) for tok in vocab_tokens
+        )
 
         print("\n" + "=" * 80)
         print(f"VOCABULARY SCRIPT ALLOCATION BREAKDOWN (Total Vocab: {len(vocab_tokens):,})")

@@ -1,5 +1,6 @@
-﻿import sys
+import sys
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import json
@@ -20,6 +21,7 @@ from benchmarks.run_phase_three_strict_matched import (
 )
 from benchmarks.flop_counter import plan_training_steps_for_target_flops
 
+
 class MiniLM(nn.Module):
     def __init__(self, v_sz: int, d_m: int = 64):
         super().__init__()
@@ -29,12 +31,13 @@ class MiniLM(nn.Module):
         self.encoder = nn.TransformerEncoder(layer, num_layers=2)
         self.head = nn.Linear(d_m, v_sz, bias=False)
 
+
 train_docs, val_by_lang = generate_rich_multilingual_corpus(num_docs=500, seed=101)
 all_text = "\n".join(train_docs)
 words = [w for w in all_text.split() if w]
 unique_words = set(words)
 print("=" * 120)
-print(f"CORPUS CAPACITY DIAGNOSTIC (num_docs = 500):")
+print("CORPUS CAPACITY DIAGNOSTIC (num_docs = 500):")
 print(f"Total Words in Training Corpus  : {len(words):,}")
 print(f"Unique Words in Training Corpus : {len(unique_words):,}")
 print(f"Total Raw Bytes                 : {len(all_text.encode('utf-8')):,}")
@@ -85,7 +88,9 @@ for V in scales:
         verbose=False,
     )
     cal_base_v = len(tok_base.model.vocab)
-    pretok_chunks = [tok for d in train_docs for tok in tok_base.pre_tokenizer.pre_tokenize(tok_base.normalizer.normalize(d))]
+    pretok_chunks = [
+        tok for d in train_docs for tok in tok_base.pre_tokenizer.pre_tokenize(tok_base.normalizer.normalize(d))
+    ]
     cem = CrossEntropyMerging(max_merges=actual_merges, cross_word=True, verbose=False)
     sbp_model = cem.optimize(tok_base.model, chunks=pretok_chunks)
     cal_actual_v = len(sbp_model.vocab)
@@ -95,29 +100,41 @@ for V in scales:
     m_bpe = MiniLM(bpe_actual_v, 64)
     m_cal = MiniLM(cal_actual_v, 64)
 
-    steps_sp, flops_sp, _, _ = plan_training_steps_for_target_flops(TARGET_TRAINING_FLOPS, sp_actual_v, 16, 128, 64, 2, 2, 128)
-    steps_bpe, flops_bpe, _, _ = plan_training_steps_for_target_flops(TARGET_TRAINING_FLOPS, bpe_actual_v, 16, 128, 64, 2, 2, 128)
-    steps_cal, flops_cal, _, _ = plan_training_steps_for_target_flops(TARGET_TRAINING_FLOPS, cal_actual_v, 16, 128, 64, 2, 2, 128)
+    steps_sp, flops_sp, _, _ = plan_training_steps_for_target_flops(
+        TARGET_TRAINING_FLOPS, sp_actual_v, 16, 128, 64, 2, 2, 128
+    )
+    steps_bpe, flops_bpe, _, _ = plan_training_steps_for_target_flops(
+        TARGET_TRAINING_FLOPS, bpe_actual_v, 16, 128, 64, 2, 2, 128
+    )
+    steps_cal, flops_cal, _, _ = plan_training_steps_for_target_flops(
+        TARGET_TRAINING_FLOPS, cal_actual_v, 16, 128, 64, 2, 2, 128
+    )
 
-    results.append({
-        "req_V": V,
-        "sp_actual_V": sp_actual_v,
-        "bpe_actual_V": bpe_actual_v,
-        "cal_actual_V": cal_actual_v,
-        "sp_params": sum(p.numel() for p in m_sp.parameters()),
-        "bpe_params": sum(p.numel() for p in m_bpe.parameters()),
-        "cal_params": sum(p.numel() for p in m_cal.parameters()),
-        "sp_steps": steps_sp,
-        "bpe_steps": steps_bpe,
-        "cal_steps": steps_cal,
-        "sp_flops": flops_sp,
-        "bpe_flops": flops_bpe,
-        "cal_flops": flops_cal,
-    })
+    results.append(
+        {
+            "req_V": V,
+            "sp_actual_V": sp_actual_v,
+            "bpe_actual_V": bpe_actual_v,
+            "cal_actual_V": cal_actual_v,
+            "sp_params": sum(p.numel() for p in m_sp.parameters()),
+            "bpe_params": sum(p.numel() for p in m_bpe.parameters()),
+            "cal_params": sum(p.numel() for p in m_cal.parameters()),
+            "sp_steps": steps_sp,
+            "bpe_steps": steps_bpe,
+            "cal_steps": steps_cal,
+            "sp_flops": flops_sp,
+            "bpe_flops": flops_bpe,
+            "cal_flops": flops_cal,
+        }
+    )
 
 print("\n" + "=" * 140)
-print(f"{'Requested V':<12} | {'SP Act V':<10} | {'BPE Act V':<10} | {'Cal Act V':<10} | {'SP Params':<10} | {'BPE Params':<10} | {'Cal Params':<10} | {'SP Steps':<8} | {'Cal Steps':<8}")
+print(
+    f"{'Requested V':<12} | {'SP Act V':<10} | {'BPE Act V':<10} | {'Cal Act V':<10} | {'SP Params':<10} | {'BPE Params':<10} | {'Cal Params':<10} | {'SP Steps':<8} | {'Cal Steps':<8}"
+)
 print("-" * 140)
 for r in results:
-    print(f"V={r['req_V']:<10} | {r['sp_actual_V']:<10} | {r['bpe_actual_V']:<10} | {r['cal_actual_V']:<10} | {r['sp_params']:<10,} | {r['bpe_params']:<10,} | {r['cal_params']:<10,} | {r['sp_steps']:<8} | {r['cal_steps']:<8}")
+    print(
+        f"V={r['req_V']:<10} | {r['sp_actual_V']:<10} | {r['bpe_actual_V']:<10} | {r['cal_actual_V']:<10} | {r['sp_params']:<10,} | {r['bpe_params']:<10,} | {r['cal_params']:<10,} | {r['sp_steps']:<8} | {r['cal_steps']:<8}"
+    )
 print("=" * 140)

@@ -59,9 +59,9 @@ def compute_transformer_flops_per_step(
     B = batch_size
 
     # 1. Per-layer Backbone Forward FLOPs
-    qkv_o_proj = 8 * T * (d ** 2)
-    attn_scores_map = 4 * (T ** 2) * d
-    attn_softmax = 3 * H * (T ** 2)
+    qkv_o_proj = 8 * T * (d**2)
+    attn_scores_map = 4 * (T**2) * d
+    attn_softmax = 3 * H * (T**2)
     ffn_matmuls = 4 * T * d * d_ff
     ffn_activation = 4 * T * d_ff
     layer_norms = 8 * T * d
@@ -135,7 +135,7 @@ def plan_training_steps_for_target_flops(
 
 if __name__ == "__main__":
     rep = compute_transformer_flops_per_step(8192)
-    print(f"Authoritative FLOP Verification at V=8,192:")
+    print("Authoritative FLOP Verification at V=8,192:")
     print(f"  Backbone Fwd / Seq: {rep.backbone_fwd_flops_per_seq:,} (Expected: 10,665,984)")
     print(f"  LM Head Fwd / Seq:  {rep.lm_head_fwd_flops_per_seq:,} (Expected: 68,681,728)")
     print(f"  Fwd / Batch (B=16): {rep.fwd_flops_per_batch:,} (Expected: 1,269,563,392)")

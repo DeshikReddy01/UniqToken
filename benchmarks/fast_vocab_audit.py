@@ -1,5 +1,6 @@
-﻿import sys
+import sys
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import sentencepiece as spm
@@ -60,7 +61,9 @@ for V in scales:
         verbose=False,
     )
     cal_base_v = len(tok_base.model.vocab)
-    pretok_chunks = [tok for d in train_docs for tok in tok_base.pre_tokenizer.pre_tokenize(tok_base.normalizer.normalize(d))]
+    pretok_chunks = [
+        tok for d in train_docs for tok in tok_base.pre_tokenizer.pre_tokenize(tok_base.normalizer.normalize(d))
+    ]
     cem = CrossEntropyMerging(max_merges=actual_merges, cross_word=True, verbose=False)
     sbp_model = cem.optimize(tok_base.model, chunks=pretok_chunks)
     cal_act = len(sbp_model.vocab)

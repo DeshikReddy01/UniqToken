@@ -316,7 +316,9 @@ def train_and_eval_toy_transformer(
 
             def __getitem__(self, idx):
                 if not self.chunks:
-                    return torch.zeros(self.block_size, dtype=torch.long), torch.zeros(self.block_size, dtype=torch.long)
+                    return torch.zeros(self.block_size, dtype=torch.long), torch.zeros(
+                        self.block_size, dtype=torch.long
+                    )
                 x, y = self.chunks[idx % len(self.chunks)]
                 return torch.tensor(x, dtype=torch.long), torch.tensor(y, dtype=torch.long)
 
@@ -325,7 +327,9 @@ def train_and_eval_toy_transformer(
                 super().__init__()
                 self.embed = nn.Embedding(vocab_sz, d_model)
                 self.pos = nn.Parameter(torch.randn(1, 64, d_model) * 0.02)
-                encoder_layer = nn.TransformerEncoderLayer(d_model=d_model, nhead=n_heads, dim_feedforward=128, batch_first=True)
+                encoder_layer = nn.TransformerEncoderLayer(
+                    d_model=d_model, nhead=n_heads, dim_feedforward=128, batch_first=True
+                )
                 self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=n_layers)
                 self.lm_head = nn.Linear(d_model, vocab_sz, bias=False)
 

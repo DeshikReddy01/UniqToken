@@ -64,6 +64,7 @@ def get_git_commit() -> str:
 
 def get_system_environment_info() -> Dict[str, str]:
     import torch
+
     return {
         "python_version": sys.version.split()[0],
         "pytorch_version": torch.__version__,
@@ -258,15 +259,17 @@ def run_preregistered_phase_three(
     print("=" * 135)
     print("PHASE THREE: PREREGISTERED MULTILINGUAL SCALING BENCHMARK (5 PAIRED SEEDS)")
     print(f"Scales: {scales} | Seeds: {seeds} | Compute Budget: {TARGET_TRAINING_FLOPS:,} FLOPs")
-    print(f"Environment: Python {env_info['python_version']}, PyTorch {env_info['pytorch_version']}, Git: {env_info['git_commit'][:8]}")
+    print(
+        f"Environment: Python {env_info['python_version']}, PyTorch {env_info['pytorch_version']}, Git: {env_info['git_commit'][:8]}"
+    )
     print("=" * 135)
 
     for V in scales:
         paired_comparison_data[V] = {"Caliper": {}, "SentencePiece": {}, "Boundary-BPE": {}}
 
-        print(f"\n==========================================================================================")
+        print("\n==========================================================================================")
         print(f"---> [BENCHMARKING SCALE: {V:,} TOKENS ACROSS 5 PAIRED SEEDS]")
-        print(f"==========================================================================================")
+        print("==========================================================================================")
 
         for seed in seeds:
             print(f"\n  >>> Running Paired Seed: {seed} at Scale {V:,}...")
@@ -333,11 +336,23 @@ def run_preregistered_phase_three(
             b_bpe.train(train_docs, verbose=False)
 
             engines = [
-                ("Caliper-SuperBPE", caliper_sbp.vocab_size, list(caliper_sbp.model.vocab.keys()), lambda t: caliper_sbp.encode_to_ids(t)),
+                (
+                    "Caliper-SuperBPE",
+                    caliper_sbp.vocab_size,
+                    list(caliper_sbp.model.vocab.keys()),
+                    lambda t: caliper_sbp.encode_to_ids(t),
+                ),
                 ("Boundary-BPE", b_bpe.vocab_size, list(b_bpe.model.vocab), lambda t: b_bpe.encode_to_ids(t)),
             ]
             if sp_proc is not None:
-                engines.append(("SentencePiece-Unigram", sp_proc.get_piece_size(), sp_vocab, lambda t: sp_proc.encode(t, out_type=int)))
+                engines.append(
+                    (
+                        "SentencePiece-Unigram",
+                        sp_proc.get_piece_size(),
+                        sp_vocab,
+                        lambda t: sp_proc.encode(t, out_type=int),
+                    )
+                )
 
             for name, v_act, vocab_list, enc_fn in engines:
                 # Fail-Fast Assertion 1: Parity probe
@@ -358,19 +373,27 @@ def run_preregistered_phase_three(
                 tok_lens = np.array([len(t.encode("utf-8")) for t in vocab_list])
 
                 # Transformer FLOP-matched training
-                val_loss, lm_bpb, steps, act_flops, flop_err, params, wall_clock = train_and_eval_flops_matched_transformer(
-                    enc_fn=enc_fn,
-                    vocab_size=v_act,
-                    train_texts=train_docs[:250],
-                    val_text=combined_val,
-                    total_val_bytes=total_val_bytes,
-                    target_flops=TARGET_TRAINING_FLOPS,
-                    seed=seed,
+                val_loss, lm_bpb, steps, act_flops, flop_err, params, wall_clock = (
+                    train_and_eval_flops_matched_transformer(
+                        enc_fn=enc_fn,
+                        vocab_size=v_act,
+                        train_texts=train_docs[:250],
+                        val_text=combined_val,
+                        total_val_bytes=total_val_bytes,
+                        target_flops=TARGET_TRAINING_FLOPS,
+                        seed=seed,
+                    )
                 )
 
                 # Fail-Fast Assertion 3: Compute tolerance (bounded by 1 discrete step quantization)
-                max_quantization_error = max(0.01, (compute_transformer_flops_per_step(v_act).train_flops_per_step / TARGET_TRAINING_FLOPS) / 2.0 + 1e-4)
-                assert flop_err <= max_quantization_error, f"FATAL: {name} FLOP relative error ({flop_err:.3%}) exceeds 1-step quantization tolerance ({max_quantization_error:.3%})"
+                max_quantization_error = max(
+                    0.01,
+                    (compute_transformer_flops_per_step(v_act).train_flops_per_step / TARGET_TRAINING_FLOPS) / 2.0
+                    + 1e-4,
+                )
+                assert flop_err <= max_quantization_error, (
+                    f"FATAL: {name} FLOP relative error ({flop_err:.3%}) exceeds 1-step quantization tolerance ({max_quantization_error:.3%})"
+                )
 
                 # Record results
                 rec = SingleRunAuditRecord(
@@ -474,7 +497,9 @@ def print_statistical_hypothesis_report(
         print("   Supports the preregistered superiority hypothesis across all tested V >= 2K regimes.")
     else:
         print("🟡 PARTIALLY CONFIRMED / REGIME-BOUNDED:")
-        print("   Identifies the specific vocabulary regimes where Caliper SuperBPE holds a statistically significant advantage.")
+        print(
+            "   Identifies the specific vocabulary regimes where Caliper SuperBPE holds a statistically significant advantage."
+        )
     print("=" * 145 + "\n")
 
 

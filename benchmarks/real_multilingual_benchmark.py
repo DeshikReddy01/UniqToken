@@ -387,7 +387,9 @@ def print_segmentation_autopsy(summaries: List[EngineBenchmarkSummary]) -> None:
             token_display = " | ".join(f"'{t}'" for t in tokens[:12])
             if len(tokens) > 12:
                 token_display += f" ... (+{len(tokens) - 12} more)"
-            print(f"  {s.engine_name:<24} ({len(tokens):>2} tokens, {round(len(sent.encode('utf-8'))/len(tokens), 2)} B/T): {token_display}")
+            print(
+                f"  {s.engine_name:<24} ({len(tokens):>2} tokens, {round(len(sent.encode('utf-8')) / len(tokens), 2)} B/T): {token_display}"
+            )
 
     print("=" * 110 + "\n")
 

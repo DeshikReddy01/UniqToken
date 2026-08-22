@@ -16,6 +16,7 @@ from typing import Dict, List, Tuple
 import numpy as np
 import scipy.stats as stats
 import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
@@ -102,20 +103,22 @@ def audit_statistics():
         ci_upper = d_bar + t_crit * se
         cohen_dz = d_bar / s_d if s_d > 1e-12 else 0.0
 
-        results.append({
-            "scale": scale,
-            "comparison": pair_name,
-            "metric": metric,
-            "deltas": deltas,
-            "d_bar": d_bar,
-            "s_d": s_d,
-            "df": df,
-            "t_stat": t_stat,
-            "p_val": p_val,
-            "ci_lower": ci_lower,
-            "ci_upper": ci_upper,
-            "cohen_dz": cohen_dz,
-        })
+        results.append(
+            {
+                "scale": scale,
+                "comparison": pair_name,
+                "metric": metric,
+                "deltas": deltas,
+                "d_bar": d_bar,
+                "s_d": s_d,
+                "df": df,
+                "t_stat": t_stat,
+                "p_val": p_val,
+                "ci_lower": ci_lower,
+                "ci_upper": ci_upper,
+                "cohen_dz": cohen_dz,
+            }
+        )
 
     results_sorted = sorted(results, key=lambda x: x["p_val"])
     m = len(results_sorted)
@@ -126,12 +129,16 @@ def audit_statistics():
         item["adj_p_val"] = adj_p
         item["significant_holm"] = item["p_val"] <= holm_alpha
 
-    print(f"{'Scale':<7} | {'Comparison':<26} | {'Metric':<14} | {'d_bar':>7} | {'s_d':>7} | {'t(4)':>7} | {'p-raw':>10} | {'p-Holm':>10} | {'95% CI':<19} | {'Cohen dz':>8} | {'Holm Sig'}")
+    print(
+        f"{'Scale':<7} | {'Comparison':<26} | {'Metric':<14} | {'d_bar':>7} | {'s_d':>7} | {'t(4)':>7} | {'p-raw':>10} | {'p-Holm':>10} | {'95% CI':<19} | {'Cohen dz':>8} | {'Holm Sig'}"
+    )
     print("-" * 135)
     for item in sorted(results_sorted, key=lambda x: (x["scale"], x["metric"], x["comparison"])):
         sig_str = "YES (p<0.05)" if item["significant_holm"] else "NO"
         ci_str = f"[{item['ci_lower']:+6.3f}, {item['ci_upper']:+6.3f}]"
-        print(f"{item['scale']:<7} | {item['comparison']:<26} | {item['metric']:<14} | {item['d_bar']:+7.3f} | {item['s_d']:7.4f} | {item['t_stat']:7.2f} | {item['p_val']:10.2e} | {item['adj_p_val']:10.2e} | {ci_str:<19} | {item['cohen_dz']:+8.2f} | {sig_str}")
+        print(
+            f"{item['scale']:<7} | {item['comparison']:<26} | {item['metric']:<14} | {item['d_bar']:+7.3f} | {item['s_d']:7.4f} | {item['t_stat']:7.2f} | {item['p_val']:10.2e} | {item['adj_p_val']:10.2e} | {ci_str:<19} | {item['cohen_dz']:+8.2f} | {sig_str}"
+        )
 
     return data, results_sorted
 
@@ -158,7 +165,9 @@ def generate_tradeoff_plots(data: Dict) -> None:
     for tok in ["SentencePiece-Unigram", "Boundary-BPE", "Caliper-SuperBPE"]:
         means = [np.mean([data[V][tok][s]["true_lm_bpb"] for s in data[V][tok]]) for V in scales]
         stds = [np.std([data[V][tok][s]["true_lm_bpb"] for s in data[V][tok]]) for V in scales]
-        ax1.errorbar(scales, means, yerr=stds, label=tok, color=colors[tok], marker=markers[tok], linewidth=2, capsize=5)
+        ax1.errorbar(
+            scales, means, yerr=stds, label=tok, color=colors[tok], marker=markers[tok], linewidth=2, capsize=5
+        )
     ax1.set_title("(A) True LM BPB (Bits / Byte) $\\downarrow$ [Fixed FLOP Budget]", fontsize=11, fontweight="bold")
     ax1.set_xlabel("Vocabulary Size ($V$)", fontsize=10)
     ax1.set_ylabel("True LM BPB (lower is better)", fontsize=10)
@@ -172,7 +181,9 @@ def generate_tradeoff_plots(data: Dict) -> None:
     for tok in ["SentencePiece-Unigram", "Boundary-BPE", "Caliper-SuperBPE"]:
         means = [np.mean([data[V][tok][s]["val_loss_nats"] for s in data[V][tok]]) for V in scales]
         stds = [np.std([data[V][tok][s]["val_loss_nats"] for s in data[V][tok]]) for V in scales]
-        ax2.errorbar(scales, means, yerr=stds, label=tok, color=colors[tok], marker=markers[tok], linewidth=2, capsize=5)
+        ax2.errorbar(
+            scales, means, yerr=stds, label=tok, color=colors[tok], marker=markers[tok], linewidth=2, capsize=5
+        )
     ax2.set_title("(B) Token Cross-Entropy Loss (Nats) $\\downarrow$", fontsize=11, fontweight="bold")
     ax2.set_xlabel("Vocabulary Size ($V$)", fontsize=10)
     ax2.set_ylabel("Validation Loss (lower is better)", fontsize=10)
@@ -186,7 +197,9 @@ def generate_tradeoff_plots(data: Dict) -> None:
     for tok in ["SentencePiece-Unigram", "Boundary-BPE", "Caliper-SuperBPE"]:
         means = [np.mean([data[V][tok][s]["bytes_per_token"] for s in data[V][tok]]) for V in scales]
         stds = [np.std([data[V][tok][s]["bytes_per_token"] for s in data[V][tok]]) for V in scales]
-        ax3.errorbar(scales, means, yerr=stds, label=tok, color=colors[tok], marker=markers[tok], linewidth=2, capsize=5)
+        ax3.errorbar(
+            scales, means, yerr=stds, label=tok, color=colors[tok], marker=markers[tok], linewidth=2, capsize=5
+        )
     ax3.set_title("(C) Subword Compression (Bytes / Token) $\\uparrow$", fontsize=11, fontweight="bold")
     ax3.set_xlabel("Vocabulary Size ($V$)", fontsize=10)
     ax3.set_ylabel("Bytes per Token (higher is better)", fontsize=10)
@@ -202,7 +215,7 @@ def generate_tradeoff_plots(data: Dict) -> None:
             ce_mean = np.mean([data[V][tok][s]["val_loss_nats"] for s in data[V][tok]])
             bpb_mean = np.mean([data[V][tok][s]["true_lm_bpb"] for s in data[V][tok]])
             ax4.scatter(bpb_mean, ce_mean, color=colors[tok], marker=markers[tok], s=120, edgecolors="black", zorder=5)
-            ax4.annotate(f"{tok.split('-')[0]} ({V//1024}K)", (bpb_mean + 0.02, ce_mean - 0.04), fontsize=8.5)
+            ax4.annotate(f"{tok.split('-')[0]} ({V // 1024}K)", (bpb_mean + 0.02, ce_mean - 0.04), fontsize=8.5)
 
     ax4.set_title("(D) Pareto Frontier: Token CE vs True LM BPB", fontsize=11, fontweight="bold")
     ax4.set_xlabel("True LM BPB $\\rightarrow$ [Optimal: Bottom-Left]", fontsize=10)
@@ -232,11 +245,22 @@ def profile_tokenizers():
     sbp_merges = min(V // 10, 1500)
     base_target = max(V - sbp_merges, 1000)
     actual_merges = V - base_target
-    tok_sbp_base = CustomTokenizer.train_from_corpus(train_docs, target_vocab_size=base_target, seed_multiplier=1.2, ranking_strategy="byte_savings", min_frequency=1, verbose=False)
-    pretok_chunks = [tok for d in train_docs for tok in tok_sbp_base.pre_tokenizer.pre_tokenize(tok_sbp_base.normalizer.normalize(d))]
+    tok_sbp_base = CustomTokenizer.train_from_corpus(
+        train_docs,
+        target_vocab_size=base_target,
+        seed_multiplier=1.2,
+        ranking_strategy="byte_savings",
+        min_frequency=1,
+        verbose=False,
+    )
+    pretok_chunks = [
+        tok for d in train_docs for tok in tok_sbp_base.pre_tokenizer.pre_tokenize(tok_sbp_base.normalizer.normalize(d))
+    ]
     cem = CrossEntropyMerging(max_merges=actual_merges, cross_word=True, verbose=False)
     sbp_model = cem.optimize(tok_sbp_base.model, chunks=pretok_chunks)
-    caliper = CustomTokenizer(normalizer=tok_sbp_base.normalizer, pre_tokenizer=tok_sbp_base.pre_tokenizer, model=sbp_model)
+    caliper = CustomTokenizer(
+        normalizer=tok_sbp_base.normalizer, pre_tokenizer=tok_sbp_base.pre_tokenizer, model=sbp_model
+    )
 
     # 2. SP
     with TemporaryDirectory() as tmp_dir:
@@ -244,7 +268,16 @@ def profile_tokenizers():
         sp_corpus = tmp / "train.txt"
         sp_corpus.write_text("\n".join(train_docs), encoding="utf-8")
         sp_prefix = tmp / "sp_model"
-        spm.SentencePieceTrainer.train(input=str(sp_corpus), model_prefix=str(sp_prefix), model_type="unigram", vocab_size=V, character_coverage=1.0, byte_fallback=True, hard_vocab_limit=False, minloglevel=2)
+        spm.SentencePieceTrainer.train(
+            input=str(sp_corpus),
+            model_prefix=str(sp_prefix),
+            model_type="unigram",
+            vocab_size=V,
+            character_coverage=1.0,
+            byte_fallback=True,
+            hard_vocab_limit=False,
+            minloglevel=2,
+        )
         sp_proc = spm.SentencePieceProcessor(model_file=str(sp_prefix) + ".model")
 
     # 3. Boundary-BPE
@@ -275,6 +308,7 @@ def profile_tokenizers():
         byte_tokens = sum(1 for t in tokens if t.startswith("<0x") or len(t.encode("utf-8")) == 1) / max(num_toks, 1)
 
         from collections import Counter
+
         counts = Counter(tokens)
         probs = np.array(list(counts.values()), dtype=np.float64) / num_toks
         usage_entropy = -np.sum(probs * np.log2(probs + 1e-12))
@@ -334,4 +368,3 @@ if __name__ == "__main__":
     data, stats_results = audit_statistics()
     generate_tradeoff_plots(data)
     profile_tokenizers()
-

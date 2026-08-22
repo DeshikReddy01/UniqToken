@@ -1,4 +1,4 @@
-﻿"""
+"""
 Phase Ten: Out-of-Sample Multilingual Generalization Benchmark.
 Evaluates the frozen Caliper Config B against SentencePiece and Boundary-BPE
 on completely unseen, held-out multi-domain multilingual corpora across 5 fresh paired seeds (601, 702, 803, 904, 1005)
@@ -26,6 +26,7 @@ from tempfile import TemporaryDirectory
 from typing import Any, Callable, Dict, List, Tuple
 
 import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
@@ -78,14 +79,72 @@ def generate_unseen_out_of_sample_corpus(num_docs: int = 600, seed: int = 777) -
 
     # Distinct out-of-sample character alphabets & compounds
     scripts = {
-        "English_Technical": ("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ", ["_config", "_handler", "_stream", "Async", "Mutex", "Atomic", "Buffer", "Result", "Option", "Request", "Response", "Exception", "Interface", "Serializer", "Controller"]),
-        "Hindi_Prose": ("अआइईउऊऋएऐओऔकखगघङचछजझञटठडढणतथदधनपफबभमयरलवशषसह", ["अनुसंधान", "प्रौद्योगिकी", "व्यवस्थापन", "प्रणाली", "अंतर्राष्ट्रीय", "वैज्ञानिक", "परियोजना", "संविधान", "अधिनियम"]),
-        "Telugu_Prose": ("అఆఇఈఉఊఋఎఏఐఒఓఔకఖగఘఙచఛజఝఞటఠడఢణతథదధనపఫబభమయరలవశషసహ", ["పరిశోధన", "సాంకేతిక", "నిర్వహణ", "వ్యవస్థ", "అంతర్జాతీయ", "శాస్త్రీయ", "ప్రణాళిక", "విధానము", "అభివృద్ధి"]),
-        "Tamil_Prose": ("அஆஇஈஉஊஎஏஐஒஓஔகஙசஞடணதநபமயரலவழளறன", ["ஆராய்ச்சி", "தொழில்நுட்பம்", "மேலாண்மை", "அமைப்பு", "சர்வதேச", "அறிவியல்", "திட்டம்", "சட்டம்", "வளர்ச்சி"]),
-        "Bengali_Prose": ("অআইঈউঊঋএঐওঔকখগঘঙচছজঝঞটঠডঢণতথদধনপফবভমযরলবশষসহ", ["গবেষণা", "প্রযুক্তি", "ব্যবস্থাপনা", "পদ্ধতি", "আন্তর্জাতিক", "বৈজ্ঞানিক", "পরিকল্পনা", "সংবিধান", "উন্নয়ন"]),
-        "Arabic_Prose": ("ابتثجحخدذرزسشصضطظعغفقكلمنهوي", ["الاستراتيجية", "التكنولوجية", "المستدامة", "الاقتصادية", "الدولية", "المعلوماتية", "التطوير", "المؤسساتية"]),
-        "Chinese_Prose": ("天地玄黄宇宙洪荒日月盈昃辰宿列张寒来暑往秋收冬藏闰余成岁律吕调阳云腾致雨露结为霜金生丽水玉出昆冈剑号巨阙珠称夜光果珍李柰菜重芥姜海咸河淡鳞潜羽翔龙师火帝鸟官人皇始制文字乃服衣裳推位让国有虞陶唐吊民伐罪周发殷汤坐朝问道垂拱平章爱育黎首臣伏戎羌遐迩一体率宾归王鸣凤在竹白驹食场化被草木赖及万方盖此身发四大五常恭惟鞠养岂敢毁伤女慕贞洁男效才良知过必改得能莫忘罔谈彼短靡恃己长信使可覆器欲难量墨悲丝染诗赞羔羊景行维贤克念作圣德建名立形端表正空谷传声虚堂习听祸因恶积福缘善庆尺璧非宝寸阴是竞资父事君曰严与敬孝当竭力忠则尽命临深履薄夙兴温凊似兰斯馨如松之盛川流不息渊澄取映容止若思言辞安定笃初诚美慎终宜令荣业所基籍甚无竟学优登仕摄职从政存以甘棠去而益咏乐殊贵贱礼别尊卑上和下睦夫唱妇随", []),
-        "Russian_Prose": ("абвгдеёжзийклмнопрстуфхцчшщъыьэюяАБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ", ["исследование", "технология", "управление", "система", "международный", "научный", "разработка", "конфигурация"]),
+        "English_Technical": (
+            "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ",
+            [
+                "_config",
+                "_handler",
+                "_stream",
+                "Async",
+                "Mutex",
+                "Atomic",
+                "Buffer",
+                "Result",
+                "Option",
+                "Request",
+                "Response",
+                "Exception",
+                "Interface",
+                "Serializer",
+                "Controller",
+            ],
+        ),
+        "Hindi_Prose": (
+            "अआइईउऊऋएऐओऔकखगघङचछजझञटठडढणतथदधनपफबभमयरलवशषसह",
+            ["अनुसंधान", "प्रौद्योगिकी", "व्यवस्थापन", "प्रणाली", "अंतर्राष्ट्रीय", "वैज्ञानिक", "परियोजना", "संविधान", "अधिनियम"],
+        ),
+        "Telugu_Prose": (
+            "అఆఇఈఉఊఋఎఏఐఒఓఔకఖగఘఙచఛజఝఞటఠడఢణతథదధనపఫబభమయరలవశషసహ",
+            ["పరిశోధన", "సాంకేతిక", "నిర్వహణ", "వ్యవస్థ", "అంతర్జాతీయ", "శాస్త్రీయ", "ప్రణాళిక", "విధానము", "అభివృద్ధి"],
+        ),
+        "Tamil_Prose": (
+            "அஆஇஈஉஊஎஏஐஒஓஔகஙசஞடணதநபமயரலவழளறன",
+            ["ஆராய்ச்சி", "தொழில்நுட்பம்", "மேலாண்மை", "அமைப்பு", "சர்வதேச", "அறிவியல்", "திட்டம்", "சட்டம்", "வளர்ச்சி"],
+        ),
+        "Bengali_Prose": (
+            "অআইঈউঊঋএঐওঔকখগঘঙচছজঝঞটঠডঢণতথদধনপফবভমযরলবশষসহ",
+            ["গবেষণা", "প্রযুক্তি", "ব্যবস্থাপনা", "পদ্ধতি", "আন্তর্জাতিক", "বৈজ্ঞানিক", "পরিকল্পনা", "সংবিধান", "উন্নয়ন"],
+        ),
+        "Arabic_Prose": (
+            "ابتثجحخدذرزسشصضطظعغفقكلمنهوي",
+            [
+                "الاستراتيجية",
+                "التكنولوجية",
+                "المستدامة",
+                "الاقتصادية",
+                "الدولية",
+                "المعلوماتية",
+                "التطوير",
+                "المؤسساتية",
+            ],
+        ),
+        "Chinese_Prose": (
+            "天地玄黄宇宙洪荒日月盈昃辰宿列张寒来暑往秋收冬藏闰余成岁律吕调阳云腾致雨露结为霜金生丽水玉出昆冈剑号巨阙珠称夜光果珍李柰菜重芥姜海咸河淡鳞潜羽翔龙师火帝鸟官人皇始制文字乃服衣裳推位让国有虞陶唐吊民伐罪周发殷汤坐朝问道垂拱平章爱育黎首臣伏戎羌遐迩一体率宾归王鸣凤在竹白驹食场化被草木赖及万方盖此身发四大五常恭惟鞠养岂敢毁伤女慕贞洁男效才良知过必改得能莫忘罔谈彼短靡恃己长信使可覆器欲难量墨悲丝染诗赞羔羊景行维贤克念作圣德建名立形端表正空谷传声虚堂习听祸因恶积福缘善庆尺璧非宝寸阴是竞资父事君曰严与敬孝当竭力忠则尽命临深履薄夙兴温凊似兰斯馨如松之盛川流不息渊澄取映容止若思言辞安定笃初诚美慎终宜令荣业所基籍甚无竟学优登仕摄职从政存以甘棠去而益咏乐殊贵贱礼别尊卑上和下睦夫唱妇随",
+            [],
+        ),
+        "Russian_Prose": (
+            "абвгдеёжзийклмнопрстуфхцчшщъыьэюяАБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ",
+            [
+                "исследование",
+                "технология",
+                "управление",
+                "система",
+                "международный",
+                "научный",
+                "разработка",
+                "конфигурация",
+            ],
+        ),
     }
 
     train_docs: List[str] = []
@@ -93,7 +152,9 @@ def generate_unseen_out_of_sample_corpus(num_docs: int = 600, seed: int = 777) -
 
     for domain_name, (chars, affixes) in scripts.items():
         n_chars = len(chars)
-        raw_words = ["".join(rng.choices(chars, k=rng.randint(2, 4 if "Chinese" in domain_name else 8))) for _ in range(3500)]
+        raw_words = [
+            "".join(rng.choices(chars, k=rng.randint(2, 4 if "Chinese" in domain_name else 8))) for _ in range(3500)
+        ]
         if affixes:
             extra = [w + aff for w in raw_words[:1200] for aff in rng.sample(affixes, k=min(len(affixes), 2))]
             raw_words.extend(extra)
@@ -132,12 +193,25 @@ def run_phase_ten_oos_benchmark(
 
     print("=" * 175)
     print("PHASE TEN: OUT-OF-SAMPLE GENERALIZATION BENCHMARK (UNSEEN DOMAINS & FRESH SEEDS)")
-    print(f"Scale: V = {target_vocab:,} | Seeds: {seeds} (N = {len(seeds)} paired fresh seeds) | Matched FLOPs: {TARGET_TRAINING_FLOPS:.3e}")
-    print("Primary Hypotheses: Does Caliper's Pareto advantage over Boundary-BPE and SentencePiece generalize out-of-sample?")
+    print(
+        f"Scale: V = {target_vocab:,} | Seeds: {seeds} (N = {len(seeds)} paired fresh seeds) | Matched FLOPs: {TARGET_TRAINING_FLOPS:.3e}"
+    )
+    print(
+        "Primary Hypotheses: Does Caliper's Pareto advantage over Boundary-BPE and SentencePiece generalize out-of-sample?"
+    )
     print("=" * 175)
 
     all_records: List[OOSRecord] = []
-    domains = ["English_Technical", "Hindi_Prose", "Telugu_Prose", "Tamil_Prose", "Bengali_Prose", "Arabic_Prose", "Chinese_Prose", "Russian_Prose"]
+    domains = [
+        "English_Technical",
+        "Hindi_Prose",
+        "Telugu_Prose",
+        "Tamil_Prose",
+        "Bengali_Prose",
+        "Arabic_Prose",
+        "Chinese_Prose",
+        "Russian_Prose",
+    ]
 
     sbp_merges = min(target_vocab // 10, 1500)
     base_target = max(target_vocab - sbp_merges, 1000)
@@ -182,7 +256,10 @@ def run_phase_ten_oos_benchmark(
         sp_pct_ge_6b = sum(1 for b in sp_tok_bytes if b >= 6) / max(len(sp_tok_bytes), 1) * 100.0
         sp_indic_toks = list(sp_proc.encode_as_pieces(indic_val))
         sp_indic_bpt = indic_val_bytes / max(len(sp_indic_toks), 1)
-        sp_script_bpts = {l: len(val_by_lang[l].encode("utf-8")) / max(len(sp_proc.encode_as_pieces(val_by_lang[l])), 1) for l in domains}
+        sp_script_bpts = {
+            l: len(val_by_lang[l].encode("utf-8")) / max(len(sp_proc.encode_as_pieces(val_by_lang[l])), 1)
+            for l in domains
+        }
 
         val_loss, lm_bpb, steps, act_flops, flop_err, params, wall_clock = train_and_eval_strict_transformer(
             enc_fn=sp_enc,
@@ -213,7 +290,10 @@ def run_phase_ten_oos_benchmark(
             wall_clock_sec=time.time() - t0,
         )
         all_records.append(rec_sp)
-        print(f"  [SentencePiece (Anchor)     ] BPB: {lm_bpb:.3f} | CE: {val_loss:.3f} | B/Tok: {sp_bpt:.2f} | Indic: {sp_indic_bpt:.2f} | Fert: {sp_fert:.2f} | Active: {sp_active_cov*100.0:.1f}%", flush=True)
+        print(
+            f"  [SentencePiece (Anchor)     ] BPB: {lm_bpb:.3f} | CE: {val_loss:.3f} | B/Tok: {sp_bpt:.2f} | Indic: {sp_indic_bpt:.2f} | Fert: {sp_fert:.2f} | Active: {sp_active_cov * 100.0:.1f}%",
+            flush=True,
+        )
 
         # 2. Boundary-BPE Anchor
         t0 = time.time()
@@ -227,7 +307,9 @@ def run_phase_ten_oos_benchmark(
         bpe_pct_ge_6b = sum(1 for b in bpe_tok_bytes if b >= 6) / max(len(bpe_tok_bytes), 1) * 100.0
         bpe_indic_toks = bpe_model.encode(indic_val)
         bpe_indic_bpt = indic_val_bytes / max(len(bpe_indic_toks), 1)
-        bpe_script_bpts = {l: len(val_by_lang[l].encode("utf-8")) / max(len(bpe_model.encode(val_by_lang[l])), 1) for l in domains}
+        bpe_script_bpts = {
+            l: len(val_by_lang[l].encode("utf-8")) / max(len(bpe_model.encode(val_by_lang[l])), 1) for l in domains
+        }
 
         val_loss, lm_bpb, steps, act_flops, flop_err, params, wall_clock = train_and_eval_strict_transformer(
             enc_fn=lambda t: bpe_model.encode_to_ids(t),
@@ -258,7 +340,10 @@ def run_phase_ten_oos_benchmark(
             wall_clock_sec=time.time() - t0,
         )
         all_records.append(rec_bpe)
-        print(f"  [Boundary-BPE (Anchor)      ] BPB: {lm_bpb:.3f} | CE: {val_loss:.3f} | B/Tok: {bpe_bpt:.2f} | Indic: {bpe_indic_bpt:.2f} | Fert: {bpe_fert:.2f} | Active: {bpe_active_cov*100.0:.1f}%", flush=True)
+        print(
+            f"  [Boundary-BPE (Anchor)      ] BPB: {lm_bpb:.3f} | CE: {val_loss:.3f} | B/Tok: {bpe_bpt:.2f} | Indic: {bpe_indic_bpt:.2f} | Fert: {bpe_fert:.2f} | Active: {bpe_active_cov * 100.0:.1f}%",
+            flush=True,
+        )
 
         # 3. Frozen Caliper Config B
         t0 = time.time()
@@ -273,7 +358,9 @@ def run_phase_ten_oos_benchmark(
             min_frequency=1,
             verbose=False,
         )
-        pretok_chunks = [tok for d in train_docs for tok in tok_base.pre_tokenizer.pre_tokenize(tok_base.normalizer.normalize(d))]
+        pretok_chunks = [
+            tok for d in train_docs for tok in tok_base.pre_tokenizer.pre_tokenize(tok_base.normalizer.normalize(d))
+        ]
         cem = CrossEntropyMerging(max_merges=actual_merges, cross_word=True, verbose=False)
         sbp_model = cem.optimize(tok_base.model, chunks=pretok_chunks)
         cal_tok = CustomTokenizer(normalizer=tok_base.normalizer, pre_tokenizer=tok_base.pre_tokenizer, model=sbp_model)
@@ -285,7 +372,9 @@ def run_phase_ten_oos_benchmark(
         cal_pct_ge_6b = sum(1 for b in cal_tok_bytes if b >= 6) / max(len(cal_tok_bytes), 1) * 100.0
         cal_indic_toks = cal_tok.encode(indic_val)
         cal_indic_bpt = indic_val_bytes / max(len(cal_indic_toks), 1)
-        cal_script_bpts = {l: len(val_by_lang[l].encode("utf-8")) / max(len(cal_tok.encode(val_by_lang[l])), 1) for l in domains}
+        cal_script_bpts = {
+            l: len(val_by_lang[l].encode("utf-8")) / max(len(cal_tok.encode(val_by_lang[l])), 1) for l in domains
+        }
 
         val_loss, lm_bpb, steps, act_flops, flop_err, params, wall_clock = train_and_eval_strict_transformer(
             enc_fn=lambda t: cal_tok.encode_to_ids(t),
@@ -316,7 +405,10 @@ def run_phase_ten_oos_benchmark(
             wall_clock_sec=time.time() - t0,
         )
         all_records.append(rec_cal)
-        print(f"  [Caliper-SuperBPE (Config B)] BPB: {lm_bpb:.3f} | CE: {val_loss:.3f} | B/Tok: {cal_bpt:.2f} | Indic: {cal_indic_bpt:.2f} | Fert: {cal_fert:.2f} | Active: {cal_active_cov*100.0:.1f}%", flush=True)
+        print(
+            f"  [Caliper-SuperBPE (Config B)] BPB: {lm_bpb:.3f} | CE: {val_loss:.3f} | B/Tok: {cal_bpt:.2f} | Indic: {cal_indic_bpt:.2f} | Fert: {cal_fert:.2f} | Active: {cal_active_cov * 100.0:.1f}%",
+            flush=True,
+        )
 
     # Statistical Audits (Holm-Bonferroni, df = 4)
     def compute_paired_stats(vec_a: List[float], vec_b: List[float]) -> Dict[str, float]:
@@ -362,20 +454,26 @@ def run_phase_ten_oos_benchmark(
     print("\n" + "=" * 175)
     print("PHASE TEN: OUT-OF-SAMPLE STATISTICAL GENERALIZATION REPORT (HOLM-BONFERRONI ADJUSTED, N = 5 SEEDS)")
     print("=" * 175)
-    print(f"{'Comparison':<28} | {'Metric':<16} | {'Mean Diff':<12} | {'t(4)':<8} | {'p (raw)':<12} | {'p (Holm)':<12} | {'95% CI':<24} | {'Cohen dz':<10} | {'Sig (p<0.05)'}")
+    print(
+        f"{'Comparison':<28} | {'Metric':<16} | {'Mean Diff':<12} | {'t(4)':<8} | {'p (raw)':<12} | {'p (Holm)':<12} | {'95% CI':<24} | {'Cohen dz':<10} | {'Sig (p<0.05)'}"
+    )
     print("-" * 175)
 
     for h in hypotheses:
         ci_str = f"[{h['ci_lower']:+.3f}, {h['ci_upper']:+.3f}]"
         sig_str = "YES (p<0.05)" if h["significant_05"] else "NO (p>=0.05)"
-        print(f"{h['comparison']:<28} | {h['metric']:<16} | {h['mean_diff']:<+12.3f} | {h['t_stat']:<8.2f} | {h['p_raw']:<12.4e} | {h['p_adj']:<12.4e} | {ci_str:<24} | {h['cohens_dz']:<+10.2f} | {sig_str}")
+        print(
+            f"{h['comparison']:<28} | {h['metric']:<16} | {h['mean_diff']:<+12.3f} | {h['t_stat']:<8.2f} | {h['p_raw']:<12.4e} | {h['p_adj']:<12.4e} | {ci_str:<24} | {h['cohens_dz']:<+10.2f} | {sig_str}"
+        )
     print("=" * 175 + "\n")
 
     # Aggregate Summary
     print("=" * 175)
     print("PHASE TEN: OUT-OF-SAMPLE AGGREGATE METRICS SUMMARY (MEAN ACROSS 5 FRESH SEEDS AT 16K)")
     print("=" * 175)
-    print(f"{'Model Architecture':<30} | {'True LM BPB':<12} | {'Token CE':<10} | {'Bytes/Tok':<10} | {'Indic B/Tok':<12} | {'Fertility':<10} | {'Active Vocab %':<15} | {'>=6B %'}")
+    print(
+        f"{'Model Architecture':<30} | {'True LM BPB':<12} | {'Token CE':<10} | {'Bytes/Tok':<10} | {'Indic B/Tok':<12} | {'Fertility':<10} | {'Active Vocab %':<15} | {'>=6B %'}"
+    )
     print("-" * 175)
 
     models = ["SentencePiece-Unigram", "Boundary-BPE", "Caliper-SuperBPE (Config B)"]
@@ -399,20 +497,26 @@ def run_phase_ten_oos_benchmark(
             "active_vocab_pct": act_m,
             "pct_ge_6b": ge6_m,
         }
-        print(f"{m_name:<30} | {bpb_m:<12.3f} | {ce_m:<10.3f} | {bpt_m:<10.2f} | {ind_m:<12.2f} | {fert_m:<10.2f} | {act_m:<15.1f}% | {ge6_m:<8.1f}%")
+        print(
+            f"{m_name:<30} | {bpb_m:<12.3f} | {ce_m:<10.3f} | {bpt_m:<10.2f} | {ind_m:<12.2f} | {fert_m:<10.2f} | {act_m:<15.1f}% | {ge6_m:<8.1f}%"
+        )
     print("=" * 175 + "\n")
 
     # Script-Level Summary
     print("=" * 140)
     print("PHASE TEN: OUT-OF-SAMPLE PER-DOMAIN COMPRESSION PROFILE (MEAN ACROSS 5 SEEDS)")
     print("=" * 140)
-    print(f"{'Domain / Script':<22} | {'SentencePiece B/Tok':<22} | {'Boundary-BPE B/Tok':<22} | {'Caliper Config B B/Tok':<25} | {'Caliper vs SP Delta'}")
+    print(
+        f"{'Domain / Script':<22} | {'SentencePiece B/Tok':<22} | {'Boundary-BPE B/Tok':<22} | {'Caliper Config B B/Tok':<25} | {'Caliper vs SP Delta'}"
+    )
     print("-" * 140)
     domain_summary = {}
     for dom in domains:
         sp_b = float(np.mean([r.script_bpt[dom] for r in all_records if r.model_name == "SentencePiece-Unigram"]))
         bpe_b = float(np.mean([r.script_bpt[dom] for r in all_records if r.model_name == "Boundary-BPE"]))
-        cal_b = float(np.mean([r.script_bpt[dom] for r in all_records if r.model_name == "Caliper-SuperBPE (Config B)"]))
+        cal_b = float(
+            np.mean([r.script_bpt[dom] for r in all_records if r.model_name == "Caliper-SuperBPE (Config B)"])
+        )
         delta = cal_b - sp_b
         domain_summary[dom] = {"sp": sp_b, "boundary_bpe": bpe_b, "caliper": cal_b, "delta": delta}
         print(f"{dom:<22} | {sp_b:<22.2f} | {bpe_b:<22.2f} | {cal_b:<25.2f} | {delta:+6.2f} B/Tok")
@@ -428,7 +532,9 @@ def run_phase_ten_oos_benchmark(
         ce = summary_dict[m_name]["token_ce_loss"]
         sz = 260 if "*" in mk else 160
         ax_a.scatter([bpb], [ce], color=col, marker=mk, s=sz, edgecolors="black", label=m_name, zorder=6)
-        ax_a.annotate(f"{m_name.split()[0]}\nBPB: {bpb:.3f}, CE: {ce:.2f}", (bpb + 0.015, ce + 0.02), fontsize=9, color=col)
+        ax_a.annotate(
+            f"{m_name.split()[0]}\nBPB: {bpb:.3f}, CE: {ce:.2f}", (bpb + 0.015, ce + 0.02), fontsize=9, color=col
+        )
     ax_a.set_title("Panel A: Out-of-Sample Pareto Frontier (V = 16,384, N = 5 Seeds)", fontsize=11, fontweight="bold")
     ax_a.set_xlabel("True LM BPB (lower is better)", fontsize=10)
     ax_a.set_ylabel("Token Cross-Entropy Loss (lower is better)", fontsize=10)

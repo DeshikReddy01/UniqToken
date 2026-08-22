@@ -105,7 +105,9 @@ class CustomTokenizer:
         """
         if self._cross_word_set is None or self._cross_word_model_id != id(self.model):
             sc = self.normalizer.space_char
-            self._cross_word_set = frozenset(t for t in self.model.vocab if sc in t and t.strip(sc))
+            # Only internal metaspace (SuperBPE merges like "the▁quick"); leading
+            # metaspace tokens (e.g. "▁quick" from pre-tokenization) are normal chunks.
+            self._cross_word_set = frozenset(t for t in self.model.vocab if sc in t and t.index(sc) > 0 and t.strip(sc))
             self._cross_word_model_id = id(self.model)
         return self._cross_word_set
 
@@ -333,112 +335,6 @@ class CustomTokenizer:
         unk_id = self.model.token_to_id.get("<|unk|>", 0)
         return [self.model.token_to_id.get(t, unk_id) for t in tokens]
 
-    def encode_batch(
-        self,
-        texts: Sequence[str],
-        allowed_special: Union[str, Set[str], List[str]] = "none",
-        disallowed_special_action: str = "escape",
-        num_workers: Optional[int] = None,
-    ) -> List[List[str]]:
-        """Encodes a sequence of texts, parallelizing across workers when batch is large."""
-        # ponytail: ThreadPool for encode_batch (GIL-bound lattice); ProcessPool if CPU-bound and profiling shows gain
-        if not texts:
-            return []
-        if num_workers is not None and num_workers < 1:
-            raise ValueError(f"num_workers must be >= 1 (or None), got {num_workers}")
-        if len(texts) <= 64 or num_workers == 1:
-            return [
-                self.encode(
-                    t,
-                    allowed_special=allowed_special,
-                    disallowed_special_action=disallowed_special_action,
-                )
-                for t in texts
-            ]
-
-        workers = num_workers or min(os.cpu_count() or 1, 8)
-        with ThreadPoolExecutor(max_workers=workers) as executor:
-            return list(
-                executor.map(
-                    lambda t: self.encode(
-                        t,
-                        allowed_special=allowed_special,
-                        disallowed_special_action=disallowed_special_action,
-                    ),
-                    texts,
-                )
-            )
-
-    def encode_to_ids_batch(
-        self,
-        texts: Sequence[str],
-        allowed_special: Union[str, Set[str], List[str]] = "none",
-        disallowed_special_action: str = "escape",
-        num_workers: Optional[int] = None,
-    ) -> List[List[int]]:
-        """Encodes a sequence of texts to token IDs, parallelizing across workers when batch is large."""
-        if not texts:
-            return []
-        if num_workers is not None and num_workers < 1:
-            raise ValueError(f"num_workers must be >= 1 (or None), got {num_workers}")
-        if len(texts) <= 64 or num_workers == 1:
-            return [
-                self.encode_to_ids(
-                    t,
-                    allowed_special=allowed_special,
-                    disallowed_special_action=disallowed_special_action,
-                )
-                for t in texts
-            ]
-
-        workers = num_workers or min(os.cpu_count() or 1, 8)
-        with ThreadPoolExecutor(max_workers=workers) as executor:
-            return list(
-                executor.map(
-                    lambda t: self.encode_to_ids(
-                        t,
-                        allowed_special=allowed_special,
-                        disallowed_special_action=disallowed_special_action,
-                    ),
-                    texts,
-                )
-            )
-
-    def encode_with_offsets_batch(
-        self,
-        texts: Sequence[str],
-        allowed_special: Union[str, Set[str], List[str]] = "none",
-        disallowed_special_action: str = "escape",
-        num_workers: Optional[int] = None,
-    ) -> List[List[Token]]:
-        """Encodes a sequence of texts with exact spans, parallelizing across workers when batch is large."""
-        if not texts:
-            return []
-        if num_workers is not None and num_workers < 1:
-            raise ValueError(f"num_workers must be >= 1 (or None), got {num_workers}")
-        if len(texts) <= 64 or num_workers == 1:
-            return [
-                self.encode_with_offsets(
-                    t,
-                    allowed_special=allowed_special,
-                    disallowed_special_action=disallowed_special_action,
-                )
-                for t in texts
-            ]
-
-        workers = num_workers or min(os.cpu_count() or 1, 8)
-        with ThreadPoolExecutor(max_workers=workers) as executor:
-            return list(
-                executor.map(
-                    lambda t: self.encode_with_offsets(
-                        t,
-                        allowed_special=allowed_special,
-                        disallowed_special_action=disallowed_special_action,
-                    ),
-                    texts,
-                )
-            )
-
     def sample_to_ids(
         self,
         text: str,
@@ -504,29 +400,33 @@ class CustomTokenizer:
         disallowed_special_action: str = "escape",
         num_workers: Optional[int] = None,
     ) -> List[List[str]]:
-        """
-        Encodes a batch of strings into lists of token strings.
-        """
-        if num_workers is not None and num_workers > 1:
-            with ThreadPoolExecutor(max_workers=num_workers) as pool:
-                return list(
-                    pool.map(
-                        lambda t: self.encode(
-                            t,
-                            allowed_special=allowed_special,
-                            disallowed_special_action=disallowed_special_action,
-                        ),
-                        texts,
-                    )
+        """Encodes a sequence of texts, parallelizing across workers when batch is large."""
+        if not texts:
+            return []
+        if num_workers is not None and num_workers < 1:
+            raise ValueError(f"num_workers must be >= 1 (or None), got {num_workers}")
+        if len(texts) <= 64 or num_workers == 1:
+            return [
+                self.encode(
+                    t,
+                    allowed_special=allowed_special,
+                    disallowed_special_action=disallowed_special_action,
                 )
-        return [
-            self.encode(
-                t,
-                allowed_special=allowed_special,
-                disallowed_special_action=disallowed_special_action,
+                for t in texts
+            ]
+
+        workers = num_workers or min(os.cpu_count() or 1, 8)
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            return list(
+                executor.map(
+                    lambda t: self.encode(
+                        t,
+                        allowed_special=allowed_special,
+                        disallowed_special_action=disallowed_special_action,
+                    ),
+                    texts,
+                )
             )
-            for t in texts
-        ]
 
     def encode_to_ids_batch(
         self,
@@ -535,14 +435,16 @@ class CustomTokenizer:
         disallowed_special_action: str = "escape",
         num_workers: Optional[int] = None,
     ) -> List[List[int]]:
-        """
-        High-throughput multi-string batch tokenization to integer IDs.
-        Dispatches to native parallel Rust pipeline when available.
-        """
+        """Encodes a sequence of texts to token IDs, parallelizing across workers when batch is large."""
+        if not texts:
+            return []
+        if num_workers is not None and num_workers < 1:
+            raise ValueError(f"num_workers must be >= 1 (or None), got {num_workers}")
+
         if (
             num_workers is None
             and hasattr(self.model, "_get_rust_trie")
-            and not self._cross_word_tokens
+            and not self._cross_word_tokens()
             and allowed_special == "none"
         ):
             rust_trie = self.model._get_rust_trie()
@@ -559,26 +461,28 @@ class CustomTokenizer:
                 except Exception:
                     pass
 
-        if num_workers is not None and num_workers > 1:
-            with ThreadPoolExecutor(max_workers=num_workers) as pool:
-                return list(
-                    pool.map(
-                        lambda t: self.encode_to_ids(
-                            t,
-                            allowed_special=allowed_special,
-                            disallowed_special_action=disallowed_special_action,
-                        ),
-                        texts,
-                    )
+        if len(texts) <= 64 or num_workers == 1:
+            return [
+                self.encode_to_ids(
+                    t,
+                    allowed_special=allowed_special,
+                    disallowed_special_action=disallowed_special_action,
                 )
-        return [
-            self.encode_to_ids(
-                t,
-                allowed_special=allowed_special,
-                disallowed_special_action=disallowed_special_action,
+                for t in texts
+            ]
+
+        workers = num_workers or min(os.cpu_count() or 1, 8)
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            return list(
+                executor.map(
+                    lambda t: self.encode_to_ids(
+                        t,
+                        allowed_special=allowed_special,
+                        disallowed_special_action=disallowed_special_action,
+                    ),
+                    texts,
+                )
             )
-            for t in texts
-        ]
 
     def encode_with_offsets_batch(
         self,
@@ -587,31 +491,33 @@ class CustomTokenizer:
         disallowed_special_action: str = "escape",
         num_workers: Optional[int] = None,
     ) -> List[List[Token]]:
-        """
-        Encodes a batch of strings into lists of Tokens with character spans.
-        """
-        if num_workers is not None and num_workers > 1:
-            with ThreadPoolExecutor(max_workers=num_workers) as pool:
-                return list(
-                    pool.map(
-                        lambda t: self.encode_with_offsets(
-                            t,
-                            allowed_special=allowed_special,
-                            disallowed_special_action=disallowed_special_action,
-                        ),
-                        texts,
-                    )
+        """Encodes a sequence of texts with exact spans, parallelizing across workers when batch is large."""
+        if not texts:
+            return []
+        if num_workers is not None and num_workers < 1:
+            raise ValueError(f"num_workers must be >= 1 (or None), got {num_workers}")
+        if len(texts) <= 64 or num_workers == 1:
+            return [
+                self.encode_with_offsets(
+                    t,
+                    allowed_special=allowed_special,
+                    disallowed_special_action=disallowed_special_action,
                 )
-        return [
-            self.encode_with_offsets(
-                t,
-                allowed_special=allowed_special,
-                disallowed_special_action=disallowed_special_action,
+                for t in texts
+            ]
+
+        workers = num_workers or min(os.cpu_count() or 1, 8)
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            return list(
+                executor.map(
+                    lambda t: self.encode_with_offsets(
+                        t,
+                        allowed_special=allowed_special,
+                        disallowed_special_action=disallowed_special_action,
+                    ),
+                    texts,
+                )
             )
-            for t in texts
-        ]
-
-
 
     def encode_with_metrics(
         self,

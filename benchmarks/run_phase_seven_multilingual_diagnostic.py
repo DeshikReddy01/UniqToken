@@ -25,6 +25,7 @@ from tempfile import TemporaryDirectory
 from typing import Any, Callable, Dict, List, Tuple
 
 import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
@@ -193,12 +194,14 @@ def run_phase_seven_audit(
         cal_script_hist = Counter(classify_token_script(t) for t in caliper_vocab)
         sp_script_hist = Counter(classify_token_script(t) for t in sp_vocab)
 
-        vocab_alloc_by_seed.append({
-            "caliper_lengths": dict(cal_len_hist),
-            "sp_lengths": dict(sp_len_hist),
-            "caliper_scripts": dict(cal_script_hist),
-            "sp_scripts": dict(sp_script_hist),
-        })
+        vocab_alloc_by_seed.append(
+            {
+                "caliper_lengths": dict(cal_len_hist),
+                "sp_lengths": dict(sp_len_hist),
+                "caliper_scripts": dict(cal_script_hist),
+                "sp_scripts": dict(sp_script_hist),
+            }
+        )
 
         # Train Strict Transformers for Whole Corpus
         sp_loss, sp_bpb, _, _, _, _, _ = train_and_eval_strict_transformer(
@@ -267,20 +270,27 @@ def run_phase_seven_audit(
                 "fertility_gap": cal_fert - sp_fert,
             }
 
-            print(f"  [{lang:<10}] SP B/Tok: {sp_bpt:5.2f} (Fert: {sp_fert:4.2f}, p50/90: {sp_p50:2.0f}/{sp_p90:2.0f}B) | Caliper B/Tok: {cal_bpt:5.2f} (Fert: {cal_fert:4.2f}, p50/90: {cal_p50:2.0f}/{cal_p90:2.0f}B) | Delta B/Tok: {sp_bpt - cal_bpt:+5.2f}", flush=True)
+            print(
+                f"  [{lang:<10}] SP B/Tok: {sp_bpt:5.2f} (Fert: {sp_fert:4.2f}, p50/90: {sp_p50:2.0f}/{sp_p90:2.0f}B) | Caliper B/Tok: {cal_bpt:5.2f} (Fert: {cal_fert:4.2f}, p50/90: {cal_p50:2.0f}/{cal_p90:2.0f}B) | Delta B/Tok: {sp_bpt - cal_bpt:+5.2f}",
+                flush=True,
+            )
 
-        all_seed_results.append({
-            "seed": seed,
-            "sp_overall": {"bpb": sp_bpb, "ce": sp_loss},
-            "caliper_overall": {"bpb": cal_bpb, "ce": cal_loss},
-            "lang_breakdown": lang_breakdown,
-        })
+        all_seed_results.append(
+            {
+                "seed": seed,
+                "sp_overall": {"bpb": sp_bpb, "ce": sp_loss},
+                "caliper_overall": {"bpb": cal_bpb, "ce": cal_loss},
+                "lang_breakdown": lang_breakdown,
+            }
+        )
 
     # Aggregation across seeds
     print("\n" + "=" * 165)
     print("PHASE SEVEN: PER-LANGUAGE MULTILINGUAL PROFILING SUMMARY (MEAN ACROSS 3 SEEDS AT 16K)")
     print("=" * 165)
-    print(f"{'Language/Script':<16} | {'SP Bytes/Tok':<14} | {'Cal Bytes/Tok':<14} | {'Delta B/Tok':<12} | {'SP Fertility':<13} | {'Cal Fertility':<13} | {'SP >=6B %':<11} | {'Cal >=6B %':<11} | {'SP p50/90':<11} | {'Cal p50/90'}")
+    print(
+        f"{'Language/Script':<16} | {'SP Bytes/Tok':<14} | {'Cal Bytes/Tok':<14} | {'Delta B/Tok':<12} | {'SP Fertility':<13} | {'Cal Fertility':<13} | {'SP >=6B %':<11} | {'Cal >=6B %':<11} | {'SP p50/90':<11} | {'Cal p50/90'}"
+    )
     print("-" * 165)
 
     summary_by_lang = {}
@@ -316,14 +326,18 @@ def run_phase_seven_audit(
 
         sp_len_str = f"{sp_p50_m:.0f}/{sp_p90_m:.0f}B"
         cal_len_str = f"{cal_p50_m:.0f}/{cal_p90_m:.0f}B"
-        print(f"{lang:<16} | {sp_bpt_m:<14.2f} | {cal_bpt_m:<14.2f} | {bpt_gap_m:<+12.2f} | {sp_fert_m:<13.2f} | {cal_fert_m:<13.2f} | {sp_ge6_m:<10.1f}% | {cal_ge6_m:<10.1f}% | {sp_len_str:<11} | {cal_len_str}")
+        print(
+            f"{lang:<16} | {sp_bpt_m:<14.2f} | {cal_bpt_m:<14.2f} | {bpt_gap_m:<+12.2f} | {sp_fert_m:<13.2f} | {cal_fert_m:<13.2f} | {sp_ge6_m:<10.1f}% | {cal_ge6_m:<10.1f}% | {sp_len_str:<11} | {cal_len_str}"
+        )
     print("=" * 165 + "\n")
 
     # Aggregate Candidate Survival Rates
     print("=" * 120)
     print("PHASE SEVEN: CANDIDATE SURVIVAL RATE BY BYTE-LENGTH BINS (CALIPER EM PRUNING)")
     print("=" * 120)
-    print(f"{'Length Bin':<15} | {'Candidates Generated (Seed)':<30} | {'Surviving in 16K Vocab':<25} | {'Survival Rate %'}")
+    print(
+        f"{'Length Bin':<15} | {'Candidates Generated (Seed)':<30} | {'Surviving in 16K Vocab':<25} | {'Survival Rate %'}"
+    )
     print("-" * 120)
 
     summary_survival = {}
@@ -340,12 +354,28 @@ def run_phase_seven_audit(
     print("=" * 120 + "\n")
 
     # Aggregate Vocabulary Allocation by Script
-    all_scripts = ["Latin", "Devanagari", "Telugu", "Tamil", "Bengali", "Arabic", "Chinese/CJK", "Cyrillic", "Numeric/ID", "Punctuation", "Other", "Special", "ByteFallback"]
+    all_scripts = [
+        "Latin",
+        "Devanagari",
+        "Telugu",
+        "Tamil",
+        "Bengali",
+        "Arabic",
+        "Chinese/CJK",
+        "Cyrillic",
+        "Numeric/ID",
+        "Punctuation",
+        "Other",
+        "Special",
+        "ByteFallback",
+    ]
     summary_scripts = {}
     print("=" * 120)
     print("PHASE SEVEN: 16K VOCABULARY SCRIPT ALLOCATION (CALIPER VS SENTENCEPIECE)")
     print("=" * 120)
-    print(f"{'Script Category':<20} | {'Caliper Token Count':<22} | {'Caliper Vocab %':<18} | {'SP Token Count':<18} | {'SP Vocab %'}")
+    print(
+        f"{'Script Category':<20} | {'Caliper Token Count':<22} | {'Caliper Vocab %':<18} | {'SP Token Count':<18} | {'SP Vocab %'}"
+    )
     print("-" * 120)
 
     for sc in all_scripts:
@@ -372,8 +402,8 @@ def run_phase_seven_audit(
     width = 0.35
     sp_bpts = [summary_by_lang[l]["sp_bpt"] for l in languages]
     cal_bpts = [summary_by_lang[l]["caliper_bpt"] for l in languages]
-    ax_a.bar(x - width/2, sp_bpts, width, label="SentencePiece", color="#1f77b4")
-    ax_a.bar(x + width/2, cal_bpts, width, label="Caliper (Space-Prefixed)", color="#d62728")
+    ax_a.bar(x - width / 2, sp_bpts, width, label="SentencePiece", color="#1f77b4")
+    ax_a.bar(x + width / 2, cal_bpts, width, label="Caliper (Space-Prefixed)", color="#d62728")
     ax_a.set_xticks(x)
     ax_a.set_xticklabels(languages, rotation=25, ha="right", fontsize=9)
     ax_a.set_ylabel("Bytes per Token (higher is better)", fontsize=10)
@@ -385,8 +415,8 @@ def run_phase_seven_audit(
     ax_b = axes[0, 1]
     sp_ferts = [summary_by_lang[l]["sp_fertility"] for l in languages]
     cal_ferts = [summary_by_lang[l]["caliper_fertility"] for l in languages]
-    ax_b.bar(x - width/2, sp_ferts, width, label="SentencePiece", color="#1f77b4")
-    ax_b.bar(x + width/2, cal_ferts, width, label="Caliper (Space-Prefixed)", color="#d62728")
+    ax_b.bar(x - width / 2, sp_ferts, width, label="SentencePiece", color="#1f77b4")
+    ax_b.bar(x + width / 2, cal_ferts, width, label="Caliper (Space-Prefixed)", color="#d62728")
     ax_b.set_xticks(x)
     ax_b.set_xticklabels(languages, rotation=25, ha="right", fontsize=9)
     ax_b.set_ylabel("Fertility (Tokens per Word) (lower is better)", fontsize=10)

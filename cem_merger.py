@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import math
 from collections import Counter
-from typing import Dict, Iterable, List, Tuple
+from typing import Dict, Iterable, List, Optional, Set, Tuple
 
 from byte_codec import ByteFallbackEngine
 from unigram_trainer import UnigramModel
@@ -187,7 +187,7 @@ class CrossEntropyMerging:
                     if pair_counts[p] <= 0:
                         pair_counts.pop(p, None)
                     pair_to_streams[p].discard(s_idx)
-                total_pairs -= (old_len - 1)
+                total_pairs -= old_len - 1
 
                 # Form new stream
                 new_stream: List[str] = []
@@ -208,12 +208,14 @@ class CrossEntropyMerging:
                     pair_counts[p] += 1
                     pair_to_streams[p].add(s_idx)
                     a_p, b_p = p
-                    if pair_counts[p] >= 2 and (not self.cross_word or self.space_char in a_p or self.space_char in b_p):
+                    if pair_counts[p] >= 2 and (
+                        not self.cross_word or self.space_char in a_p or self.space_char in b_p
+                    ):
                         if mergeable(a_p) and mergeable(b_p):
                             sc, lp_hat, _ = compute_pair_score(a_p, b_p, pair_counts[p], total_pairs)
                             if sc < self.max_score:
                                 heapq.heappush(heap, (sc, pair_counts[p], lp_hat, p))
-                total_pairs += (len(new_stream) - 1)
+                total_pairs += len(new_stream) - 1
 
             pair_counts.pop((a, b), None)
             pair_to_streams.pop((a, b), None)

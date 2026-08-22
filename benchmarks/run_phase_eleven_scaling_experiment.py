@@ -1,4 +1,4 @@
-﻿"""
+"""
 Phase Eleven: Vocabulary Scaling Experiment across 8K, 16K, 32K, and 64K Scales.
 Evaluates SentencePiece, Boundary-BPE, and Frozen Caliper Config B across 3 paired seeds (101, 202, 303)
 under strict matched FLOP compute (1.333e+11) on CUDA.
@@ -26,6 +26,7 @@ from tempfile import TemporaryDirectory
 from typing import Any, Callable, Dict, List, Tuple
 
 import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
@@ -75,8 +76,12 @@ def run_phase_eleven_scaling(
 
     print("=" * 175)
     print("PHASE ELEVEN: VOCABULARY SCALING EXPERIMENT (8K -> 16K -> 32K -> 64K)")
-    print(f"Scales: {vocab_scales} | Seeds: {seeds} (N = {len(seeds)} paired) | Matched FLOPs: {TARGET_TRAINING_FLOPS:.3e}")
-    print("Question: Does Caliper's Pareto advantage over Boundary-BPE and SentencePiece scale and widen with vocabulary capacity?")
+    print(
+        f"Scales: {vocab_scales} | Seeds: {seeds} (N = {len(seeds)} paired) | Matched FLOPs: {TARGET_TRAINING_FLOPS:.3e}"
+    )
+    print(
+        "Question: Does Caliper's Pareto advantage over Boundary-BPE and SentencePiece scale and widen with vocabulary capacity?"
+    )
     print("=" * 175)
 
     all_records: List[ScaleRecord] = []
@@ -156,7 +161,10 @@ def run_phase_eleven_scaling(
                 wall_clock_sec=time.time() - t0,
             )
             all_records.append(rec_sp)
-            print(f"  [SentencePiece (Anchor)     ] BPB: {lm_bpb:.3f} | CE: {val_loss:.3f} | B/Tok: {sp_bpt:.2f} | Indic: {sp_indic_bpt:.2f} | Fert: {sp_fert:.2f} | Active: {sp_active_cov*100.0:.1f}%", flush=True)
+            print(
+                f"  [SentencePiece (Anchor)     ] BPB: {lm_bpb:.3f} | CE: {val_loss:.3f} | B/Tok: {sp_bpt:.2f} | Indic: {sp_indic_bpt:.2f} | Fert: {sp_fert:.2f} | Active: {sp_active_cov * 100.0:.1f}%",
+                flush=True,
+            )
 
             # 2. Boundary-BPE
             t0 = time.time()
@@ -199,7 +207,10 @@ def run_phase_eleven_scaling(
                 wall_clock_sec=time.time() - t0,
             )
             all_records.append(rec_bpe)
-            print(f"  [Boundary-BPE (Anchor)      ] BPB: {lm_bpb:.3f} | CE: {val_loss:.3f} | B/Tok: {bpe_bpt:.2f} | Indic: {bpe_indic_bpt:.2f} | Fert: {bpe_fert:.2f} | Active: {bpe_active_cov*100.0:.1f}%", flush=True)
+            print(
+                f"  [Boundary-BPE (Anchor)      ] BPB: {lm_bpb:.3f} | CE: {val_loss:.3f} | B/Tok: {bpe_bpt:.2f} | Indic: {bpe_indic_bpt:.2f} | Fert: {bpe_fert:.2f} | Active: {bpe_active_cov * 100.0:.1f}%",
+                flush=True,
+            )
 
             # 3. Frozen Caliper Config B
             t0 = time.time()
@@ -214,10 +225,14 @@ def run_phase_eleven_scaling(
                 min_frequency=1,
                 verbose=False,
             )
-            pretok_chunks = [tok for d in train_docs for tok in tok_base.pre_tokenizer.pre_tokenize(tok_base.normalizer.normalize(d))]
+            pretok_chunks = [
+                tok for d in train_docs for tok in tok_base.pre_tokenizer.pre_tokenize(tok_base.normalizer.normalize(d))
+            ]
             cem = CrossEntropyMerging(max_merges=actual_merges, cross_word=True, verbose=False)
             sbp_model = cem.optimize(tok_base.model, chunks=pretok_chunks)
-            cal_tok = CustomTokenizer(normalizer=tok_base.normalizer, pre_tokenizer=tok_base.pre_tokenizer, model=sbp_model)
+            cal_tok = CustomTokenizer(
+                normalizer=tok_base.normalizer, pre_tokenizer=tok_base.pre_tokenizer, model=sbp_model
+            )
 
             cal_tokens = cal_tok.encode(combined_val)
             cal_counts = Counter(cal_tokens)
@@ -255,13 +270,18 @@ def run_phase_eleven_scaling(
                 wall_clock_sec=time.time() - t0,
             )
             all_records.append(rec_cal)
-            print(f"  [Caliper-SuperBPE (Config B)] BPB: {lm_bpb:.3f} | CE: {val_loss:.3f} | B/Tok: {cal_bpt:.2f} | Indic: {cal_indic_bpt:.2f} | Fert: {cal_fert:.2f} | Active: {cal_active_cov*100.0:.1f}%", flush=True)
+            print(
+                f"  [Caliper-SuperBPE (Config B)] BPB: {lm_bpb:.3f} | CE: {val_loss:.3f} | B/Tok: {cal_bpt:.2f} | Indic: {cal_indic_bpt:.2f} | Fert: {cal_fert:.2f} | Active: {cal_active_cov * 100.0:.1f}%",
+                flush=True,
+            )
 
     # Aggregations across scales
     print("\n" + "=" * 175)
     print("PHASE ELEVEN: COMPREHENSIVE VOCABULARY SCALING SUMMARY (MEAN ACROSS 3 SEEDS)")
     print("=" * 175)
-    print(f"{'Scale':<8} | {'Model Architecture':<30} | {'True LM BPB':<12} | {'Token CE':<10} | {'Bytes/Tok':<10} | {'Indic B/Tok':<12} | {'Fertility':<10} | {'Active Vocab %':<15} | {'>=6B %'}")
+    print(
+        f"{'Scale':<8} | {'Model Architecture':<30} | {'True LM BPB':<12} | {'Token CE':<10} | {'Bytes/Tok':<10} | {'Indic B/Tok':<12} | {'Fertility':<10} | {'Active Vocab %':<15} | {'>=6B %'}"
+    )
     print("-" * 175)
 
     models = ["SentencePiece-Unigram", "Boundary-BPE", "Caliper-SuperBPE (Config B)"]
@@ -288,7 +308,9 @@ def run_phase_eleven_scaling(
                 "active_vocab_pct": act_m,
                 "pct_ge_6b": ge6_m,
             }
-            print(f"V={V:<6} | {m_name:<30} | {bpb_m:<12.3f} | {ce_m:<10.3f} | {bpt_m:<10.2f} | {ind_m:<12.2f} | {fert_m:<10.2f} | {act_m:<15.1f}% | {ge6_m:<8.1f}%")
+            print(
+                f"V={V:<6} | {m_name:<30} | {bpb_m:<12.3f} | {ce_m:<10.3f} | {bpt_m:<10.2f} | {ind_m:<12.2f} | {fert_m:<10.2f} | {act_m:<15.1f}% | {ge6_m:<8.1f}%"
+            )
         print("-" * 175)
     print("=" * 175 + "\n")
 

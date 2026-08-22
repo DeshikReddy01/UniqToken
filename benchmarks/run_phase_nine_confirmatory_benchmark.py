@@ -1,4 +1,4 @@
-﻿"""
+"""
 Phase Nine: Full Five-Seed Confirmatory Benchmark on Config B across 8K & 16K Scales.
 Evaluates SentencePiece, Boundary-BPE, and Caliper Config B (Script-Aware + alpha=1.5)
 across 5 paired seeds [101, 202, 303, 404, 505] under strict analytical FLOP compute.
@@ -27,6 +27,7 @@ from tempfile import TemporaryDirectory
 from typing import Any, Callable, Dict, List, Tuple
 
 import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
@@ -78,7 +79,9 @@ def run_phase_nine_confirmatory(
 
     print("=" * 175)
     print("PHASE NINE: FULL FIVE-SEED CONFIRMATORY BENCHMARK (CALIPER CONFIG B VS ANCHORS)")
-    print(f"Scales: {vocab_scales} | Seeds: {seeds} (N = {len(seeds)} paired) | Matched FLOPs: {TARGET_TRAINING_FLOPS:.3e}")
+    print(
+        f"Scales: {vocab_scales} | Seeds: {seeds} (N = {len(seeds)} paired) | Matched FLOPs: {TARGET_TRAINING_FLOPS:.3e}"
+    )
     print("Primary Hypotheses at 16K: H1: BPB(Caliper) < BPB(Boundary-BPE) | H2: CE(Caliper) < CE(SentencePiece)")
     print("=" * 175)
 
@@ -132,7 +135,10 @@ def run_phase_nine_confirmatory(
             sp_indic_toks = list(sp_proc.encode_as_pieces(indic_val))
             sp_indic_bpt = indic_val_bytes / max(len(sp_indic_toks), 1)
 
-            sp_script_bpts = {l: len(val_by_lang[l].encode("utf-8")) / max(len(sp_proc.encode_as_pieces(val_by_lang[l])), 1) for l in languages}
+            sp_script_bpts = {
+                l: len(val_by_lang[l].encode("utf-8")) / max(len(sp_proc.encode_as_pieces(val_by_lang[l])), 1)
+                for l in languages
+            }
 
             val_loss, lm_bpb, steps, act_flops, flop_err, params, wall_clock = train_and_eval_strict_transformer(
                 enc_fn=sp_enc,
@@ -163,7 +169,10 @@ def run_phase_nine_confirmatory(
                 wall_clock_sec=time.time() - t0,
             )
             all_records.append(rec_sp)
-            print(f"  [SentencePiece (Anchor)     ] BPB: {lm_bpb:.3f} | CE: {val_loss:.3f} | B/Tok: {sp_bpt:.2f} | Indic: {sp_indic_bpt:.2f} | Fert: {sp_fert:.2f} | Active: {sp_active_cov*100.0:.1f}%", flush=True)
+            print(
+                f"  [SentencePiece (Anchor)     ] BPB: {lm_bpb:.3f} | CE: {val_loss:.3f} | B/Tok: {sp_bpt:.2f} | Indic: {sp_indic_bpt:.2f} | Fert: {sp_fert:.2f} | Active: {sp_active_cov * 100.0:.1f}%",
+                flush=True,
+            )
 
             # 2. Boundary-BPE Anchor
             t0 = time.time()
@@ -178,7 +187,10 @@ def run_phase_nine_confirmatory(
 
             bpe_indic_toks = bpe_model.encode(indic_val)
             bpe_indic_bpt = indic_val_bytes / max(len(bpe_indic_toks), 1)
-            bpe_script_bpts = {l: len(val_by_lang[l].encode("utf-8")) / max(len(bpe_model.encode(val_by_lang[l])), 1) for l in languages}
+            bpe_script_bpts = {
+                l: len(val_by_lang[l].encode("utf-8")) / max(len(bpe_model.encode(val_by_lang[l])), 1)
+                for l in languages
+            }
 
             val_loss, lm_bpb, steps, act_flops, flop_err, params, wall_clock = train_and_eval_strict_transformer(
                 enc_fn=lambda t: bpe_model.encode_to_ids(t),
@@ -209,7 +221,10 @@ def run_phase_nine_confirmatory(
                 wall_clock_sec=time.time() - t0,
             )
             all_records.append(rec_bpe)
-            print(f"  [Boundary-BPE (Anchor)      ] BPB: {lm_bpb:.3f} | CE: {val_loss:.3f} | B/Tok: {bpe_bpt:.2f} | Indic: {bpe_indic_bpt:.2f} | Fert: {bpe_fert:.2f} | Active: {bpe_active_cov*100.0:.1f}%", flush=True)
+            print(
+                f"  [Boundary-BPE (Anchor)      ] BPB: {lm_bpb:.3f} | CE: {val_loss:.3f} | B/Tok: {bpe_bpt:.2f} | Indic: {bpe_indic_bpt:.2f} | Fert: {bpe_fert:.2f} | Active: {bpe_active_cov * 100.0:.1f}%",
+                flush=True,
+            )
 
             # 3. Caliper Config B (Script-Aware + alpha=1.5)
             t0 = time.time()
@@ -224,10 +239,14 @@ def run_phase_nine_confirmatory(
                 min_frequency=1,
                 verbose=False,
             )
-            pretok_chunks = [tok for d in train_docs for tok in tok_base.pre_tokenizer.pre_tokenize(tok_base.normalizer.normalize(d))]
+            pretok_chunks = [
+                tok for d in train_docs for tok in tok_base.pre_tokenizer.pre_tokenize(tok_base.normalizer.normalize(d))
+            ]
             cem = CrossEntropyMerging(max_merges=actual_merges, cross_word=True, verbose=False)
             sbp_model = cem.optimize(tok_base.model, chunks=pretok_chunks)
-            cal_tok = CustomTokenizer(normalizer=tok_base.normalizer, pre_tokenizer=tok_base.pre_tokenizer, model=sbp_model)
+            cal_tok = CustomTokenizer(
+                normalizer=tok_base.normalizer, pre_tokenizer=tok_base.pre_tokenizer, model=sbp_model
+            )
 
             cal_tokens = cal_tok.encode(combined_val)
             cal_counts = Counter(cal_tokens)
@@ -237,7 +256,9 @@ def run_phase_nine_confirmatory(
 
             cal_indic_toks = cal_tok.encode(indic_val)
             cal_indic_bpt = indic_val_bytes / max(len(cal_indic_toks), 1)
-            cal_script_bpts = {l: len(val_by_lang[l].encode("utf-8")) / max(len(cal_tok.encode(val_by_lang[l])), 1) for l in languages}
+            cal_script_bpts = {
+                l: len(val_by_lang[l].encode("utf-8")) / max(len(cal_tok.encode(val_by_lang[l])), 1) for l in languages
+            }
 
             val_loss, lm_bpb, steps, act_flops, flop_err, params, wall_clock = train_and_eval_strict_transformer(
                 enc_fn=lambda t: cal_tok.encode_to_ids(t),
@@ -268,7 +289,10 @@ def run_phase_nine_confirmatory(
                 wall_clock_sec=time.time() - t0,
             )
             all_records.append(rec_cal)
-            print(f"  [Caliper-SuperBPE (Config B)] BPB: {lm_bpb:.3f} | CE: {val_loss:.3f} | B/Tok: {cal_bpt:.2f} | Indic: {cal_indic_bpt:.2f} | Fert: {cal_fert:.2f} | Active: {cal_active_cov*100.0:.1f}%", flush=True)
+            print(
+                f"  [Caliper-SuperBPE (Config B)] BPB: {lm_bpb:.3f} | CE: {val_loss:.3f} | B/Tok: {cal_bpt:.2f} | Indic: {cal_indic_bpt:.2f} | Fert: {cal_fert:.2f} | Active: {cal_active_cov * 100.0:.1f}%",
+                flush=True,
+            )
 
     # Statistical Audits
     def compute_paired_stats(vec_a: List[float], vec_b: List[float]) -> Dict[str, float]:
@@ -327,20 +351,26 @@ def run_phase_nine_confirmatory(
     print("\n" + "=" * 175)
     print("PHASE NINE: FULL STATISTICAL HYPOTHESIS TESTING REPORT (HOLM-BONFERRONI ADJUSTED, N = 5 SEEDS)")
     print("=" * 175)
-    print(f"{'Scale':<8} | {'Comparison':<28} | {'Metric':<16} | {'Mean Diff':<12} | {'t(4)':<8} | {'p (raw)':<12} | {'p (Holm)':<12} | {'95% CI':<24} | {'Cohen dz':<10} | {'Sig (p<0.05)'}")
+    print(
+        f"{'Scale':<8} | {'Comparison':<28} | {'Metric':<16} | {'Mean Diff':<12} | {'t(4)':<8} | {'p (raw)':<12} | {'p (Holm)':<12} | {'95% CI':<24} | {'Cohen dz':<10} | {'Sig (p<0.05)'}"
+    )
     print("-" * 175)
 
     for h in hypotheses:
         ci_str = f"[{h['ci_lower']:+.3f}, {h['ci_upper']:+.3f}]"
         sig_str = "YES (p<0.05)" if h["significant_05"] else "NO (p>=0.05)"
-        print(f"V={h['scale']:<6} | {h['comparison']:<28} | {h['metric']:<16} | {h['mean_diff']:<+12.3f} | {h['t_stat']:<8.2f} | {h['p_raw']:<12.4e} | {h['p_adj']:<12.4e} | {ci_str:<24} | {h['cohens_dz']:<+10.2f} | {sig_str}")
+        print(
+            f"V={h['scale']:<6} | {h['comparison']:<28} | {h['metric']:<16} | {h['mean_diff']:<+12.3f} | {h['t_stat']:<8.2f} | {h['p_raw']:<12.4e} | {h['p_adj']:<12.4e} | {ci_str:<24} | {h['cohens_dz']:<+10.2f} | {sig_str}"
+        )
     print("=" * 175 + "\n")
 
     # Summary by scale & model
     print("=" * 175)
     print("PHASE NINE: AGGREGATE METRICS SUMMARY (MEAN ACROSS 5 PAIRED SEEDS)")
     print("=" * 175)
-    print(f"{'Scale':<8} | {'Model':<30} | {'True LM BPB':<12} | {'Token CE':<10} | {'Bytes/Tok':<10} | {'Indic B/Tok':<12} | {'Fertility':<10} | {'Active Vocab %':<15} | {'>=6B %'}")
+    print(
+        f"{'Scale':<8} | {'Model':<30} | {'True LM BPB':<12} | {'Token CE':<10} | {'Bytes/Tok':<10} | {'Indic B/Tok':<12} | {'Fertility':<10} | {'Active Vocab %':<15} | {'>=6B %'}"
+    )
     print("-" * 175)
 
     models = ["SentencePiece-Unigram", "Boundary-BPE", "Caliper-SuperBPE (Config B)"]
@@ -366,14 +396,18 @@ def run_phase_nine_confirmatory(
                 "active_vocab_pct": act_m,
                 "pct_ge_6b": ge6_m,
             }
-            print(f"V={V:<6} | {m_name:<30} | {bpb_m:<12.3f} | {ce_m:<10.3f} | {bpt_m:<10.2f} | {ind_m:<12.2f} | {fert_m:<10.2f} | {act_m:<15.1f}% | {ge6_m:<8.1f}%")
+            print(
+                f"V={V:<6} | {m_name:<30} | {bpb_m:<12.3f} | {ce_m:<10.3f} | {bpt_m:<10.2f} | {ind_m:<12.2f} | {fert_m:<10.2f} | {act_m:<15.1f}% | {ge6_m:<8.1f}%"
+            )
     print("=" * 175 + "\n")
 
     # Script-Level Summary at 16K Scale
     print("=" * 140)
     print("PHASE NINE: PER-SCRIPT COMPRESSION PROFILE AT 16K SCALE (MEAN ACROSS 5 SEEDS)")
     print("=" * 140)
-    print(f"{'Language / Script':<20} | {'SentencePiece B/Tok':<22} | {'Boundary-BPE B/Tok':<22} | {'Caliper Config B B/Tok':<25} | {'Caliper vs SP Delta'}")
+    print(
+        f"{'Language / Script':<20} | {'SentencePiece B/Tok':<22} | {'Boundary-BPE B/Tok':<22} | {'Caliper Config B B/Tok':<25} | {'Caliper vs SP Delta'}"
+    )
     print("-" * 140)
     script_summary_16k = {}
     recs_16k = [r for r in all_records if r.vocab_size == 16384]
@@ -396,7 +430,9 @@ def run_phase_nine_confirmatory(
         ce = summary_dict[8192][m_name]["token_ce_loss"]
         sz = 260 if "*" in mk else 160
         ax_a.scatter([bpb], [ce], color=col, marker=mk, s=sz, edgecolors="black", label=m_name, zorder=6)
-        ax_a.annotate(f"{m_name.split()[0]}\nBPB: {bpb:.3f}, CE: {ce:.2f}", (bpb + 0.015, ce + 0.02), fontsize=8.5, color=col)
+        ax_a.annotate(
+            f"{m_name.split()[0]}\nBPB: {bpb:.3f}, CE: {ce:.2f}", (bpb + 0.015, ce + 0.02), fontsize=8.5, color=col
+        )
     ax_a.set_title("Panel A: 8,192 Scale Pareto Trade-off (N = 5 Seeds)", fontsize=11, fontweight="bold")
     ax_a.set_xlabel("True LM BPB (lower is better)", fontsize=10)
     ax_a.set_ylabel("Token Cross-Entropy Loss (lower is better)", fontsize=10)
@@ -410,7 +446,9 @@ def run_phase_nine_confirmatory(
         ce = summary_dict[16384][m_name]["token_ce_loss"]
         sz = 260 if "*" in mk else 160
         ax_b.scatter([bpb], [ce], color=col, marker=mk, s=sz, edgecolors="black", label=m_name, zorder=6)
-        ax_b.annotate(f"{m_name.split()[0]}\nBPB: {bpb:.3f}, CE: {ce:.2f}", (bpb + 0.015, ce + 0.02), fontsize=8.5, color=col)
+        ax_b.annotate(
+            f"{m_name.split()[0]}\nBPB: {bpb:.3f}, CE: {ce:.2f}", (bpb + 0.015, ce + 0.02), fontsize=8.5, color=col
+        )
     ax_b.set_title("Panel B: 16,384 Scale Pareto Trade-off (N = 5 Seeds)", fontsize=11, fontweight="bold")
     ax_b.set_xlabel("True LM BPB (lower is better)", fontsize=10)
     ax_b.set_ylabel("Token Cross-Entropy Loss (lower is better)", fontsize=10)
@@ -441,7 +479,11 @@ def run_phase_nine_confirmatory(
     bpe_bpb_seeds = [r.true_lm_bpb for r in recs_16k if r.model_name == "Boundary-BPE"]
     cal_bpb_seeds = [r.true_lm_bpb for r in recs_16k if r.model_name == "Caliper-SuperBPE (Config B)"]
 
-    ax_d.boxplot([sp_bpb_seeds, bpe_bpb_seeds, cal_bpb_seeds], labels=["SentencePiece", "Boundary-BPE", "Caliper Config B"], patch_artist=True)
+    ax_d.boxplot(
+        [sp_bpb_seeds, bpe_bpb_seeds, cal_bpb_seeds],
+        labels=["SentencePiece", "Boundary-BPE", "Caliper Config B"],
+        patch_artist=True,
+    )
     ax_d.set_ylabel("True LM BPB", fontsize=10)
     ax_d.set_title("Panel D: 16K True LM BPB Distribution across 5 Paired Seeds", fontsize=11, fontweight="bold")
     ax_d.grid(True, linestyle="--", alpha=0.5, axis="y")

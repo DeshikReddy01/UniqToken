@@ -33,7 +33,11 @@ from bpe_trainer import BPETrainer
 from cem_merger import CrossEntropyMerging
 from seed_builder import SeedVocabularyBuilder
 from tokenizer import CustomTokenizer
-from benchmarks.multilingual_scaling_sweep import EXPANDED_LEXICAL_CORPUS, build_rich_multilingual_corpus, train_and_eval_transformer
+from benchmarks.multilingual_scaling_sweep import (
+    EXPANDED_LEXICAL_CORPUS,
+    build_rich_multilingual_corpus,
+    train_and_eval_transformer,
+)
 
 
 @dataclass
@@ -181,13 +185,35 @@ def run_matched_experiment(
         bpe_m = bpe_tr.train(train_docs, verbose=False)
 
         engines = [
-            ("Caliper (SuperBPE)", tok_sbp.vocab_size, lambda t: tok_sbp.encode_to_ids(t), list(tok_sbp.model.vocab.keys())),
-            ("Caliper (Unigram)", tok_uni.vocab_size, lambda t: tok_uni.encode_to_ids(t), list(tok_uni.model.vocab.keys())),
-            ("Standard BPE", len(bpe_m.vocab), lambda t: [bpe_m.token_to_id.get(x, 0) for x in bpe_m.encode(t)], list(bpe_m.vocab)),
+            (
+                "Caliper (SuperBPE)",
+                tok_sbp.vocab_size,
+                lambda t: tok_sbp.encode_to_ids(t),
+                list(tok_sbp.model.vocab.keys()),
+            ),
+            (
+                "Caliper (Unigram)",
+                tok_uni.vocab_size,
+                lambda t: tok_uni.encode_to_ids(t),
+                list(tok_uni.model.vocab.keys()),
+            ),
+            (
+                "Standard BPE",
+                len(bpe_m.vocab),
+                lambda t: [bpe_m.token_to_id.get(x, 0) for x in bpe_m.encode(t)],
+                list(bpe_m.vocab),
+            ),
         ]
         if sp_proc is not None:
             sp_vocab = [sp_proc.id_to_piece(i) for i in range(sp_proc.get_piece_size())]
-            engines.append(("SentencePiece (Unigram)", sp_proc.get_piece_size(), lambda t: sp_proc.encode(t, out_type=int), sp_vocab))
+            engines.append(
+                (
+                    "SentencePiece (Unigram)",
+                    sp_proc.get_piece_size(),
+                    lambda t: sp_proc.encode(t, out_type=int),
+                    sp_vocab,
+                )
+            )
 
         for name, v_actual, enc_fn, vocab_list in engines:
             v_hash = hashlib.md5("".join(sorted(vocab_list)).encode("utf-8")).hexdigest()[:8]

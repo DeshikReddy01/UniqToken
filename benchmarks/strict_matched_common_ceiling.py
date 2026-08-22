@@ -253,13 +253,32 @@ def run_strict_matched_sweep(
         bpe_valid = b_bpe.vocab_size == V
 
         engines = [
-            ("Caliper (SuperBPE)", tok_sbp.vocab_size, list(tok_sbp.model.vocab.keys()), lambda t: tok_sbp.encode_to_ids(t)),
-            ("Caliper (Unigram)", tok_uni.vocab_size, list(tok_uni.model.vocab.keys()), lambda t: tok_uni.encode_to_ids(t)),
+            (
+                "Caliper (SuperBPE)",
+                tok_sbp.vocab_size,
+                list(tok_sbp.model.vocab.keys()),
+                lambda t: tok_sbp.encode_to_ids(t),
+            ),
+            (
+                "Caliper (Unigram)",
+                tok_uni.vocab_size,
+                list(tok_uni.model.vocab.keys()),
+                lambda t: tok_uni.encode_to_ids(t),
+            ),
         ]
         if bpe_valid:
-            engines.append(("Boundary-BPE", b_bpe.vocab_size, list(b_bpe.model.vocab), lambda t: b_bpe.encode_to_ids(t)))
+            engines.append(
+                ("Boundary-BPE", b_bpe.vocab_size, list(b_bpe.model.vocab), lambda t: b_bpe.encode_to_ids(t))
+            )
         if sp_proc is not None:
-            engines.append(("SentencePiece (Unigram)", sp_proc.get_piece_size(), sp_vocab, lambda t: sp_proc.encode(t, out_type=int)))
+            engines.append(
+                (
+                    "SentencePiece (Unigram)",
+                    sp_proc.get_piece_size(),
+                    sp_vocab,
+                    lambda t: sp_proc.encode(t, out_type=int),
+                )
+            )
 
         for name, v_sz, vocab_list, enc_fn in engines:
             v_hash = hashlib.md5("".join(sorted(vocab_list)).encode("utf-8")).hexdigest()[:8]

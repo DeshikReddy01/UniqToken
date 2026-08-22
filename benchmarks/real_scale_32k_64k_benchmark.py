@@ -46,76 +46,244 @@ from tokenizer import CustomTokenizer
 # Vast, open-domain multilingual corpus generator covering 12 languages, code, math, and domain-specific lexicon
 DOMAIN_VOCABULARIES: Dict[str, Dict[str, List[str]]] = {
     "English": {
-        "domains": ["Machine learning infrastructure", "Quantum computing algorithms", "Distributed database transactions", "Cryptographic key exchanges", "High-throughput network protocols", "Microkernel operating systems", "Compiler intermediate representations"],
-        "actions": ["optimizes computational pipelines for", "guarantees deterministic execution across", "accelerates autograd backpropagation in", "reduces memory fragmentation during", "synchronizes thread execution inside", "validates byte-level invariants across"],
-        "targets": ["distributed GPU clusters", "heterogeneous compute accelerators", "lock-free ring buffers", "subword token lattices", "sparse attention matrices", "low-latency streaming pipelines", "zero-copy serialization formats"],
-        "modifiers": ["with linear computational complexity", "under strict memory bounds", "at line rate without packet drops", "preserving exact byte offsets", "eliminating race conditions", "guaranteeing backward compatibility"],
+        "domains": [
+            "Machine learning infrastructure",
+            "Quantum computing algorithms",
+            "Distributed database transactions",
+            "Cryptographic key exchanges",
+            "High-throughput network protocols",
+            "Microkernel operating systems",
+            "Compiler intermediate representations",
+        ],
+        "actions": [
+            "optimizes computational pipelines for",
+            "guarantees deterministic execution across",
+            "accelerates autograd backpropagation in",
+            "reduces memory fragmentation during",
+            "synchronizes thread execution inside",
+            "validates byte-level invariants across",
+        ],
+        "targets": [
+            "distributed GPU clusters",
+            "heterogeneous compute accelerators",
+            "lock-free ring buffers",
+            "subword token lattices",
+            "sparse attention matrices",
+            "low-latency streaming pipelines",
+            "zero-copy serialization formats",
+        ],
+        "modifiers": [
+            "with linear computational complexity",
+            "under strict memory bounds",
+            "at line rate without packet drops",
+            "preserving exact byte offsets",
+            "eliminating race conditions",
+            "guaranteeing backward compatibility",
+        ],
     },
     "Hindi": {
-        "domains": ["आर्टिफिशियल इंटेलिजेंस और मशीन लर्निंग", "क्वांटम कंप्यूटिंग और क्रिप्टोग्राफी", "वितरित डेटाबेस प्रबंधन प्रणाली", "उच्च गति कंप्यूटर नेटवर्क प्रोटोकॉल", "प्राकृतिक भाषा प्रसंस्करण आर्किटेक्चर"],
-        "actions": ["सटीक रूप से संसाधित करता है", "कार्यक्षमता को अभूतपूर्व रूप से बढ़ाता है", "कम्प्यूटेशनल जटिलता को कम करता है", "संसाधनों का इष्टतम उपयोग सुनिश्चित करता है", "संरचनात्मक विश्लेषण को सक्षम बनाता है"],
-        "targets": ["विशाल बहुभाषी डेटाबेस को", "देवनागरी लिपि के जटिल संयुक्ताक्षरों को", "गहन तंत्रिका नेटवर्क परतों को", "कम विलंबता वाले कंप्यूटिंग क्लस्टर्स को"],
-        "modifiers": ["बिना किसी सूचना के नुकसान के", "उच्च विश्वसनीयता के साथ", "न्यूनतम मेमोरी खपत पर", "सटीक मानकीकरण के अंतर्गत"],
+        "domains": [
+            "आर्टिफिशियल इंटेलिजेंस और मशीन लर्निंग",
+            "क्वांटम कंप्यूटिंग और क्रिप्टोग्राफी",
+            "वितरित डेटाबेस प्रबंधन प्रणाली",
+            "उच्च गति कंप्यूटर नेटवर्क प्रोटोकॉल",
+            "प्राकृतिक भाषा प्रसंस्करण आर्किटेक्चर",
+        ],
+        "actions": [
+            "सटीक रूप से संसाधित करता है",
+            "कार्यक्षमता को अभूतपूर्व रूप से बढ़ाता है",
+            "कम्प्यूटेशनल जटिलता को कम करता है",
+            "संसाधनों का इष्टतम उपयोग सुनिश्चित करता है",
+            "संरचनात्मक विश्लेषण को सक्षम बनाता है",
+        ],
+        "targets": [
+            "विशाल बहुभाषी डेटाबेस को",
+            "देवनागरी लिपि के जटिल संयुक्ताक्षरों को",
+            "गहन तंत्रिका नेटवर्क परतों को",
+            "कम विलंबता वाले कंप्यूटिंग क्लस्टर्स को",
+        ],
+        "modifiers": [
+            "बिना किसी सूचना के नुकसान के",
+            "उच्च विश्वसनीयता के साथ",
+            "न्यूनतम मेमोरी खपत पर",
+            "सटीक मानकीकरण के अंतर्गत",
+        ],
     },
     "Telugu": {
-        "domains": ["కృత్రిమ మేధస్సు మరియు లోతైన అభ్యాసం", "పంపిణీ చేయబడిన డేటాబేస్ వ్యవస్థలు", "కంప్యూటర్ నెట్‌వర్క్ భద్రతా ప్రోటోకాల్‌లు", "సహజ భాషా ప్రాసెసింగ్ ఇంజిన్లు"],
+        "domains": [
+            "కృత్రిమ మేధస్సు మరియు లోతైన అభ్యాసం",
+            "పంపిణీ చేయబడిన డేటాబేస్ వ్యవస్థలు",
+            "కంప్యూటర్ నెట్‌వర్క్ భద్రతా ప్రోటోకాల్‌లు",
+            "సహజ భాషా ప్రాసెసింగ్ ఇంజిన్లు",
+        ],
         "actions": ["సమర్థవంతంగా విశ్లేషిస్తుంది", "గణన వేగాన్ని వేగవంతం చేస్తుంది", "మెమరీ వినియోగాన్ని తగ్గిస్తుంది", "డేటా సమగ్రతను కాపాడుతుంది"],
         "targets": ["సంక్లిష్టమైన తెలుగు లిపి నిర్మాణాలను", "భారీ బహుభాషా సమాచార నిల్వలను", "సమాంతర ప్రాసెసింగ్ యూనిట్లను"],
         "modifiers": ["ఖచ్చితమైన గణనలతో", "అధిక నాణ్యత ప్రమాణాలతో", "ఎలాంటి లోపాలు లేకుండా"],
     },
     "Tamil": {
-        "domains": ["செயற்கை நுண்ணறிவு மற்றும் இயந்திர கற்றல்", "பரவலாக்கப்பட்ட தரவுத்தள அமைப்புகள்", "இயற்கை மொழி செயலாக்க மாதிரிகள்", "உயர் செயல்திறன் கணினி நெட்வொர்க்குகள்"],
+        "domains": [
+            "செயற்கை நுண்ணறிவு மற்றும் இயந்திர கற்றல்",
+            "பரவலாக்கப்பட்ட தரவுத்தள அமைப்புகள்",
+            "இயற்கை மொழி செயலாக்க மாதிரிகள்",
+            "உயர் செயல்திறன் கணினி நெட்வொர்க்குகள்",
+        ],
         "actions": ["துல்லியமாக பகுப்பாய்வு செய்கிறது", "கணக்கீட்டு வேகத்தை கணிசமாக அதிகரிக்கிறது", "நினைவக பயன்பாட்டை குறைக்கிறது"],
         "targets": ["தமிழ் மொழியின் மரபுசார் இலக்கிய தரவுகளை", "நவீன டிஜிட்டல் ஆவணங்களை", "அதிவேக செயலாக்க அமைப்புகளை"],
         "modifiers": ["முழுமையான பாதுகாப்புடன்", "நம்பகமான முடிவுகளுடன்", "குறைந்த வள நுகர்வுடன்"],
     },
     "Bengali": {
-        "domains": ["কৃত্রিম বুদ্ধিমত্তা এবং মেশিন লার্নিং", "বিতরিত ডাটাবেস ব্যবস্থাপনা", "উন্নত প্রাকৃতিক ভাষা প্রক্রিয়াকরণ", "উচ্চগতির কম্পিউটার যোগাযোগ"],
+        "domains": [
+            "কৃত্রিম বুদ্ধিমত্তা এবং মেশিন লার্নিং",
+            "বিতরিত ডাটাবেস ব্যবস্থাপনা",
+            "উন্নত প্রাকৃতিক ভাষা প্রক্রিয়াকরণ",
+            "উচ্চগতির কম্পিউটার যোগাযোগ",
+        ],
         "actions": ["নির্ভুলভাবে প্রক্রিয়াজাত করে", "কাজের গতি বহুগুণ বাড়ায়", "মেমরির অপচয় রোধ করে", "সঠিক রূপান্তর নিশ্চিত করে"],
         "targets": ["বাংলা ব্যাকরণের জটিল নিয়মাবলিকে", "বহুভাষিক ডেটাসেটের তথ্য ভাণ্ডারকে", "ডিপ নিউরাল নেটওয়ার্ক স্তরকে"],
         "modifiers": ["সম্পূর্ণ নির্ভুলতার সাথে", "উচ্চ নির্ভরযোগ্যতায়", "সর্বনিম্ন প্রক্রিয়াকরণ সময়ে"],
     },
     "Arabic": {
-        "domains": ["أنظمة الذكاء الاصطناعي وشبكات التعلم العميق", "قواعد البيانات الموزعة والحوسبة السحابية", "خوارزميات معالجة اللغة الطبيعية والترجمة الآلية", "بروتوكولات التشفير والأمن السيبراني"],
-        "actions": ["تعالج بكفاءة فائقة", "تسرع وتيرة العمليات الحسابية في", "تقلل استهلاك الذاكرة العشوائية لـ", "تضمن استخراج المعالم اللغوية من"],
-        "targets": ["النصوص العربية الغنية بالمورفولوجيا والتشكيل", "البيانات الضخمة متسارعة التدفق", "المصفوفات الحسابية المعقدة في النماذج اللغوية"],
+        "domains": [
+            "أنظمة الذكاء الاصطناعي وشبكات التعلم العميق",
+            "قواعد البيانات الموزعة والحوسبة السحابية",
+            "خوارزميات معالجة اللغة الطبيعية والترجمة الآلية",
+            "بروتوكولات التشفير والأمن السيبراني",
+        ],
+        "actions": [
+            "تعالج بكفاءة فائقة",
+            "تسرع وتيرة العمليات الحسابية في",
+            "تقلل استهلاك الذاكرة العشوائية لـ",
+            "تضمن استخراج المعالم اللغوية من",
+        ],
+        "targets": [
+            "النصوص العربية الغنية بالمورفولوجيا والتشكيل",
+            "البيانات الضخمة متسارعة التدفق",
+            "المصفوفات الحسابية المعقدة في النماذج اللغوية",
+        ],
         "modifiers": ["بدقة حسابية متناهية", "دون فقدان لأي بيانات أولية", "وفق أعلى معايير الأداء المؤسسي"],
     },
     "Chinese": {
-        "domains": ["大语言模型分布式训练与微调框架", "高并发内存数据库与流计算引擎", "异构计算芯片与算子优化算法", "多模态多语言自然语言处理体系"],
-        "actions": ["大幅提升了长文本序列的吞吐效率", "全面降低了自注意力矩阵的显存消耗", "精准解析了无显式词界的复合构词法", "严格保证了字节对齐与无损回退机制"],
+        "domains": [
+            "大语言模型分布式训练与微调框架",
+            "高并发内存数据库与流计算引擎",
+            "异构计算芯片与算子优化算法",
+            "多模态多语言自然语言处理体系",
+        ],
+        "actions": [
+            "大幅提升了长文本序列的吞吐效率",
+            "全面降低了自注意力矩阵的显存消耗",
+            "精准解析了无显式词界的复合构词法",
+            "严格保证了字节对齐与无损回退机制",
+        ],
         "targets": ["海量多领域专业语料库", "千万级参数规模的深度嵌入层", "低延迟推理生成流水线"],
         "modifiers": ["在毫秒级延迟下稳定运行", "消除词表溢出与碎片化开销", "实现全栈算力的高效释放"],
     },
     "Japanese": {
-        "domains": ["深層学習基盤とトランスフォーマー自然言語処理", "大規模並列分散ストレージとリアルタイム処理", "形態素解析エンジンと多言語トークナイザー", "高信頼性暗号通信プロトコルとオペレーティングシステム"],
-        "actions": ["文脈表現の学習効率を極大化し", "メモリ帯域幅の消費を劇的に抑制し", "複雑な文法構造を正確に分解し", "計算パイプラインの遅延を最小化する"],
-        "targets": ["多言語コーパスの巨大なテキスト群を", "辞書外の未知語やコード断片を", "リアルタイムストリーミングデータを"],
+        "domains": [
+            "深層学習基盤とトランスフォーマー自然言語処理",
+            "大規模並列分散ストレージとリアルタイム処理",
+            "形態素解析エンジンと多言語トークナイザー",
+            "高信頼性暗号通信プロトコルとオペレーティングシステム",
+        ],
+        "actions": [
+            "文脈表現の学習効率を極大化し",
+            "メモリ帯域幅の消費を劇的に抑制し",
+            "複雑な文法構造を正確に分解し",
+            "計算パイプラインの遅延を最小化する",
+        ],
+        "targets": [
+            "多言語コーパスの巨大なテキスト群を",
+            "辞書外の未知語やコード断片を",
+            "リアルタイムストリーミングデータを",
+        ],
         "modifiers": ["無損失なバイト復元性を保持しつつ", "極めて高いスループットで", "安定した収束性能を発揮しながら"],
     },
     "Korean": {
-        "domains": ["인공지능 기반 자연어 생성 및 분석 프레임워크", "고성능 분산 컴퓨팅 및 클라우드 인프라", "다국어 형태소 토크나이저 아키텍처", "차세대 데이터베이스 및 보안 시스템"],
-        "actions": ["복잡한 교착어 조사를 정밀하게 분할하여", "임베딩 공간의 표현력을 획기적으로 확장하고", "연산 처리 속도를 가속화하여", "학습 손실의 수렴을 안정적으로 유도한다"],
-        "targets": ["대규모 웹 텍스트 및 전문 기술 문서를", "실시간 대화형 데이터 스트림을", "신경망 가중치 파라미터를"],
+        "domains": [
+            "인공지능 기반 자연어 생성 및 분석 프레임워크",
+            "고성능 분산 컴퓨팅 및 클라우드 인프라",
+            "다국어 형태소 토크나이저 아키텍처",
+            "차세대 데이터베이스 및 보안 시스템",
+        ],
+        "actions": [
+            "복잡한 교착어 조사를 정밀하게 분할하여",
+            "임베딩 공간의 표현력을 획기적으로 확장하고",
+            "연산 처리 속도를 가속화하여",
+            "학습 손실의 수렴을 안정적으로 유도한다",
+        ],
+        "targets": [
+            "대규모 웹 텍스트 및 전문 기술 문서를",
+            "실시간 대화형 데이터 스트림을",
+            "신경망 가중치 파라미터를",
+        ],
         "modifiers": ["데이터의 손실 없이 완벽하게", "최소한의 메모리 자원만을 사용하여", "뛰어난 범용성을 유지하며"],
     },
     "Thai": {
-        "domains": ["ระบบปัญญาประดิษฐ์และการประมวลผลภาษาธรรมชาติ", "โครงข่ายประสาทเทียมแบบกระจายศูนย์", "ระบบการตัดคำและวิเคราะห์โครงสร้างไวยากรณ์ไทย", "สถาปัตยกรรมคลาวด์คอมพิวติงประสิทธิภาพสูง"],
-        "actions": ["ช่วยเพิ่มความสามารถในการคำนวณ", "ลดการใช้ทรัพยากรหน่วยความจำได้อย่างชัดเจน", "จัดระเบียบลำดับคำที่ไม่มีการเว้นวรรค"],
-        "targets": ["คลังข้อมูลภาษาไทยขนาดใหญ่ในระบบดิจิทัล", "ข้อมูลข้อความจากเอกสารทางเทคนิคและวิชาการ", "โมเดลภาษาขนาดใหญ่สำหรับการสื่อสาร"],
+        "domains": [
+            "ระบบปัญญาประดิษฐ์และการประมวลผลภาษาธรรมชาติ",
+            "โครงข่ายประสาทเทียมแบบกระจายศูนย์",
+            "ระบบการตัดคำและวิเคราะห์โครงสร้างไวยากรณ์ไทย",
+            "สถาปัตยกรรมคลาวด์คอมพิวติงประสิทธิภาพสูง",
+        ],
+        "actions": [
+            "ช่วยเพิ่มความสามารถในการคำนวณ",
+            "ลดการใช้ทรัพยากรหน่วยความจำได้อย่างชัดเจน",
+            "จัดระเบียบลำดับคำที่ไม่มีการเว้นวรรค",
+        ],
+        "targets": [
+            "คลังข้อมูลภาษาไทยขนาดใหญ่ในระบบดิจิทัล",
+            "ข้อมูลข้อความจากเอกสารทางเทคนิคและวิชาการ",
+            "โมเดลภาษาขนาดใหญ่สำหรับการสื่อสาร",
+        ],
         "modifiers": ["ด้วยความแม่นยำสูงสุดในระดับไบต์", "โดยไม่มีการสูญเสียข้อมูลสำคัญ", "เพื่อรองรับการประมวลผลแบบเรียลไทม์"],
     },
     "Russian": {
-        "domains": ["Масштабируемые нейросетевые архитектуры", "Распределенные транзакционные базы данных", "Алгоритмы обработки естественно-языковых корпусов", "Криптографические протоколы защиты данных"],
-        "actions": ["существенно ускоряют вычисление градиентов в", "минимизируют фрагментацию оперативной памяти при", "обеспечивают глубокую семантическую сегментацию для", "гарантируют абсолютную точность восстановления байтов в"],
-        "targets": ["многомиллиардных параметрических моделях", "сложных кириллических словоформах и терминах", "параллельных вычислительных потоках"],
-        "modifiers": ["при максимальной пропускной способности", "без дополнительных вычислительных задержек", "с гарантией стабильности обучения"],
+        "domains": [
+            "Масштабируемые нейросетевые архитектуры",
+            "Распределенные транзакционные базы данных",
+            "Алгоритмы обработки естественно-языковых корпусов",
+            "Криптографические протоколы защиты данных",
+        ],
+        "actions": [
+            "существенно ускоряют вычисление градиентов в",
+            "минимизируют фрагментацию оперативной памяти при",
+            "обеспечивают глубокую семантическую сегментацию для",
+            "гарантируют абсолютную точность восстановления байтов в",
+        ],
+        "targets": [
+            "многомиллиардных параметрических моделях",
+            "сложных кириллических словоформах и терминах",
+            "параллельных вычислительных потоках",
+        ],
+        "modifiers": [
+            "при максимальной пропускной способности",
+            "без дополнительных вычислительных задержек",
+            "с гарантией стабильности обучения",
+        ],
     },
     "Spanish": {
-        "domains": ["La infraestructura de inteligencia artificial profunda", "Los sistemas de bases de datos distribuidas y concurrentes", "Los algoritmos de tokenización multilingüe de alta velocidad", "Las redes neuronales autorregresivas de última generación"],
-        "actions": ["optimizan de manera sobresaliente el procesamiento de", "reducen radicalmente la complejidad computacional en", "garantizan la preservación exacta de las fronteras léxicas de", "aceleran la convergencia del entrenamiento distribuido para"],
-        "targets": ["grandes volúmenes de texto multilingüe heterogéneo", "los tensores de incrustación de alta dimensionalidad", "las secuencias de inferencia en tiempo real"],
-        "modifiers": ["con un consumo mínimo de memoria", "manteniendo una tasa de compresión óptima", "asegurando un rendimiento lineal determinista"],
+        "domains": [
+            "La infraestructura de inteligencia artificial profunda",
+            "Los sistemas de bases de datos distribuidas y concurrentes",
+            "Los algoritmos de tokenización multilingüe de alta velocidad",
+            "Las redes neuronales autorregresivas de última generación",
+        ],
+        "actions": [
+            "optimizan de manera sobresaliente el procesamiento de",
+            "reducen radicalmente la complejidad computacional en",
+            "garantizan la preservación exacta de las fronteras léxicas de",
+            "aceleran la convergencia del entrenamiento distribuido para",
+        ],
+        "targets": [
+            "grandes volúmenes de texto multilingüe heterogéneo",
+            "los tensores de incrustación de alta dimensionalidad",
+            "las secuencias de inferencia en tiempo real",
+        ],
+        "modifiers": [
+            "con un consumo mínimo de memoria",
+            "manteniendo una tasa de compresión óptima",
+            "asegurando un rendimiento lineal determinista",
+        ],
     },
 }
 
@@ -248,15 +416,17 @@ def run_phase_two_benchmark(
     combined_val_text = "\n".join(val_by_lang.values())
     total_val_bytes = len(combined_val_text.encode("utf-8"))
 
-    print(f"Loaded {len(train_docs):,} training documents ({sum(len(d.encode('utf-8')) for d in train_docs) / (1024*1024):.2f} MB)")
+    print(
+        f"Loaded {len(train_docs):,} training documents ({sum(len(d.encode('utf-8')) for d in train_docs) / (1024 * 1024):.2f} MB)"
+    )
     print(f"Held-out evaluation buffer: {total_val_bytes:,} UTF-8 bytes across 12 languages\n")
 
     results: List[ScaleEvaluationResult] = []
 
     for V in scales:
-        print(f"\n==========================================================================================")
+        print("\n==========================================================================================")
         print(f"---> [BENCHMARKING VOCABULARY SCALE: {V:,} TOKENS]")
-        print(f"==========================================================================================")
+        print("==========================================================================================")
 
         # 1. Caliper (SuperBPE)
         sbp_merges = min(V // 10, 1500)
@@ -334,12 +504,29 @@ def run_phase_two_benchmark(
         bpe_train_time = time.perf_counter() - t0
 
         engines = [
-            ("Caliper (SuperBPE)", caliper_sbp.vocab_size, list(caliper_sbp.model.vocab.keys()), lambda t: caliper_sbp.encode_to_ids(t)),
-            ("Caliper (Unigram)", caliper_uni.vocab_size, list(caliper_uni.model.vocab.keys()), lambda t: caliper_uni.encode_to_ids(t)),
+            (
+                "Caliper (SuperBPE)",
+                caliper_sbp.vocab_size,
+                list(caliper_sbp.model.vocab.keys()),
+                lambda t: caliper_sbp.encode_to_ids(t),
+            ),
+            (
+                "Caliper (Unigram)",
+                caliper_uni.vocab_size,
+                list(caliper_uni.model.vocab.keys()),
+                lambda t: caliper_uni.encode_to_ids(t),
+            ),
             ("Boundary-BPE", b_bpe.vocab_size, list(b_bpe.model.vocab), lambda t: b_bpe.encode_to_ids(t)),
         ]
         if sp_proc is not None:
-            engines.append(("SentencePiece (Unigram)", sp_proc.get_piece_size(), sp_vocab, lambda t: sp_proc.encode(t, out_type=int)))
+            engines.append(
+                (
+                    "SentencePiece (Unigram)",
+                    sp_proc.get_piece_size(),
+                    sp_vocab,
+                    lambda t: sp_proc.encode(t, out_type=int),
+                )
+            )
 
         # Evaluate each engine on held-out buffer
         for name, v_sz, vocab_list, enc_fn in engines:

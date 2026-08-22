@@ -1,4 +1,4 @@
-﻿"""
+"""
 Phase Four: Length-Prior (Alpha) Sweep & Pareto Frontier Optimization.
 Tests candidate-generation length exponent alpha in {0.5, 0.75, 1.0, 1.25, 1.5, 2.0}
 at matched V = 16,384 across 3 paired seeds (101, 202, 303).
@@ -16,6 +16,7 @@ from tempfile import TemporaryDirectory
 from typing import Dict, List, Tuple
 
 import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
@@ -100,16 +101,21 @@ def run_phase_four_sweep(
         bpt = total_val_bytes / max(len(sp_tokens), 1)
         fertility = len(sp_tokens) / max(num_words, 1)
 
-        all_results["SentencePiece (Anchor)"].append({
-            "true_lm_bpb": lm_bpb,
-            "val_loss": val_loss,
-            "bytes_per_token": bpt,
-            "fertility": fertility,
-            "active_vocab_pct": sp_active_cov * 100.0,
-            "p50_bytes": float(np.percentile(sp_tok_bytes, 50)),
-            "p90_bytes": float(np.percentile(sp_tok_bytes, 90)),
-        })
-        print(f"  [SentencePiece (Anchor) ] BPB: {lm_bpb:.3f} | CE: {val_loss:.3f} | B/Tok: {bpt:.2f} | Fert: {fertility:.2f} | Active: {sp_active_cov*100.0:.1f}% | p50/p90: {np.percentile(sp_tok_bytes, 50):.0f}/{np.percentile(sp_tok_bytes, 90):.0f}B", flush=True)
+        all_results["SentencePiece (Anchor)"].append(
+            {
+                "true_lm_bpb": lm_bpb,
+                "val_loss": val_loss,
+                "bytes_per_token": bpt,
+                "fertility": fertility,
+                "active_vocab_pct": sp_active_cov * 100.0,
+                "p50_bytes": float(np.percentile(sp_tok_bytes, 50)),
+                "p90_bytes": float(np.percentile(sp_tok_bytes, 90)),
+            }
+        )
+        print(
+            f"  [SentencePiece (Anchor) ] BPB: {lm_bpb:.3f} | CE: {val_loss:.3f} | B/Tok: {bpt:.2f} | Fert: {fertility:.2f} | Active: {sp_active_cov * 100.0:.1f}% | p50/p90: {np.percentile(sp_tok_bytes, 50):.0f}/{np.percentile(sp_tok_bytes, 90):.0f}B",
+            flush=True,
+        )
 
         # 2. Boundary-BPE Anchor
         b_bpe = BPETrainer(target_vocab_size=target_vocab, byte_fallback=True)
@@ -132,16 +138,21 @@ def run_phase_four_sweep(
         bpt = total_val_bytes / max(len(bpe_tokens), 1)
         fertility = len(bpe_tokens) / max(num_words, 1)
 
-        all_results["Boundary-BPE (Anchor)"].append({
-            "true_lm_bpb": lm_bpb,
-            "val_loss": val_loss,
-            "bytes_per_token": bpt,
-            "fertility": fertility,
-            "active_vocab_pct": bpe_active_cov * 100.0,
-            "p50_bytes": float(np.percentile(bpe_tok_bytes, 50)),
-            "p90_bytes": float(np.percentile(bpe_tok_bytes, 90)),
-        })
-        print(f"  [Boundary-BPE (Anchor)  ] BPB: {lm_bpb:.3f} | CE: {val_loss:.3f} | B/Tok: {bpt:.2f} | Fert: {fertility:.2f} | Active: {bpe_active_cov*100.0:.1f}% | p50/p90: {np.percentile(bpe_tok_bytes, 50):.0f}/{np.percentile(bpe_tok_bytes, 90):.0f}B", flush=True)
+        all_results["Boundary-BPE (Anchor)"].append(
+            {
+                "true_lm_bpb": lm_bpb,
+                "val_loss": val_loss,
+                "bytes_per_token": bpt,
+                "fertility": fertility,
+                "active_vocab_pct": bpe_active_cov * 100.0,
+                "p50_bytes": float(np.percentile(bpe_tok_bytes, 50)),
+                "p90_bytes": float(np.percentile(bpe_tok_bytes, 90)),
+            }
+        )
+        print(
+            f"  [Boundary-BPE (Anchor)  ] BPB: {lm_bpb:.3f} | CE: {val_loss:.3f} | B/Tok: {bpt:.2f} | Fert: {fertility:.2f} | Active: {bpe_active_cov * 100.0:.1f}% | p50/p90: {np.percentile(bpe_tok_bytes, 50):.0f}/{np.percentile(bpe_tok_bytes, 90):.0f}B",
+            flush=True,
+        )
 
         # 3. Sweep Alphas for Caliper-SuperBPE
         sbp_merges = min(target_vocab // 10, 1500)
@@ -160,10 +171,14 @@ def run_phase_four_sweep(
                 min_frequency=1,
                 verbose=False,
             )
-            pretok_chunks = [tok for d in train_docs for tok in tok_base.pre_tokenizer.pre_tokenize(tok_base.normalizer.normalize(d))]
+            pretok_chunks = [
+                tok for d in train_docs for tok in tok_base.pre_tokenizer.pre_tokenize(tok_base.normalizer.normalize(d))
+            ]
             cem = CrossEntropyMerging(max_merges=actual_merges, cross_word=True, verbose=False)
             sbp_model = cem.optimize(tok_base.model, chunks=pretok_chunks)
-            cal_tok = CustomTokenizer(normalizer=tok_base.normalizer, pre_tokenizer=tok_base.pre_tokenizer, model=sbp_model)
+            cal_tok = CustomTokenizer(
+                normalizer=tok_base.normalizer, pre_tokenizer=tok_base.pre_tokenizer, model=sbp_model
+            )
 
             cal_tokens = cal_tok.encode(combined_val)
             cal_counts = Counter(cal_tokens)
@@ -182,21 +197,28 @@ def run_phase_four_sweep(
             bpt = total_val_bytes / max(len(cal_tokens), 1)
             fertility = len(cal_tokens) / max(num_words, 1)
 
-            all_results[tok_name].append({
-                "true_lm_bpb": lm_bpb,
-                "val_loss": val_loss,
-                "bytes_per_token": bpt,
-                "fertility": fertility,
-                "active_vocab_pct": cal_active_cov * 100.0,
-                "p50_bytes": float(np.percentile(cal_tok_bytes, 50)),
-                "p90_bytes": float(np.percentile(cal_tok_bytes, 90)),
-            })
-            print(f"  [{tok_name:<23}] BPB: {lm_bpb:.3f} | CE: {val_loss:.3f} | B/Tok: {bpt:.2f} | Fert: {fertility:.2f} | Active: {cal_active_cov*100.0:.1f}% | p50/p90: {np.percentile(cal_tok_bytes, 50):.0f}/{np.percentile(cal_tok_bytes, 90):.0f}B", flush=True)
+            all_results[tok_name].append(
+                {
+                    "true_lm_bpb": lm_bpb,
+                    "val_loss": val_loss,
+                    "bytes_per_token": bpt,
+                    "fertility": fertility,
+                    "active_vocab_pct": cal_active_cov * 100.0,
+                    "p50_bytes": float(np.percentile(cal_tok_bytes, 50)),
+                    "p90_bytes": float(np.percentile(cal_tok_bytes, 90)),
+                }
+            )
+            print(
+                f"  [{tok_name:<23}] BPB: {lm_bpb:.3f} | CE: {val_loss:.3f} | B/Tok: {bpt:.2f} | Fert: {fertility:.2f} | Active: {cal_active_cov * 100.0:.1f}% | p50/p90: {np.percentile(cal_tok_bytes, 50):.0f}/{np.percentile(cal_tok_bytes, 90):.0f}B",
+                flush=True,
+            )
 
     print("\n" + "=" * 145)
     print("PHASE FOUR: LENGTH PRIOR (ALPHA) SWEEP SUMMARY REPORT (MEAN ACROSS 3 SEEDS AT 16K SCALE)")
     print("=" * 145)
-    print(f"{'Configuration':<26} | {'True LM BPB':<12} | {'Token CE':<10} | {'Bytes/Tok':<10} | {'Fertility':<10} | {'Active Vocab %':<15} | {'p50/p90 Length':<15} | {'Delta BPB vs Base'}")
+    print(
+        f"{'Configuration':<26} | {'True LM BPB':<12} | {'Token CE':<10} | {'Bytes/Tok':<10} | {'Fertility':<10} | {'Active Vocab %':<15} | {'p50/p90 Length':<15} | {'Delta BPB vs Base'}"
+    )
     print("-" * 145)
 
     summary: Dict[str, Dict[str, float]] = {}
@@ -225,7 +247,9 @@ def run_phase_four_sweep(
 
         delta_str = f"{delta:+.3f} BPB" if v != "Caliper (alpha=1.0)" else "0.000 (Base)"
         len_str = f"{p50_m:.0f}B / {p90_m:.0f}B"
-        print(f"{v:<26} | {bpb_m:<12.3f} | {ce_m:<10.3f} | {bpt_m:<10.2f} | {fert_m:<10.2f} | {act_m:<15.1f}% | {len_str:<15} | {delta_str}")
+        print(
+            f"{v:<26} | {bpb_m:<12.3f} | {ce_m:<10.3f} | {bpt_m:<10.2f} | {fert_m:<10.2f} | {act_m:<15.1f}% | {len_str:<15} | {delta_str}"
+        )
     print("=" * 145 + "\n")
 
     plt.figure(figsize=(10, 7), dpi=300)
@@ -234,10 +258,28 @@ def run_phase_four_sweep(
     bpe_bpb = summary["Boundary-BPE (Anchor)"]["true_lm_bpb"]
     bpe_ce = summary["Boundary-BPE (Anchor)"]["val_loss"]
 
-    plt.scatter([sp_bpb], [sp_ce], color="#1f77b4", marker="o", s=180, edgecolors="black", label="SentencePiece (Anchor)", zorder=6)
+    plt.scatter(
+        [sp_bpb],
+        [sp_ce],
+        color="#1f77b4",
+        marker="o",
+        s=180,
+        edgecolors="black",
+        label="SentencePiece (Anchor)",
+        zorder=6,
+    )
     plt.annotate("SentencePiece", (sp_bpb + 0.02, sp_ce - 0.02), fontsize=10, fontweight="bold", color="#1f77b4")
 
-    plt.scatter([bpe_bpb], [bpe_ce], color="#2ca02c", marker="s", s=180, edgecolors="black", label="Boundary-BPE (Anchor)", zorder=6)
+    plt.scatter(
+        [bpe_bpb],
+        [bpe_ce],
+        color="#2ca02c",
+        marker="s",
+        s=180,
+        edgecolors="black",
+        label="Boundary-BPE (Anchor)",
+        zorder=6,
+    )
     plt.annotate("Boundary-BPE", (bpe_bpb + 0.02, bpe_ce - 0.02), fontsize=10, fontweight="bold", color="#2ca02c")
 
     cal_bpbs = [summary[f"Caliper (alpha={a})"]["true_lm_bpb"] for a in alphas]
@@ -263,4 +305,6 @@ def run_phase_four_sweep(
 
 
 if __name__ == "__main__":
-    run_phase_four_sweep(target_vocab=16384, alphas=[0.5, 0.75, 1.0, 1.25, 1.5, 2.0], seeds=[101, 202, 303], num_docs=500)
+    run_phase_four_sweep(
+        target_vocab=16384, alphas=[0.5, 0.75, 1.0, 1.25, 1.5, 2.0], seeds=[101, 202, 303], num_docs=500
+    )

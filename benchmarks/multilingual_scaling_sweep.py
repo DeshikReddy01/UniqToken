@@ -41,69 +41,223 @@ from tokenizer import CustomTokenizer
 # Lexically diverse sentence components to generate 30,000+ unique multilingual n-grams
 EXPANDED_LEXICAL_CORPUS: Dict[str, Dict[str, List[str]]] = {
     "English": {
-        "subjects": ["The deep neural architecture", "Modern autoregressive tokenization", "Subword segmentation algorithm", "Exact byte-level fallback", "Distributed attention mechanism", "Cross-entropy loss optimization", "Large-scale pretraining data"],
+        "subjects": [
+            "The deep neural architecture",
+            "Modern autoregressive tokenization",
+            "Subword segmentation algorithm",
+            "Exact byte-level fallback",
+            "Distributed attention mechanism",
+            "Cross-entropy loss optimization",
+            "Large-scale pretraining data",
+        ],
         "verbs": ["accelerates", "optimizes", "revolutionizes", "enhances", "transforms", "guarantees", "evaluates"],
-        "objects": ["sequence compression efficiency", "context window utilization", "cross-lingual transfer learning", "multilingual parameter budgets", "computational throughput", "exact offset tracking", "downstream representations"],
+        "objects": [
+            "sequence compression efficiency",
+            "context window utilization",
+            "cross-lingual transfer learning",
+            "multilingual parameter budgets",
+            "computational throughput",
+            "exact offset tracking",
+            "downstream representations",
+        ],
     },
     "Hindi": {
-        "subjects": ["प्राकृतिक भाषा प्रसंस्करण प्रणाली", "आधुनिक सबवर्ड टोकनाइज़र", "यूनिकोड आधारित डीप लर्निंग मॉडल", "सटीक बाइट फॉलबैक तंत्र", "बहुभाषी अनुवाद नेटवर्क", "भारतीय भाषा कंप्यूटिंग ढांचा"],
-        "verbs": ["तेजी से सुधार करता है", "दक्षता बढ़ाता है", "क्रांतिकारी बदलाव लाता है", "सटीकता सुनिश्चित करता है", "सफल निष्पादन करता है"],
-        "objects": ["संदर्भ सघनता और गति में", "कम्प्यूटेशनल लागत को कम करने में", "देवनागरी संयुक्ताक्षर संरचना को", "उच्च स्तरीय वाक्य विश्लेषण में"],
+        "subjects": [
+            "प्राकृतिक भाषा प्रसंस्करण प्रणाली",
+            "आधुनिक सबवर्ड टोकनाइज़र",
+            "यूनिकोड आधारित डीप लर्निंग मॉडल",
+            "सटीक बाइट फॉलबैक तंत्र",
+            "बहुभाषी अनुवाद नेटवर्क",
+            "भारतीय भाषा कंप्यूटिंग ढांचा",
+        ],
+        "verbs": [
+            "तेजी से सुधार करता है",
+            "दक्षता बढ़ाता है",
+            "क्रांतिकारी बदलाव लाता है",
+            "सटीकता सुनिश्चित करता है",
+            "सफल निष्पादन करता है",
+        ],
+        "objects": [
+            "संदर्भ सघनता और गति में",
+            "कम्प्यूटेशनल लागत को कम करने में",
+            "देवनागरी संयुक्ताक्षर संरचना को",
+            "उच्च स्तरीय वाक्य विश्लेषण में",
+        ],
     },
     "Telugu": {
-        "subjects": ["సహజ భాషా ప్రాసెసింగ్ నమూనాలు", "ఆధునిక సబ్‌వర్డ్ టోకనైజర్ వ్యవస్థ", "కంప్యూటర్ సైన్స్ పరిశోధనలు", "కృత్రిమ మేధస్సు అల్గోరిథంలు", "తెలుగు భాషా గణన వేదిక"],
+        "subjects": [
+            "సహజ భాషా ప్రాసెసింగ్ నమూనాలు",
+            "ఆధునిక సబ్‌వర్డ్ టోకనైజర్ వ్యవస్థ",
+            "కంప్యూటర్ సైన్స్ పరిశోధనలు",
+            "కృత్రిమ మేధస్సు అల్గోరిథంలు",
+            "తెలుగు భాషా గణన వేదిక",
+        ],
         "verbs": ["వేగవంతం చేస్తుంది", "మెరుగుపరుస్తుంది", "సాధ్యం చేస్తుంది", "విప్లవాత్మకంగా మారుస్తుంది", "నిరూపిస్తుంది"],
         "objects": ["సందర్భ విశ్లేషణ సామర్థ్యాన్ని", "గణన సమయాన్ని మరియు ఖర్చును", "గుణింతాల అమరిక ప్రక్రియను", "భాషా నమూనాల పనితీరును"],
     },
     "Tamil": {
-        "subjects": ["இயற்கை மொழி செயலாக்க மாதிரிகள்", "நவீன துணைச்சொல் டோக்கனைசர் முறை", "ஆழ்ந்த கற்றல் தொழில்நுட்பம்", "பைட்-நிலை பாதுகாப்பு அமைப்பு", "தமிழ் கணினி மொழி கட்டமைப்புகள்"],
+        "subjects": [
+            "இயற்கை மொழி செயலாக்க மாதிரிகள்",
+            "நவீன துணைச்சொல் டோக்கனைசர் முறை",
+            "ஆழ்ந்த கற்றல் தொழில்நுட்பம்",
+            "பைட்-நிலை பாதுகாப்பு அமைப்பு",
+            "தமிழ் கணினி மொழி கட்டமைப்புகள்",
+        ],
         "verbs": ["முன்னேற்றுகிறது", "உறுதி செய்கிறது", "மேம்படுத்துகிறது", "மாற்றி அமைக்கிறது", "விரைவுபடுத்துகிறது"],
-        "objects": ["சூழல் சாளரத்தின் திறனை", "கணக்கீட்டு வேகத்தை", "எழுத்துக்கள் மற்றும் மெய் எழுத்துக்களின் துல்லியத்தை", "மொழிபெயர்ப்பு தரத்தை"],
+        "objects": [
+            "சூழல் சாளரத்தின் திறனை",
+            "கணக்கீட்டு வேகத்தை",
+            "எழுத்துக்கள் மற்றும் மெய் எழுத்துக்களின் துல்லியத்தை",
+            "மொழிபெயர்ப்பு தரத்தை",
+        ],
     },
     "Bengali": {
-        "subjects": ["প্রাকৃতিক ভাষা প্রক্রিয়াকরণ ব্যবস্থা", "উন্নত সাবওয়ার্ড টোকেনাইজেশন পদ্ধতি", "ডিপ লার্নিং অ্যালগরিদম", "ইউনিকোড ভিত্তিক ভাষা মডেল", "বহুভাষিক ডেটাসেট বিশ্লেষণ"],
+        "subjects": [
+            "প্রাকৃতিক ভাষা প্রক্রিয়াকরণ ব্যবস্থা",
+            "উন্নত সাবওয়ার্ড টোকেনাইজেশন পদ্ধতি",
+            "ডিপ লার্নিং অ্যালগরিদম",
+            "ইউনিকোড ভিত্তিক ভাষা মডেল",
+            "বহুভাষিক ডেটাসেট বিশ্লেষণ",
+        ],
         "verbs": ["ত্বরান্বিত করে", "উন্নত করে", "নিশ্চিত করে", "রূপান্তর করে", "দক্ষতা বৃদ্ধি করে"],
         "objects": ["প্রসঙ্গ দৈর্ঘ্যের সংকোচন", "গণনা সংক্রান্ত ব্যয় সংকোচন", "বাংলা যুক্তাক্ষরের সঠিক বিভাজন", "মডেলের সামগ্রিক নির্ভুলতা"],
     },
     "Arabic": {
-        "subjects": ["نماذج معالجة اللغات الطبيعية الحديثة", "خوارزميات تجزئة الكلمات المتقدمة", "أنظمة الذكاء الاصطناعي التوليدي", "محركات الترجمة الآلية العميقة", "أطر الحوسبة اللغوية العربية"],
+        "subjects": [
+            "نماذج معالجة اللغات الطبيعية الحديثة",
+            "خوارزميات تجزئة الكلمات المتقدمة",
+            "أنظمة الذكاء الاصطناعي التوليدي",
+            "محركات الترجمة الآلية العميقة",
+            "أطر الحوسبة اللغوية العربية",
+        ],
         "verbs": ["تعزز كفاءة", "تطور دقة", "تختصر زمن", "تضمن سلامة", "تحسن أداء"],
-        "objects": ["ضغط السياق وتقليل الخصوبة", "استيعاب الجذور الصرفية والتشكيل", "معالجة النصوص متعددة اللغات", "العمليات الحسابية في النماذج الضخمة"],
+        "objects": [
+            "ضغط السياق وتقليل الخصوبة",
+            "استيعاب الجذور الصرفية والتشكيل",
+            "معالجة النصوص متعددة اللغات",
+            "العمليات الحسابية في النماذج الضخمة",
+        ],
     },
     "Chinese": {
-        "subjects": ["大规模语言模型分词技术", "基于子词切分的高效算法", "深度自回归注意力机制", "字节回退与精确对齐架构", "分布式多语言预训练框架"],
+        "subjects": [
+            "大规模语言模型分词技术",
+            "基于子词切分的高效算法",
+            "深度自回归注意力机制",
+            "字节回退与精确对齐架构",
+            "分布式多语言预训练框架",
+        ],
         "verbs": ["显著提升了", "全面优化了", "根本性改变了", "严格保证了", "大幅降低了"],
-        "objects": ["长文本上下文的压缩效率", "词表构建与语料平衡策略", "语义单元的边界提取精度", "推理加速与显存开销预算"],
+        "objects": [
+            "长文本上下文的压缩效率",
+            "词表构建与语料平衡策略",
+            "语义单元的边界提取精度",
+            "推理加速与显存开销预算",
+        ],
     },
     "Japanese": {
-        "subjects": ["自然言語処理のトークナイザー機構", "深層学習トランスフォーマーモデル", "バイトフォールバック対応サブワード分割", "形態素解析と辞書最適化技術", "多言語表現学習フレームワーク"],
+        "subjects": [
+            "自然言語処理のトークナイザー機構",
+            "深層学習トランスフォーマーモデル",
+            "バイトフォールバック対応サブワード分割",
+            "形態素解析と辞書最適化技術",
+            "多言語表現学習フレームワーク",
+        ],
         "verbs": ["劇的に向上させる", "最適化する", "高精度に実現する", "安定して保証する", "効率化する"],
-        "objects": ["文脈圧縮率と推論スループット", "文字境界とオフセットの追跡性", "語彙サイズとメモリフットプリント", "下流タスクのクロスエントロピー損失"],
+        "objects": [
+            "文脈圧縮率と推論スループット",
+            "文字境界とオフセットの追跡性",
+            "語彙サイズとメモリフットプリント",
+            "下流タスクのクロスエントロピー損失",
+        ],
     },
     "Korean": {
-        "subjects": ["자연어 처리 서브워드 토크나이저", "트랜스포머 기반 언어 모델", "바이트 단위 안전 폴백 시스템", "교착어 형태소 분할 알고리즘", "대규모 다국어 임베딩 아키텍처"],
-        "verbs": ["획기적으로 개선한다", "효율적으로 압축한다", "정확하게 보장한다", "성공적으로 최적화한다", "안정적으로 지원한다"],
-        "objects": ["문맥 창의 계산 효율성", "조사와 어미의 결합 구조", "임베딩 파라미터 용량", "학습 손실과 수렴 속도"],
+        "subjects": [
+            "자연어 처리 서브워드 토크나이저",
+            "트랜스포머 기반 언어 모델",
+            "바이트 단위 안전 폴백 시스템",
+            "교착어 형태소 분할 알고리즘",
+            "대규모 다국어 임베딩 아키텍처",
+        ],
+        "verbs": [
+            "획기적으로 개선한다",
+            "효율적으로 압축한다",
+            "정확하게 보장한다",
+            "성공적으로 최적화한다",
+            "안정적으로 지원한다",
+        ],
+        "objects": [
+            "문맥 창의 계산 효율성",
+            "조사와 어미의 결합 구조",
+            "임베딩 파라미터 용량",
+            "학습 손실과 수렴 속도",
+        ],
     },
     "Thai": {
-        "subjects": ["ระบบตัดคำสำหรับภาษาธรรมชาติ", "โมเดลการเรียนรู้เชิงลึกแบบหมุนเวียน", "อัลกอริทึมการบีบอัดระดับหน่วยย่อย", "โครงสร้างการสำรองข้อมูลระดับไบต์", "เทคโนโลยีปัญญาประดิษฐ์ขั้นสูง"],
+        "subjects": [
+            "ระบบตัดคำสำหรับภาษาธรรมชาติ",
+            "โมเดลการเรียนรู้เชิงลึกแบบหมุนเวียน",
+            "อัลกอริทึมการบีบอัดระดับหน่วยย่อย",
+            "โครงสร้างการสำรองข้อมูลระดับไบต์",
+            "เทคโนโลยีปัญญาประดิษฐ์ขั้นสูง",
+        ],
         "verbs": ["ช่วยเพิ่มประสิทธิภาพ", "ลดความซับซ้อนของ", "ทำให้การประมวลผล", "ยกระดับคุณภาพของ", "รับประกันความถูกต้องของ"],
-        "objects": ["การจัดการความยาวของลำดับคำ", "การวิเคราะห์โครงสร้างภาษาไทย", "การใช้หน่วยความจำในการคำนวณ", "การแปลภาษาอัตโนมัติ"],
+        "objects": [
+            "การจัดการความยาวของลำดับคำ",
+            "การวิเคราะห์โครงสร้างภาษาไทย",
+            "การใช้หน่วยความจำในการคำนวณ",
+            "การแปลภาษาอัตโนมัติ",
+        ],
     },
     "Russian": {
-        "subjects": ["Современные алгоритмы токенизации субслов", "Глубокие нейросетевые архитектуры", "Многоязычные языковые модели", "Системы байтового фоллбэка", "Трансформерные механизмы внимания"],
-        "verbs": ["существенно оптимизируют", "повышают точность", "обеспечивают надежность", "сокращают затраты", "ускоряют обработку"],
-        "objects": ["эффективность сжатия контекста", "морфологический анализ сложных форм", "вычислительную скорость инференса", "стабильность градиентного спуска"],
+        "subjects": [
+            "Современные алгоритмы токенизации субслов",
+            "Глубокие нейросетевые архитектуры",
+            "Многоязычные языковые модели",
+            "Системы байтового фоллбэка",
+            "Трансформерные механизмы внимания",
+        ],
+        "verbs": [
+            "существенно оптимизируют",
+            "повышают точность",
+            "обеспечивают надежность",
+            "сокращают затраты",
+            "ускоряют обработку",
+        ],
+        "objects": [
+            "эффективность сжатия контекста",
+            "морфологический анализ сложных форм",
+            "вычислительную скорость инференса",
+            "стабильность градиентного спуска",
+        ],
     },
     "Spanish": {
-        "subjects": ["La arquitectura de tokenización moderna", "Los modelos autorregresivos profundos", "El sistema de partición de subpalabras", "El mecanismo de respaldo por bytes", "Los marcos de entrenamiento distribuido"],
-        "verbs": ["optimizan significativamente", "mejoran radicalmente", "garantizan plenamente", "reducen drásticamente", "aceleran el cálculo de"],
-        "objects": ["la compresión de secuencias largas", "la preservación de la estructura léxica", "el rendimiento computacional global", "la eficiencia del espacio de incrustaciones"],
+        "subjects": [
+            "La arquitectura de tokenización moderna",
+            "Los modelos autorregresivos profundos",
+            "El sistema de partición de subpalabras",
+            "El mecanismo de respaldo por bytes",
+            "Los marcos de entrenamiento distribuido",
+        ],
+        "verbs": [
+            "optimizan significativamente",
+            "mejoran radicalmente",
+            "garantizan plenamente",
+            "reducen drásticamente",
+            "aceleran el cálculo de",
+        ],
+        "objects": [
+            "la compresión de secuencias largas",
+            "la preservación de la estructura léxica",
+            "el rendimiento computacional global",
+            "la eficiencia del espacio de incrustaciones",
+        ],
     },
 }
 
 
-def build_rich_multilingual_corpus(num_samples_per_lang: int = 400, seed: int = 100) -> Tuple[List[str], Dict[str, str]]:
+def build_rich_multilingual_corpus(
+    num_samples_per_lang: int = 400, seed: int = 100
+) -> Tuple[List[str], Dict[str, str]]:
     """Generates a rich, highly combinatorial corpus with >30,000 unique subwords."""
     rng = random.Random(seed)
     train_docs: List[str] = []
@@ -353,11 +507,23 @@ def run_audited_scaling_sweep(
         engines = [
             ("Caliper (SuperBPE)", tok_sbp.vocab_size, lambda t: tok_sbp.encode_to_ids(t), tok_sbp.model.vocab.keys()),
             ("Caliper (Unigram)", tok_uni.vocab_size, lambda t: tok_uni.encode_to_ids(t), tok_uni.model.vocab.keys()),
-            ("Standard BPE", len(bpe_m.vocab), lambda t: [bpe_m.token_to_id.get(x, 0) for x in bpe_m.encode(t)], bpe_m.vocab),
+            (
+                "Standard BPE",
+                len(bpe_m.vocab),
+                lambda t: [bpe_m.token_to_id.get(x, 0) for x in bpe_m.encode(t)],
+                bpe_m.vocab,
+            ),
         ]
         if sp_proc is not None:
             sp_vocab = [sp_proc.id_to_piece(i) for i in range(sp_proc.get_piece_size())]
-            engines.append(("SentencePiece (Unigram)", sp_proc.get_piece_size(), lambda t: sp_proc.encode(t, out_type=int), sp_vocab))
+            engines.append(
+                (
+                    "SentencePiece (Unigram)",
+                    sp_proc.get_piece_size(),
+                    lambda t: sp_proc.encode(t, out_type=int),
+                    sp_vocab,
+                )
+            )
 
         for name, v_actual, enc_fn, vocab_keys in engines:
             vocab_list = sorted(list(vocab_keys))

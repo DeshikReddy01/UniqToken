@@ -1,4 +1,4 @@
-﻿"""
+"""
 Phase Eight: Script-Aware Candidate Allocation & Multi-Byte Length Sweep.
 Tests Configurations A, B, C, D against SentencePiece and Boundary-BPE at V = 16,384
 across 3 paired seeds (101, 202, 303) under strict matched FLOP compute.
@@ -25,6 +25,7 @@ from tempfile import TemporaryDirectory
 from typing import Any, Callable, Dict, List, Tuple
 
 import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
@@ -125,18 +126,23 @@ def run_phase_eight_sweep(
         sp_indic_toks = list(sp_proc.encode_as_pieces(indic_val))
         sp_indic_bpt = indic_val_bytes / max(len(sp_indic_toks), 1)
 
-        all_results["SentencePiece (Anchor)"].append({
-            "true_lm_bpb": lm_bpb,
-            "val_loss": val_loss,
-            "bytes_per_token": bpt,
-            "indic_bpt": sp_indic_bpt,
-            "fertility": fertility,
-            "active_vocab_pct": sp_active_cov * 100.0,
-            "p50_bytes": float(np.percentile(sp_tok_bytes, 50)),
-            "p90_bytes": float(np.percentile(sp_tok_bytes, 90)),
-            "pct_ge_6b": sp_pct_ge_6b,
-        })
-        print(f"  [SentencePiece (Anchor)     ] BPB: {lm_bpb:.3f} | CE: {val_loss:.3f} | B/Tok: {bpt:.2f} | Indic B/Tok: {sp_indic_bpt:.2f} | Fert: {fertility:.2f} | Active: {sp_active_cov*100.0:.1f}% | >=6B: {sp_pct_ge_6b:.1f}%", flush=True)
+        all_results["SentencePiece (Anchor)"].append(
+            {
+                "true_lm_bpb": lm_bpb,
+                "val_loss": val_loss,
+                "bytes_per_token": bpt,
+                "indic_bpt": sp_indic_bpt,
+                "fertility": fertility,
+                "active_vocab_pct": sp_active_cov * 100.0,
+                "p50_bytes": float(np.percentile(sp_tok_bytes, 50)),
+                "p90_bytes": float(np.percentile(sp_tok_bytes, 90)),
+                "pct_ge_6b": sp_pct_ge_6b,
+            }
+        )
+        print(
+            f"  [SentencePiece (Anchor)     ] BPB: {lm_bpb:.3f} | CE: {val_loss:.3f} | B/Tok: {bpt:.2f} | Indic B/Tok: {sp_indic_bpt:.2f} | Fert: {fertility:.2f} | Active: {sp_active_cov * 100.0:.1f}% | >=6B: {sp_pct_ge_6b:.1f}%",
+            flush=True,
+        )
 
         # 2. Boundary-BPE Anchor
         b_bpe = BPETrainer(target_vocab_size=target_vocab, byte_fallback=True)
@@ -163,18 +169,23 @@ def run_phase_eight_sweep(
         bpe_indic_toks = bpe_model.encode(indic_val)
         bpe_indic_bpt = indic_val_bytes / max(len(bpe_indic_toks), 1)
 
-        all_results["Boundary-BPE (Anchor)"].append({
-            "true_lm_bpb": lm_bpb,
-            "val_loss": val_loss,
-            "bytes_per_token": bpt,
-            "indic_bpt": bpe_indic_bpt,
-            "fertility": fertility,
-            "active_vocab_pct": bpe_active_cov * 100.0,
-            "p50_bytes": float(np.percentile(bpe_tok_bytes, 50)),
-            "p90_bytes": float(np.percentile(bpe_tok_bytes, 90)),
-            "pct_ge_6b": bpe_pct_ge_6b,
-        })
-        print(f"  [Boundary-BPE (Anchor)      ] BPB: {lm_bpb:.3f} | CE: {val_loss:.3f} | B/Tok: {bpt:.2f} | Indic B/Tok: {bpe_indic_bpt:.2f} | Fert: {fertility:.2f} | Active: {bpe_active_cov*100.0:.1f}% | >=6B: {bpe_pct_ge_6b:.1f}%", flush=True)
+        all_results["Boundary-BPE (Anchor)"].append(
+            {
+                "true_lm_bpb": lm_bpb,
+                "val_loss": val_loss,
+                "bytes_per_token": bpt,
+                "indic_bpt": bpe_indic_bpt,
+                "fertility": fertility,
+                "active_vocab_pct": bpe_active_cov * 100.0,
+                "p50_bytes": float(np.percentile(bpe_tok_bytes, 50)),
+                "p90_bytes": float(np.percentile(bpe_tok_bytes, 90)),
+                "pct_ge_6b": bpe_pct_ge_6b,
+            }
+        )
+        print(
+            f"  [Boundary-BPE (Anchor)      ] BPB: {lm_bpb:.3f} | CE: {val_loss:.3f} | B/Tok: {bpt:.2f} | Indic B/Tok: {bpe_indic_bpt:.2f} | Fert: {fertility:.2f} | Active: {bpe_active_cov * 100.0:.1f}% | >=6B: {bpe_pct_ge_6b:.1f}%",
+            flush=True,
+        )
 
         # Caliper Configurations
         sbp_merges = min(target_vocab // 10, 1500)
@@ -200,10 +211,14 @@ def run_phase_eight_sweep(
                 min_frequency=1,
                 verbose=False,
             )
-            pretok_chunks = [tok for d in train_docs for tok in tok_base.pre_tokenizer.pre_tokenize(tok_base.normalizer.normalize(d))]
+            pretok_chunks = [
+                tok for d in train_docs for tok in tok_base.pre_tokenizer.pre_tokenize(tok_base.normalizer.normalize(d))
+            ]
             cem = CrossEntropyMerging(max_merges=actual_merges, cross_word=True, verbose=False)
             sbp_model = cem.optimize(tok_base.model, chunks=pretok_chunks)
-            cal_tok = CustomTokenizer(normalizer=tok_base.normalizer, pre_tokenizer=tok_base.pre_tokenizer, model=sbp_model)
+            cal_tok = CustomTokenizer(
+                normalizer=tok_base.normalizer, pre_tokenizer=tok_base.pre_tokenizer, model=sbp_model
+            )
 
             cal_tokens = cal_tok.encode(combined_val)
             cal_counts = Counter(cal_tokens)
@@ -226,23 +241,30 @@ def run_phase_eight_sweep(
             cal_indic_toks = cal_tok.encode(indic_val)
             cal_indic_bpt = indic_val_bytes / max(len(cal_indic_toks), 1)
 
-            all_results[cfg_name].append({
-                "true_lm_bpb": lm_bpb,
-                "val_loss": val_loss,
-                "bytes_per_token": bpt,
-                "indic_bpt": cal_indic_bpt,
-                "fertility": fertility,
-                "active_vocab_pct": cal_active_cov * 100.0,
-                "p50_bytes": float(np.percentile(cal_tok_bytes, 50)),
-                "p90_bytes": float(np.percentile(cal_tok_bytes, 90)),
-                "pct_ge_6b": cal_pct_ge_6b,
-            })
-            print(f"  [{cfg_name:<30}] BPB: {lm_bpb:.3f} | CE: {val_loss:.3f} | B/Tok: {bpt:.2f} | Indic B/Tok: {cal_indic_bpt:.2f} | Fert: {fertility:.2f} | Active: {cal_active_cov*100.0:.1f}% | >=6B: {cal_pct_ge_6b:.1f}%", flush=True)
+            all_results[cfg_name].append(
+                {
+                    "true_lm_bpb": lm_bpb,
+                    "val_loss": val_loss,
+                    "bytes_per_token": bpt,
+                    "indic_bpt": cal_indic_bpt,
+                    "fertility": fertility,
+                    "active_vocab_pct": cal_active_cov * 100.0,
+                    "p50_bytes": float(np.percentile(cal_tok_bytes, 50)),
+                    "p90_bytes": float(np.percentile(cal_tok_bytes, 90)),
+                    "pct_ge_6b": cal_pct_ge_6b,
+                }
+            )
+            print(
+                f"  [{cfg_name:<30}] BPB: {lm_bpb:.3f} | CE: {val_loss:.3f} | B/Tok: {bpt:.2f} | Indic B/Tok: {cal_indic_bpt:.2f} | Fert: {fertility:.2f} | Active: {cal_active_cov * 100.0:.1f}% | >=6B: {cal_pct_ge_6b:.1f}%",
+                flush=True,
+            )
 
     print("\n" + "=" * 175)
     print("PHASE EIGHT: SCRIPT-AWARE CANDIDATE ALLOCATION SUMMARY REPORT (MEAN ACROSS 3 SEEDS AT 16K SCALE)")
     print("=" * 175)
-    print(f"{'Configuration':<32} | {'True LM BPB':<12} | {'Token CE':<10} | {'Bytes/Tok':<10} | {'Indic B/Tok':<12} | {'Fertility':<10} | {'Active Vocab %':<15} | {'>=6B Tokens %':<15} | {'Delta BPB vs Base'}")
+    print(
+        f"{'Configuration':<32} | {'True LM BPB':<12} | {'Token CE':<10} | {'Bytes/Tok':<10} | {'Indic B/Tok':<12} | {'Fertility':<10} | {'Active Vocab %':<15} | {'>=6B Tokens %':<15} | {'Delta BPB vs Base'}"
+    )
     print("-" * 175)
 
     summary: Dict[str, Dict[str, float]] = {}
@@ -274,7 +296,9 @@ def run_phase_eight_sweep(
         }
 
         delta_str = f"{delta:+.3f} BPB" if v != "Config A (Frozen Base)" else "0.000 (Base)"
-        print(f"{v:<32} | {bpb_m:<12.3f} | {ce_m:<10.3f} | {bpt_m:<10.2f} | {ind_m:<12.2f} | {fert_m:<10.2f} | {act_m:<15.1f}% | {ge6_m:<15.1f}% | {delta_str}")
+        print(
+            f"{v:<32} | {bpb_m:<12.3f} | {ce_m:<10.3f} | {bpt_m:<10.2f} | {ind_m:<12.2f} | {fert_m:<10.2f} | {act_m:<15.1f}% | {ge6_m:<15.1f}% | {delta_str}"
+        )
     print("=" * 175 + "\n")
 
     # Generate Pareto Trajectory Plot
@@ -284,11 +308,36 @@ def run_phase_eight_sweep(
     bpe_bpb = summary["Boundary-BPE (Anchor)"]["true_lm_bpb"]
     bpe_ce = summary["Boundary-BPE (Anchor)"]["val_loss"]
 
-    plt.scatter([sp_bpb], [sp_ce], color="#1f77b4", marker="o", s=180, edgecolors="black", label="SentencePiece (Anchor)", zorder=6)
-    plt.annotate(f"SentencePiece\nBPB: {sp_bpb:.3f}, CE: {sp_ce:.2f}", (sp_bpb + 0.02, sp_ce - 0.03), fontsize=9, color="#1f77b4")
+    plt.scatter(
+        [sp_bpb],
+        [sp_ce],
+        color="#1f77b4",
+        marker="o",
+        s=180,
+        edgecolors="black",
+        label="SentencePiece (Anchor)",
+        zorder=6,
+    )
+    plt.annotate(
+        f"SentencePiece\nBPB: {sp_bpb:.3f}, CE: {sp_ce:.2f}", (sp_bpb + 0.02, sp_ce - 0.03), fontsize=9, color="#1f77b4"
+    )
 
-    plt.scatter([bpe_bpb], [bpe_ce], color="#2ca02c", marker="s", s=180, edgecolors="black", label="Boundary-BPE (Anchor)", zorder=6)
-    plt.annotate(f"Boundary-BPE\nBPB: {bpe_bpb:.3f}, CE: {bpe_ce:.2f}", (bpe_bpb + 0.02, bpe_ce - 0.03), fontsize=9, color="#2ca02c")
+    plt.scatter(
+        [bpe_bpb],
+        [bpe_ce],
+        color="#2ca02c",
+        marker="s",
+        s=180,
+        edgecolors="black",
+        label="Boundary-BPE (Anchor)",
+        zorder=6,
+    )
+    plt.annotate(
+        f"Boundary-BPE\nBPB: {bpe_bpb:.3f}, CE: {bpe_ce:.2f}",
+        (bpe_bpb + 0.02, bpe_ce - 0.03),
+        fontsize=9,
+        color="#2ca02c",
+    )
 
     colors_dict = {
         "Config A (Frozen Base)": "gray",
@@ -304,18 +353,38 @@ def run_phase_eight_sweep(
     }
 
     pts = []
-    for b in ["Config A (Frozen Base)", "Config B (Length Global α=1.5)", "Config C (Script Quotas α=1.0)", "Config D (Script Quotas α=1.25)"]:
+    for b in [
+        "Config A (Frozen Base)",
+        "Config B (Length Global α=1.5)",
+        "Config C (Script Quotas α=1.0)",
+        "Config D (Script Quotas α=1.25)",
+    ]:
         bpb = summary[b]["true_lm_bpb"]
         ce = summary[b]["val_loss"]
         pts.append((bpb, ce))
         sz = 260 if "D" in b else (200 if "C" in b else 150)
-        plt.scatter([bpb], [ce], color=colors_dict[b], marker=markers_dict[b], s=sz, edgecolors="black" if "D" in b or "C" in b else None, label=b, zorder=7)
+        plt.scatter(
+            [bpb],
+            [ce],
+            color=colors_dict[b],
+            marker=markers_dict[b],
+            s=sz,
+            edgecolors="black" if "D" in b or "C" in b else None,
+            label=b,
+            zorder=7,
+        )
         lbl_clean = b.split("(")[1].replace(")", "")
-        plt.annotate(f"{lbl_clean}\nBPB: {bpb:.3f}, CE: {ce:.2f}", (bpb + 0.02, ce + 0.02), fontsize=8.5, color=colors_dict[b])
+        plt.annotate(
+            f"{lbl_clean}\nBPB: {bpb:.3f}, CE: {ce:.2f}", (bpb + 0.02, ce + 0.02), fontsize=8.5, color=colors_dict[b]
+        )
 
-    plt.plot([p[0] for p in pts], [p[1] for p in pts], color="#d62728", linestyle="--", linewidth=2, alpha=0.7, zorder=5)
+    plt.plot(
+        [p[0] for p in pts], [p[1] for p in pts], color="#d62728", linestyle="--", linewidth=2, alpha=0.7, zorder=5
+    )
 
-    plt.title("Phase Eight: Script-Aware Candidate Allocation Pareto Frontier (V = 16,384)", fontsize=12, fontweight="bold")
+    plt.title(
+        "Phase Eight: Script-Aware Candidate Allocation Pareto Frontier (V = 16,384)", fontsize=12, fontweight="bold"
+    )
     plt.xlabel("True LM BPB (lower is better) -> [Optimal: Left]", fontsize=11)
     plt.ylabel("Token Cross-Entropy Loss (lower is better) -> [Optimal: Bottom]", fontsize=11)
     plt.grid(True, linestyle="--", alpha=0.5)

@@ -41,7 +41,7 @@ def run_ablation_study(
 
     print("=" * 125)
     print(f"STEP 5: TARGETED CALIPER ABLATION STUDY (V = {target_vocab:,} | SEEDS = {seeds})")
-    print(f"Goal: Discover which component causes the BPB / compression penalty")
+    print("Goal: Discover which component causes the BPB / compression penalty")
     print("=" * 125)
 
     variants = [
@@ -94,10 +94,14 @@ def run_ablation_study(
             min_frequency=1,
             verbose=False,
         )
-        pretok_chunks = [c for d in train_docs for c in tok_base.pre_tokenizer.pre_tokenize(tok_base.normalizer.normalize(d))]
+        pretok_chunks = [
+            c for d in train_docs for c in tok_base.pre_tokenizer.pre_tokenize(tok_base.normalizer.normalize(d))
+        ]
         cem = CrossEntropyMerging(max_merges=actual_merges, cross_word=True, verbose=False)
         sbp_model = cem.optimize(tok_base.model, chunks=pretok_chunks)
-        cal_base = CustomTokenizer(normalizer=tok_base.normalizer, pre_tokenizer=tok_base.pre_tokenizer, model=sbp_model)
+        cal_base = CustomTokenizer(
+            normalizer=tok_base.normalizer, pre_tokenizer=tok_base.pre_tokenizer, model=sbp_model
+        )
 
         # 3. Caliper (No Entropy Split)
         tok_no_ent = CustomTokenizer.train_from_corpus(
@@ -109,10 +113,14 @@ def run_ablation_study(
             min_frequency=1,
             verbose=False,
         )
-        pretok_no_ent = [c for d in train_docs for c in tok_no_ent.pre_tokenizer.pre_tokenize(tok_no_ent.normalizer.normalize(d))]
+        pretok_no_ent = [
+            c for d in train_docs for c in tok_no_ent.pre_tokenizer.pre_tokenize(tok_no_ent.normalizer.normalize(d))
+        ]
         cem_no_ent = CrossEntropyMerging(max_merges=actual_merges, cross_word=True, verbose=False)
         sbp_no_ent = cem_no_ent.optimize(tok_no_ent.model, chunks=pretok_no_ent)
-        cal_no_ent = CustomTokenizer(normalizer=tok_no_ent.normalizer, pre_tokenizer=tok_no_ent.pre_tokenizer, model=sbp_no_ent)
+        cal_no_ent = CustomTokenizer(
+            normalizer=tok_no_ent.normalizer, pre_tokenizer=tok_no_ent.pre_tokenizer, model=sbp_no_ent
+        )
 
         # 4. Caliper (No CEM / Pure Unigram EM)
         cal_no_cem = CustomTokenizer.train_from_corpus(
@@ -137,7 +145,9 @@ def run_ablation_study(
             min_frequency=1,
             verbose=False,
         )
-        pretok_agg = [c for d in train_docs for c in tok_agg.pre_tokenizer.pre_tokenize(tok_agg.normalizer.normalize(d))]
+        pretok_agg = [
+            c for d in train_docs for c in tok_agg.pre_tokenizer.pre_tokenize(tok_agg.normalizer.normalize(d))
+        ]
         cem_agg = CrossEntropyMerging(max_merges=agg_merges, cross_word=True, verbose=False)
         sbp_agg = cem_agg.optimize(tok_agg.model, chunks=pretok_agg)
         cal_agg = CustomTokenizer(normalizer=tok_agg.normalizer, pre_tokenizer=tok_agg.pre_tokenizer, model=sbp_agg)
@@ -171,13 +181,17 @@ def run_ablation_study(
                 "bytes_per_token": bpt,
             }
 
-            print(f"  [{name:<40}] V: {v_act:<6,} | CE Loss: {val_loss:.3f} | True LM BPB: {lm_bpb:.3f} | B/Tok: {bpt:.2f}")
+            print(
+                f"  [{name:<40}] V: {v_act:<6,} | CE Loss: {val_loss:.3f} | True LM BPB: {lm_bpb:.3f} | B/Tok: {bpt:.2f}"
+            )
 
     # Summary Table
     print("\n" + "=" * 125)
     print("STEP 5: ABLATION SUMMARY REPORT (MEAN ACROSS 3 SEEDS AT 16K SCALE)")
     print("=" * 125)
-    print(f"{'Variant':<42} | {'True LM BPB':<12} | {'Token CE Loss':<14} | {'Bytes / Token':<14} | {'Delta BPB vs Baseline'}")
+    print(
+        f"{'Variant':<42} | {'True LM BPB':<12} | {'Token CE Loss':<14} | {'Bytes / Token':<14} | {'Delta BPB vs Baseline'}"
+    )
     print("-" * 125)
 
     base_bpb = np.mean([results["2. Caliper Baseline"][s]["true_lm_bpb"] for s in seeds])
@@ -195,4 +209,3 @@ def run_ablation_study(
 
 if __name__ == "__main__":
     run_ablation_study(target_vocab=16384, seeds=[101, 202, 303], num_docs=500)
-

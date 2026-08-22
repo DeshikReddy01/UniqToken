@@ -134,6 +134,15 @@ class SeedVocabularyBuilder:
             )
         return tokens
 
+    _INDIC_SCRIPTS = frozenset({"devanagari", "telugu", "tamil", "bengali", "indic_other"})
+
+    @staticmethod
+    def _script_family(script: str) -> str:
+        """Collapses granular script labels into audit families (e.g. devanagari → indic)."""
+        if script in SeedVocabularyBuilder._INDIC_SCRIPTS:
+            return "indic"
+        return script
+
     @staticmethod
     def _detect_script(token: str) -> str:
         """Categorizes a token into a script family based on Unicode codepoints."""
@@ -154,7 +163,12 @@ class SeedVocabularyBuilder:
                 return "bengali"
             elif 0x0900 <= cp <= 0x0D7F:
                 return "indic_other"
-            elif (0x4E00 <= cp <= 0x9FFF) or (0x3400 <= cp <= 0x4DBF) or (0x3040 <= cp <= 0x30FF) or (0xAC00 <= cp <= 0xD7AF):
+            elif (
+                (0x4E00 <= cp <= 0x9FFF)
+                or (0x3400 <= cp <= 0x4DBF)
+                or (0x3040 <= cp <= 0x30FF)
+                or (0xAC00 <= cp <= 0xD7AF)
+            ):
                 return "cjk"
             elif (0x0600 <= cp <= 0x06FF) or (0x0750 <= cp <= 0x077F):
                 return "arabic"

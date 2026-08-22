@@ -1,4 +1,4 @@
-﻿"""
+"""
 Phase Twelve: High-Capacity Multilingual Scaling Benchmark across 16K, 32K, and 64K Scales.
 Evaluates SentencePiece, Boundary-BPE, and Frozen Caliper Config B across 3 paired seeds (101, 202, 303)
 on high-entropy corpora with 400,000+ candidate inventory (6.2x headroom over 64K).
@@ -26,6 +26,7 @@ from tempfile import TemporaryDirectory
 from typing import Any, Callable, Dict, List, Tuple
 
 import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
@@ -69,14 +70,74 @@ class HighCapScaleRecord:
 def generate_high_entropy_corpus(num_docs: int = 1000, seed: int = 42) -> Tuple[List[str], Dict[str, str]]:
     rng = random.Random(seed)
     scripts = {
-        "English": ("abcdefghijklmnopqrstuvwxyz", ["tion", "ing", "ness", "able", "ment", "ship", "hood", "ism", "ize", "ate", "ous", "ive", "al", "ity", "ward", "wise", "less", "ful", "ance", "ence"]),
-        "Hindi": ("अआइईउऊऋएऐओऔकखगघङचछजझञटठडढणतथदधनपफबभमयरलवशषसह", ["कारी", "वादी", "करण", "शीलता", "पूर्वक", "त्मक", "त्व", "मय", "वान", "अनुसार", "प्रणाली", "योजना", "विज्ञान", "संस्थान"]),
-        "Telugu": ("అఆఇఈఉఊఋఎఏఐఒఓఔకఖగఘఙచఛజఝఞటఠడఢణతథదధనపఫబభమయరలవశషసహ", ["త్వము", "శీలత", "పూర్వక", "మైన", "కరమైన", "వాద", "నిర్వహణ", "వ్యవస్థ", "విధానము", "అభివృద్ధి", "పరిశోధన"]),
-        "Tamil": ("அஆஇஈஉஊஎஏஐஒஓஔகஙசஞடணதநபமயரலவழளறன", ["மை", "வாதம்", "பூர்வ", "மான", "கரமான", "த்துவம்", "மேலாண்மை", "அமைப்பு", "வளர்ச்சி", "திட்டம்", "ஆராய்ச்சி"]),
-        "Bengali": ("অআইঈউঊঋএঐওঔকখগঘঙচছজঝঞটঠডঢণতথদধনপফবভমযরলবশষসহ", ["কারী", "বাদী", "করণ", "শীলতা", "মূলক", "ত্ব", "ময়", "ব্যবস্থাপনা", "পদ্ধতি", "উন্নয়ন", "গবেষণা"]),
-        "Arabic": ("ابتثجحخدذرزسشصضطظعغفقكلمنهوي", ["ية", "يات", "يون", "ين", "ستان", "ات", "ان", "المعلوماتية", "الاستراتيجية", "التكنولوجية", "المؤسساتية"]),
-        "Chinese": ("的一是在不了有和人这中大为上个国我以要他时来用们生到作地于出就分对成会可主发年动同工也能下过子说产种面而方后多定行学法所民得经十三之进着等部度家电力里如水化高自二理起小物现实加量都两体制机当使点从业本去把建争性好应各想向开特立数正日月明天地玄黄宇宙洪荒日月盈昃辰宿列张寒来暑往秋收冬藏闰余成岁律吕调阳云腾致雨露结为霜金生丽水玉出昆冈剑号巨阙珠称夜光果珍李柰菜重芥姜海咸河淡鳞潜羽翔龙师火帝鸟官人皇始制文字乃服衣裳推位让国有虞陶唐吊民伐罪周发殷汤坐朝问道垂拱平章爱育黎首臣伏戎羌遐迩一体率宾归王鸣凤在竹白驹食场化被草木赖及万方盖此身发四大五常恭惟鞠养岂敢毁伤女慕贞洁男效才良知过必改得能莫忘罔谈彼短靡恃己长信使可覆器欲难量墨悲丝染诗赞羔羊景行维贤克念作圣德建名立形端表正空谷传声虚堂习听祸因恶积福缘善庆尺璧非宝寸阴是竞资父事君曰严与敬孝当竭力忠则尽命临深履薄夙兴温凊似兰斯馨如松之盛川流不息渊澄取映容止若思言辞安定笃初诚美慎终宜令荣业所基籍甚无竟学优登仕摄职从政存以甘棠去而益咏乐殊贵贱礼别尊卑上和下睦夫唱妇随", []),
-        "Russian": ("абвгдеёжзийклмнопрстуфхцчшщъыьэюя", ["ость", "ение", "ация", "ический", "ованный", "тель", "ство", "изм", "ирование", "ование", "тельский"]),
+        "English": (
+            "abcdefghijklmnopqrstuvwxyz",
+            [
+                "tion",
+                "ing",
+                "ness",
+                "able",
+                "ment",
+                "ship",
+                "hood",
+                "ism",
+                "ize",
+                "ate",
+                "ous",
+                "ive",
+                "al",
+                "ity",
+                "ward",
+                "wise",
+                "less",
+                "ful",
+                "ance",
+                "ence",
+            ],
+        ),
+        "Hindi": (
+            "अआइईउऊऋएऐओऔकखगघङचछजझञटठडढणतथदधनपफबभमयरलवशषसह",
+            [
+                "कारी",
+                "वादी",
+                "करण",
+                "शीलता",
+                "पूर्वक",
+                "त्मक",
+                "त्व",
+                "मय",
+                "वान",
+                "अनुसार",
+                "प्रणाली",
+                "योजना",
+                "विज्ञान",
+                "संस्थान",
+            ],
+        ),
+        "Telugu": (
+            "అఆఇఈఉఊఋఎఏఐఒఓఔకఖగఘఙచఛజఝఞటఠడఢణతథదధనపఫబభమయరలవశషసహ",
+            ["త్వము", "శీలత", "పూర్వక", "మైన", "కరమైన", "వాద", "నిర్వహణ", "వ్యవస్థ", "విధానము", "అభివృద్ధి", "పరిశోధన"],
+        ),
+        "Tamil": (
+            "அஆஇஈஉஊஎஏஐஒஓஔகஙசஞடணதநபமயரலவழளறன",
+            ["மை", "வாதம்", "பூர்வ", "மான", "கரமான", "த்துவம்", "மேலாண்மை", "அமைப்பு", "வளர்ச்சி", "திட்டம்", "ஆராய்ச்சி"],
+        ),
+        "Bengali": (
+            "অআইঈউঊঋএঐওঔকখগঘঙচছজঝঞটঠডঢণতথদধনপফবভমযরলবশষসহ",
+            ["কারী", "বাদী", "করণ", "শীলতা", "মূলক", "ত্ব", "ময়", "ব্যবস্থাপনা", "পদ্ধতি", "উন্নয়ন", "গবেষণা"],
+        ),
+        "Arabic": (
+            "ابتثجحخدذرزسشصضطظعغفقكلمنهوي",
+            ["ية", "يات", "يون", "ين", "ستان", "ات", "ان", "المعلوماتية", "الاستراتيجية", "التكنولوجية", "المؤسساتية"],
+        ),
+        "Chinese": (
+            "的一是在不了有和人这中大为上个国我以要他时来用们生到作地于出就分对成会可主发年动同工也能下过子说产种面而方后多定行学法所民得经十三之进着等部度家电力里如水化高自二理起小物现实加量都两体制机当使点从业本去把建争性好应各想向开特立数正日月明天地玄黄宇宙洪荒日月盈昃辰宿列张寒来暑往秋收冬藏闰余成岁律吕调阳云腾致雨露结为霜金生丽水玉出昆冈剑号巨阙珠称夜光果珍李柰菜重芥姜海咸河淡鳞潜羽翔龙师火帝鸟官人皇始制文字乃服衣裳推位让国有虞陶唐吊民伐罪周发殷汤坐朝问道垂拱平章爱育黎首臣伏戎羌遐迩一体率宾归王鸣凤在竹白驹食场化被草木赖及万方盖此身发四大五常恭惟鞠养岂敢毁伤女慕贞洁男效才良知过必改得能莫忘罔谈彼短靡恃己长信使可覆器欲难量墨悲丝染诗赞羔羊景行维贤克念作圣德建名立形端表正空谷传声虚堂习听祸因恶积福缘善庆尺璧非宝寸阴是竞资父事君曰严与敬孝当竭力忠则尽命临深履薄夙兴温凊似兰斯馨如松之盛川流不息渊澄取映容止若思言辞安定笃初诚美慎终宜令荣业所基籍甚无竟学优登仕摄职从政存以甘棠去而益咏乐殊贵贱礼别尊卑上和下睦夫唱妇随",
+            [],
+        ),
+        "Russian": (
+            "абвгдеёжзийклмнопрстуфхцчшщъыьэюя",
+            ["ость", "ение", "ация", "ический", "ованный", "тель", "ство", "изм", "ирование", "ование", "тельский"],
+        ),
     }
 
     train_docs: List[str] = []
@@ -118,7 +179,9 @@ def run_phase_twelve_scaling(
 
     print("=" * 175)
     print("PHASE TWELVE: HIGH-CAPACITY MULTILINGUAL SCALING BENCHMARK (16K -> 32K -> 64K)")
-    print(f"Scales: {vocab_scales} | Seeds: {seeds} (N = {len(seeds)} paired) | Matched FLOPs: {TARGET_TRAINING_FLOPS:.3e}")
+    print(
+        f"Scales: {vocab_scales} | Seeds: {seeds} (N = {len(seeds)} paired) | Matched FLOPs: {TARGET_TRAINING_FLOPS:.3e}"
+    )
     print("Corpus Headroom: >400,000 Candidate Subwords | Strict Invariant: V_actual == V_target")
     print("=" * 175)
 
@@ -200,7 +263,10 @@ def run_phase_twelve_scaling(
                 wall_clock_sec=time.time() - t0,
             )
             all_records.append(rec_sp)
-            print(f"  [SentencePiece (Anchor)     ] Act V: {sp_actual_v:<6} | BPB: {lm_bpb:.3f} | CE: {val_loss:.3f} | B/Tok: {sp_bpt:.2f} | Indic: {sp_indic_bpt:.2f} | Fert: {sp_fert:.2f} | Active: {sp_active_cov*100.0:.1f}%", flush=True)
+            print(
+                f"  [SentencePiece (Anchor)     ] Act V: {sp_actual_v:<6} | BPB: {lm_bpb:.3f} | CE: {val_loss:.3f} | B/Tok: {sp_bpt:.2f} | Indic: {sp_indic_bpt:.2f} | Fert: {sp_fert:.2f} | Active: {sp_active_cov * 100.0:.1f}%",
+                flush=True,
+            )
 
             # 2. Boundary-BPE
             t0 = time.time()
@@ -245,7 +311,10 @@ def run_phase_twelve_scaling(
                 wall_clock_sec=time.time() - t0,
             )
             all_records.append(rec_bpe)
-            print(f"  [Boundary-BPE (Anchor)      ] Act V: {bpe_actual_v:<6} | BPB: {lm_bpb:.3f} | CE: {val_loss:.3f} | B/Tok: {bpe_bpt:.2f} | Indic: {bpe_indic_bpt:.2f} | Fert: {bpe_fert:.2f} | Active: {bpe_active_cov*100.0:.1f}%", flush=True)
+            print(
+                f"  [Boundary-BPE (Anchor)      ] Act V: {bpe_actual_v:<6} | BPB: {lm_bpb:.3f} | CE: {val_loss:.3f} | B/Tok: {bpe_bpt:.2f} | Indic: {bpe_indic_bpt:.2f} | Fert: {bpe_fert:.2f} | Active: {bpe_active_cov * 100.0:.1f}%",
+                flush=True,
+            )
 
             # 3. Frozen Caliper Config B
             t0 = time.time()
@@ -260,10 +329,14 @@ def run_phase_twelve_scaling(
                 min_frequency=1,
                 verbose=False,
             )
-            pretok_chunks = [tok for d in train_docs for tok in tok_base.pre_tokenizer.pre_tokenize(tok_base.normalizer.normalize(d))]
+            pretok_chunks = [
+                tok for d in train_docs for tok in tok_base.pre_tokenizer.pre_tokenize(tok_base.normalizer.normalize(d))
+            ]
             cem = CrossEntropyMerging(max_merges=actual_merges, cross_word=True, verbose=False)
             sbp_model = cem.optimize(tok_base.model, chunks=pretok_chunks)
-            cal_tok = CustomTokenizer(normalizer=tok_base.normalizer, pre_tokenizer=tok_base.pre_tokenizer, model=sbp_model)
+            cal_tok = CustomTokenizer(
+                normalizer=tok_base.normalizer, pre_tokenizer=tok_base.pre_tokenizer, model=sbp_model
+            )
 
             cal_tokens = cal_tok.encode(combined_val)
             cal_actual_v = len(cal_tok.model.vocab)
@@ -303,13 +376,18 @@ def run_phase_twelve_scaling(
                 wall_clock_sec=time.time() - t0,
             )
             all_records.append(rec_cal)
-            print(f"  [Caliper-SuperBPE (Config B)] Act V: {cal_actual_v:<6} | BPB: {lm_bpb:.3f} | CE: {val_loss:.3f} | B/Tok: {cal_bpt:.2f} | Indic: {cal_indic_bpt:.2f} | Fert: {cal_fert:.2f} | Active: {cal_active_cov*100.0:.1f}%", flush=True)
+            print(
+                f"  [Caliper-SuperBPE (Config B)] Act V: {cal_actual_v:<6} | BPB: {lm_bpb:.3f} | CE: {val_loss:.3f} | B/Tok: {cal_bpt:.2f} | Indic: {cal_indic_bpt:.2f} | Fert: {cal_fert:.2f} | Active: {cal_active_cov * 100.0:.1f}%",
+                flush=True,
+            )
 
     # Aggregations across scales
     print("\n" + "=" * 175)
     print("PHASE TWELVE: HIGH-CAPACITY VOCABULARY SCALING SUMMARY (MEAN ACROSS 3 SEEDS)")
     print("=" * 175)
-    print(f"{'Scale':<8} | {'Model Architecture':<30} | {'Actual V':<10} | {'True LM BPB':<12} | {'Token CE':<10} | {'Bytes/Tok':<10} | {'Indic B/Tok':<12} | {'Fertility':<10} | {'Active Vocab %'}")
+    print(
+        f"{'Scale':<8} | {'Model Architecture':<30} | {'Actual V':<10} | {'True LM BPB':<12} | {'Token CE':<10} | {'Bytes/Tok':<10} | {'Indic B/Tok':<12} | {'Fertility':<10} | {'Active Vocab %'}"
+    )
     print("-" * 175)
 
     models = ["SentencePiece-Unigram", "Boundary-BPE", "Caliper-SuperBPE (Config B)"]
@@ -338,7 +416,9 @@ def run_phase_twelve_scaling(
                 "active_vocab_pct": act_m,
                 "pct_ge_6b": ge6_m,
             }
-            print(f"V={V:<6} | {m_name:<30} | {act_v_m:<10} | {bpb_m:<12.3f} | {ce_m:<10.3f} | {bpt_m:<10.2f} | {ind_m:<12.2f} | {fert_m:<10.2f} | {act_m:<15.1f}%")
+            print(
+                f"V={V:<6} | {m_name:<30} | {act_v_m:<10} | {bpb_m:<12.3f} | {ce_m:<10.3f} | {bpt_m:<10.2f} | {ind_m:<12.2f} | {fert_m:<10.2f} | {act_m:<15.1f}%"
+            )
         print("-" * 175)
     print("=" * 175 + "\n")
 

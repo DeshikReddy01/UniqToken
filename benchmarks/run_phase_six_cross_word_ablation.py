@@ -1,4 +1,4 @@
-﻿"""
+"""
 Phase Six: Cross-Word Multi-Gram Merging Ablation (Branches A, B, C, D vs Anchors).
 Tests whether selective data-driven cross-word collocation merging bridges the BPB gap
 (target BPB < 2.60 while CE <= 9.10) at V = 16,384 across 3 paired seeds (101, 202, 303).
@@ -23,6 +23,7 @@ from tempfile import TemporaryDirectory
 from typing import Any, Callable, Dict, List, Tuple
 
 import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
@@ -132,19 +133,24 @@ def run_phase_six_ablation(
         bpt = total_val_bytes / max(len(sp_tokens), 1)
         fertility = len(sp_tokens) / max(num_words, 1)
 
-        all_results["SentencePiece (Anchor)"].append({
-            "true_lm_bpb": lm_bpb,
-            "val_loss": val_loss,
-            "bytes_per_token": bpt,
-            "fertility": fertility,
-            "active_vocab_pct": sp_active_cov * 100.0,
-            "p50_bytes": float(np.percentile(sp_tok_bytes, 50)),
-            "p90_bytes": float(np.percentile(sp_tok_bytes, 90)),
-            "pct_ge_6b": sp_pct_ge_6b,
-            "cross_tokens_vocab": sp_cross_tokens,
-            "val_bytes_cross_pct": sp_cross_val_pct,
-        })
-        print(f"  [SentencePiece (Anchor)     ] BPB: {lm_bpb:.3f} | CE: {val_loss:.3f} | B/Tok: {bpt:.2f} | Fert: {fertility:.2f} | Active: {sp_active_cov*100.0:.1f}% | >=6B: {sp_pct_ge_6b:.1f}% | CrossVocab: {sp_cross_tokens} | CrossVal: {sp_cross_val_pct:.1f}%", flush=True)
+        all_results["SentencePiece (Anchor)"].append(
+            {
+                "true_lm_bpb": lm_bpb,
+                "val_loss": val_loss,
+                "bytes_per_token": bpt,
+                "fertility": fertility,
+                "active_vocab_pct": sp_active_cov * 100.0,
+                "p50_bytes": float(np.percentile(sp_tok_bytes, 50)),
+                "p90_bytes": float(np.percentile(sp_tok_bytes, 90)),
+                "pct_ge_6b": sp_pct_ge_6b,
+                "cross_tokens_vocab": sp_cross_tokens,
+                "val_bytes_cross_pct": sp_cross_val_pct,
+            }
+        )
+        print(
+            f"  [SentencePiece (Anchor)     ] BPB: {lm_bpb:.3f} | CE: {val_loss:.3f} | B/Tok: {bpt:.2f} | Fert: {fertility:.2f} | Active: {sp_active_cov * 100.0:.1f}% | >=6B: {sp_pct_ge_6b:.1f}% | CrossVocab: {sp_cross_tokens} | CrossVal: {sp_cross_val_pct:.1f}%",
+            flush=True,
+        )
 
         # 2. Boundary-BPE Anchor
         b_bpe = BPETrainer(target_vocab_size=target_vocab, byte_fallback=True)
@@ -171,23 +177,29 @@ def run_phase_six_ablation(
         bpt = total_val_bytes / max(len(bpe_tokens), 1)
         fertility = len(bpe_tokens) / max(num_words, 1)
 
-        all_results["Boundary-BPE (Anchor)"].append({
-            "true_lm_bpb": lm_bpb,
-            "val_loss": val_loss,
-            "bytes_per_token": bpt,
-            "fertility": fertility,
-            "active_vocab_pct": bpe_active_cov * 100.0,
-            "p50_bytes": float(np.percentile(bpe_tok_bytes, 50)),
-            "p90_bytes": float(np.percentile(bpe_tok_bytes, 90)),
-            "pct_ge_6b": bpe_pct_ge_6b,
-            "cross_tokens_vocab": bpe_cross_tokens,
-            "val_bytes_cross_pct": bpe_cross_val_pct,
-        })
-        print(f"  [Boundary-BPE (Anchor)      ] BPB: {lm_bpb:.3f} | CE: {val_loss:.3f} | B/Tok: {bpt:.2f} | Fert: {fertility:.2f} | Active: {bpe_active_cov*100.0:.1f}% | >=6B: {bpe_pct_ge_6b:.1f}% | CrossVocab: {bpe_cross_tokens} | CrossVal: {bpe_cross_val_pct:.1f}%", flush=True)
+        all_results["Boundary-BPE (Anchor)"].append(
+            {
+                "true_lm_bpb": lm_bpb,
+                "val_loss": val_loss,
+                "bytes_per_token": bpt,
+                "fertility": fertility,
+                "active_vocab_pct": bpe_active_cov * 100.0,
+                "p50_bytes": float(np.percentile(bpe_tok_bytes, 50)),
+                "p90_bytes": float(np.percentile(bpe_tok_bytes, 90)),
+                "pct_ge_6b": bpe_pct_ge_6b,
+                "cross_tokens_vocab": bpe_cross_tokens,
+                "val_bytes_cross_pct": bpe_cross_val_pct,
+            }
+        )
+        print(
+            f"  [Boundary-BPE (Anchor)      ] BPB: {lm_bpb:.3f} | CE: {val_loss:.3f} | B/Tok: {bpt:.2f} | Fert: {fertility:.2f} | Active: {bpe_active_cov * 100.0:.1f}% | >=6B: {bpe_pct_ge_6b:.1f}% | CrossVocab: {bpe_cross_tokens} | CrossVal: {bpe_cross_val_pct:.1f}%",
+            flush=True,
+        )
 
         # 3. Branch A: Frozen Base Caliper (Unpatched space isolation)
         # We instantiate a pre-tokenizer with isolated word boundaries
         import re
+
         sc = "\u2581"
         esc = re.escape(sc)
         old_patterns = [
@@ -217,6 +229,7 @@ def run_phase_six_ablation(
             raw_chunks_a.extend(old_pretok.pre_tokenize(norm.normalize(d)))
 
         from unigram_trainer import UnigramTrainer
+
         trainer_a = UnigramTrainer(
             target_vocab_size=base_target_a,
             seed_multiplier=1.2,
@@ -252,19 +265,24 @@ def run_phase_six_ablation(
         bpt = total_val_bytes / max(len(tokens_a), 1)
         fertility = len(tokens_a) / max(num_words, 1)
 
-        all_results["Branch A (Frozen Base)"].append({
-            "true_lm_bpb": lm_bpb,
-            "val_loss": val_loss,
-            "bytes_per_token": bpt,
-            "fertility": fertility,
-            "active_vocab_pct": active_cov_a * 100.0,
-            "p50_bytes": float(np.percentile(tok_bytes_a, 50)),
-            "p90_bytes": float(np.percentile(tok_bytes_a, 90)),
-            "pct_ge_6b": pct_ge_6b_a,
-            "cross_tokens_vocab": cross_tokens_a,
-            "val_bytes_cross_pct": cross_val_pct_a,
-        })
-        print(f"  [Branch A (Frozen Base)     ] BPB: {lm_bpb:.3f} | CE: {val_loss:.3f} | B/Tok: {bpt:.2f} | Fert: {fertility:.2f} | Active: {active_cov_a*100.0:.1f}% | >=6B: {pct_ge_6b_a:.1f}% | CrossVocab: {cross_tokens_a} | CrossVal: {cross_val_pct_a:.1f}%", flush=True)
+        all_results["Branch A (Frozen Base)"].append(
+            {
+                "true_lm_bpb": lm_bpb,
+                "val_loss": val_loss,
+                "bytes_per_token": bpt,
+                "fertility": fertility,
+                "active_vocab_pct": active_cov_a * 100.0,
+                "p50_bytes": float(np.percentile(tok_bytes_a, 50)),
+                "p90_bytes": float(np.percentile(tok_bytes_a, 90)),
+                "pct_ge_6b": pct_ge_6b_a,
+                "cross_tokens_vocab": cross_tokens_a,
+                "val_bytes_cross_pct": cross_val_pct_a,
+            }
+        )
+        print(
+            f"  [Branch A (Frozen Base)     ] BPB: {lm_bpb:.3f} | CE: {val_loss:.3f} | B/Tok: {bpt:.2f} | Fert: {fertility:.2f} | Active: {active_cov_a * 100.0:.1f}% | >=6B: {pct_ge_6b_a:.1f}% | CrossVocab: {cross_tokens_a} | CrossVal: {cross_val_pct_a:.1f}%",
+            flush=True,
+        )
 
         # 4. Branch B: Space-Prefixed Caliper (Phase 5 Patched)
         sbp_merges_b = min(target_vocab // 10, 1500)
@@ -282,10 +300,14 @@ def run_phase_six_ablation(
             min_frequency=1,
             verbose=False,
         )
-        pretok_chunks_b = [tok for d in train_docs for tok in tok_base_b.pre_tokenizer.pre_tokenize(tok_base_b.normalizer.normalize(d))]
+        pretok_chunks_b = [
+            tok for d in train_docs for tok in tok_base_b.pre_tokenizer.pre_tokenize(tok_base_b.normalizer.normalize(d))
+        ]
         cem_b = CrossEntropyMerging(max_merges=actual_merges_b, cross_word=True, verbose=False)
         sbp_model_b = cem_b.optimize(tok_base_b.model, chunks=pretok_chunks_b)
-        tok_b = CustomTokenizer(normalizer=tok_base_b.normalizer, pre_tokenizer=tok_base_b.pre_tokenizer, model=sbp_model_b)
+        tok_b = CustomTokenizer(
+            normalizer=tok_base_b.normalizer, pre_tokenizer=tok_base_b.pre_tokenizer, model=sbp_model_b
+        )
 
         tokens_b = tok_b.encode(combined_val)
         counts_b = Counter(tokens_b)
@@ -308,19 +330,24 @@ def run_phase_six_ablation(
         bpt = total_val_bytes / max(len(tokens_b), 1)
         fertility = len(tokens_b) / max(num_words, 1)
 
-        all_results["Branch B (Space-Prefixed)"].append({
-            "true_lm_bpb": lm_bpb,
-            "val_loss": val_loss,
-            "bytes_per_token": bpt,
-            "fertility": fertility,
-            "active_vocab_pct": active_cov_b * 100.0,
-            "p50_bytes": float(np.percentile(tok_bytes_b, 50)),
-            "p90_bytes": float(np.percentile(tok_bytes_b, 90)),
-            "pct_ge_6b": pct_ge_6b_b,
-            "cross_tokens_vocab": cross_tokens_b,
-            "val_bytes_cross_pct": cross_val_pct_b,
-        })
-        print(f"  [Branch B (Space-Prefixed)  ] BPB: {lm_bpb:.3f} | CE: {val_loss:.3f} | B/Tok: {bpt:.2f} | Fert: {fertility:.2f} | Active: {active_cov_b*100.0:.1f}% | >=6B: {pct_ge_6b_b:.1f}% | CrossVocab: {cross_tokens_b} | CrossVal: {cross_val_pct_b:.1f}%", flush=True)
+        all_results["Branch B (Space-Prefixed)"].append(
+            {
+                "true_lm_bpb": lm_bpb,
+                "val_loss": val_loss,
+                "bytes_per_token": bpt,
+                "fertility": fertility,
+                "active_vocab_pct": active_cov_b * 100.0,
+                "p50_bytes": float(np.percentile(tok_bytes_b, 50)),
+                "p90_bytes": float(np.percentile(tok_bytes_b, 90)),
+                "pct_ge_6b": pct_ge_6b_b,
+                "cross_tokens_vocab": cross_tokens_b,
+                "val_bytes_cross_pct": cross_val_pct_b,
+            }
+        )
+        print(
+            f"  [Branch B (Space-Prefixed)  ] BPB: {lm_bpb:.3f} | CE: {val_loss:.3f} | B/Tok: {bpt:.2f} | Fert: {fertility:.2f} | Active: {active_cov_b * 100.0:.1f}% | >=6B: {pct_ge_6b_b:.1f}% | CrossVocab: {cross_tokens_b} | CrossVal: {cross_val_pct_b:.1f}%",
+            flush=True,
+        )
 
         # 5. Branch C: Restricted Cross-Word Merging (PMI >= 2.0 bits, N = 2000 merges)
         sbp_merges_c = 2000
@@ -338,10 +365,14 @@ def run_phase_six_ablation(
             min_frequency=1,
             verbose=False,
         )
-        pretok_chunks_c = [tok for d in train_docs for tok in tok_base_c.pre_tokenizer.pre_tokenize(tok_base_c.normalizer.normalize(d))]
+        pretok_chunks_c = [
+            tok for d in train_docs for tok in tok_base_c.pre_tokenizer.pre_tokenize(tok_base_c.normalizer.normalize(d))
+        ]
         cem_c = CrossEntropyMerging(max_merges=actual_merges_c, cross_word=True, min_pmi=2.0, verbose=False)
         sbp_model_c = cem_c.optimize(tok_base_c.model, chunks=pretok_chunks_c)
-        tok_c = CustomTokenizer(normalizer=tok_base_c.normalizer, pre_tokenizer=tok_base_c.pre_tokenizer, model=sbp_model_c)
+        tok_c = CustomTokenizer(
+            normalizer=tok_base_c.normalizer, pre_tokenizer=tok_base_c.pre_tokenizer, model=sbp_model_c
+        )
 
         tokens_c = tok_c.encode(combined_val)
         counts_c = Counter(tokens_c)
@@ -364,19 +395,24 @@ def run_phase_six_ablation(
         bpt = total_val_bytes / max(len(tokens_c), 1)
         fertility = len(tokens_c) / max(num_words, 1)
 
-        all_results["Branch C (Restricted Cross)"].append({
-            "true_lm_bpb": lm_bpb,
-            "val_loss": val_loss,
-            "bytes_per_token": bpt,
-            "fertility": fertility,
-            "active_vocab_pct": active_cov_c * 100.0,
-            "p50_bytes": float(np.percentile(tok_bytes_c, 50)),
-            "p90_bytes": float(np.percentile(tok_bytes_c, 90)),
-            "pct_ge_6b": pct_ge_6b_c,
-            "cross_tokens_vocab": cross_tokens_c,
-            "val_bytes_cross_pct": cross_val_pct_c,
-        })
-        print(f"  [Branch C (Restricted Cross)] BPB: {lm_bpb:.3f} | CE: {val_loss:.3f} | B/Tok: {bpt:.2f} | Fert: {fertility:.2f} | Active: {active_cov_c*100.0:.1f}% | >=6B: {pct_ge_6b_c:.1f}% | CrossVocab: {cross_tokens_c} | CrossVal: {cross_val_pct_c:.1f}%", flush=True)
+        all_results["Branch C (Restricted Cross)"].append(
+            {
+                "true_lm_bpb": lm_bpb,
+                "val_loss": val_loss,
+                "bytes_per_token": bpt,
+                "fertility": fertility,
+                "active_vocab_pct": active_cov_c * 100.0,
+                "p50_bytes": float(np.percentile(tok_bytes_c, 50)),
+                "p90_bytes": float(np.percentile(tok_bytes_c, 90)),
+                "pct_ge_6b": pct_ge_6b_c,
+                "cross_tokens_vocab": cross_tokens_c,
+                "val_bytes_cross_pct": cross_val_pct_c,
+            }
+        )
+        print(
+            f"  [Branch C (Restricted Cross)] BPB: {lm_bpb:.3f} | CE: {val_loss:.3f} | B/Tok: {bpt:.2f} | Fert: {fertility:.2f} | Active: {active_cov_c * 100.0:.1f}% | >=6B: {pct_ge_6b_c:.1f}% | CrossVocab: {cross_tokens_c} | CrossVal: {cross_val_pct_c:.1f}%",
+            flush=True,
+        )
 
         # 6. Branch D: Unrestricted Cross-Word Merging (N = 3500 merges, unconstrained)
         sbp_merges_d = 3500
@@ -394,10 +430,14 @@ def run_phase_six_ablation(
             min_frequency=1,
             verbose=False,
         )
-        pretok_chunks_d = [tok for d in train_docs for tok in tok_base_d.pre_tokenizer.pre_tokenize(tok_base_d.normalizer.normalize(d))]
+        pretok_chunks_d = [
+            tok for d in train_docs for tok in tok_base_d.pre_tokenizer.pre_tokenize(tok_base_d.normalizer.normalize(d))
+        ]
         cem_d = CrossEntropyMerging(max_merges=actual_merges_d, cross_word=True, min_pmi=None, verbose=False)
         sbp_model_d = cem_d.optimize(tok_base_d.model, chunks=pretok_chunks_d)
-        tok_d = CustomTokenizer(normalizer=tok_base_d.normalizer, pre_tokenizer=tok_base_d.pre_tokenizer, model=sbp_model_d)
+        tok_d = CustomTokenizer(
+            normalizer=tok_base_d.normalizer, pre_tokenizer=tok_base_d.pre_tokenizer, model=sbp_model_d
+        )
 
         tokens_d = tok_d.encode(combined_val)
         counts_d = Counter(tokens_d)
@@ -420,24 +460,31 @@ def run_phase_six_ablation(
         bpt = total_val_bytes / max(len(tokens_d), 1)
         fertility = len(tokens_d) / max(num_words, 1)
 
-        all_results["Branch D (Unrestricted Cross)"].append({
-            "true_lm_bpb": lm_bpb,
-            "val_loss": val_loss,
-            "bytes_per_token": bpt,
-            "fertility": fertility,
-            "active_vocab_pct": active_cov_d * 100.0,
-            "p50_bytes": float(np.percentile(tok_bytes_d, 50)),
-            "p90_bytes": float(np.percentile(tok_bytes_d, 90)),
-            "pct_ge_6b": pct_ge_6b_d,
-            "cross_tokens_vocab": cross_tokens_d,
-            "val_bytes_cross_pct": cross_val_pct_d,
-        })
-        print(f"  [Branch D (Unrestricted Cross)] BPB: {lm_bpb:.3f} | CE: {val_loss:.3f} | B/Tok: {bpt:.2f} | Fert: {fertility:.2f} | Active: {active_cov_d*100.0:.1f}% | >=6B: {pct_ge_6b_d:.1f}% | CrossVocab: {cross_tokens_d} | CrossVal: {cross_val_pct_d:.1f}%", flush=True)
+        all_results["Branch D (Unrestricted Cross)"].append(
+            {
+                "true_lm_bpb": lm_bpb,
+                "val_loss": val_loss,
+                "bytes_per_token": bpt,
+                "fertility": fertility,
+                "active_vocab_pct": active_cov_d * 100.0,
+                "p50_bytes": float(np.percentile(tok_bytes_d, 50)),
+                "p90_bytes": float(np.percentile(tok_bytes_d, 90)),
+                "pct_ge_6b": pct_ge_6b_d,
+                "cross_tokens_vocab": cross_tokens_d,
+                "val_bytes_cross_pct": cross_val_pct_d,
+            }
+        )
+        print(
+            f"  [Branch D (Unrestricted Cross)] BPB: {lm_bpb:.3f} | CE: {val_loss:.3f} | B/Tok: {bpt:.2f} | Fert: {fertility:.2f} | Active: {active_cov_d * 100.0:.1f}% | >=6B: {pct_ge_6b_d:.1f}% | CrossVocab: {cross_tokens_d} | CrossVal: {cross_val_pct_d:.1f}%",
+            flush=True,
+        )
 
     print("\n" + "=" * 175)
     print("PHASE SIX: CROSS-WORD MULTI-GRAM ABLATION SUMMARY REPORT (MEAN ACROSS 3 SEEDS AT 16K SCALE)")
     print("=" * 175)
-    print(f"{'Configuration':<30} | {'True LM BPB':<12} | {'Token CE':<10} | {'Bytes/Tok':<10} | {'Fertility':<10} | {'Active Vocab %':<15} | {'Cross-Word Vocab':<17} | {'Cross-Word Val %':<17} | {'Delta vs Base'}")
+    print(
+        f"{'Configuration':<30} | {'True LM BPB':<12} | {'Token CE':<10} | {'Bytes/Tok':<10} | {'Fertility':<10} | {'Active Vocab %':<15} | {'Cross-Word Vocab':<17} | {'Cross-Word Val %':<17} | {'Delta vs Base'}"
+    )
     print("-" * 175)
 
     summary: Dict[str, Dict[str, float]] = {}
@@ -465,7 +512,9 @@ def run_phase_six_ablation(
         }
 
         delta_str = f"{delta:+.3f} BPB" if v != "Branch A (Frozen Base)" else "0.000 (Base)"
-        print(f"{v:<30} | {bpb_m:<12.3f} | {ce_m:<10.3f} | {bpt_m:<10.2f} | {fert_m:<10.2f} | {act_m:<15.1f}% | {cw_voc_m:<17.0f} | {cw_val_m:<17.1f}% | {delta_str}")
+        print(
+            f"{v:<30} | {bpb_m:<12.3f} | {ce_m:<10.3f} | {bpt_m:<10.2f} | {fert_m:<10.2f} | {act_m:<15.1f}% | {cw_voc_m:<17.0f} | {cw_val_m:<17.1f}% | {delta_str}"
+        )
     print("=" * 175 + "\n")
 
     # Generate Pareto Trajectory Plot
@@ -475,11 +524,36 @@ def run_phase_six_ablation(
     bpe_bpb = summary["Boundary-BPE (Anchor)"]["true_lm_bpb"]
     bpe_ce = summary["Boundary-BPE (Anchor)"]["val_loss"]
 
-    plt.scatter([sp_bpb], [sp_ce], color="#1f77b4", marker="o", s=180, edgecolors="black", label="SentencePiece (Anchor)", zorder=6)
-    plt.annotate(f"SentencePiece\nBPB: {sp_bpb:.3f}, CE: {sp_ce:.2f}", (sp_bpb + 0.02, sp_ce - 0.03), fontsize=9, color="#1f77b4")
+    plt.scatter(
+        [sp_bpb],
+        [sp_ce],
+        color="#1f77b4",
+        marker="o",
+        s=180,
+        edgecolors="black",
+        label="SentencePiece (Anchor)",
+        zorder=6,
+    )
+    plt.annotate(
+        f"SentencePiece\nBPB: {sp_bpb:.3f}, CE: {sp_ce:.2f}", (sp_bpb + 0.02, sp_ce - 0.03), fontsize=9, color="#1f77b4"
+    )
 
-    plt.scatter([bpe_bpb], [bpe_ce], color="#2ca02c", marker="s", s=180, edgecolors="black", label="Boundary-BPE (Anchor)", zorder=6)
-    plt.annotate(f"Boundary-BPE\nBPB: {bpe_bpb:.3f}, CE: {bpe_ce:.2f}", (bpe_bpb + 0.02, bpe_ce - 0.03), fontsize=9, color="#2ca02c")
+    plt.scatter(
+        [bpe_bpb],
+        [bpe_ce],
+        color="#2ca02c",
+        marker="s",
+        s=180,
+        edgecolors="black",
+        label="Boundary-BPE (Anchor)",
+        zorder=6,
+    )
+    plt.annotate(
+        f"Boundary-BPE\nBPB: {bpe_bpb:.3f}, CE: {bpe_ce:.2f}",
+        (bpe_bpb + 0.02, bpe_ce - 0.03),
+        fontsize=9,
+        color="#2ca02c",
+    )
 
     colors_dict = {
         "Branch A (Frozen Base)": "gray",
@@ -495,16 +569,37 @@ def run_phase_six_ablation(
     }
 
     pts = []
-    for b in ["Branch A (Frozen Base)", "Branch B (Space-Prefixed)", "Branch C (Restricted Cross)", "Branch D (Unrestricted Cross)"]:
+    for b in [
+        "Branch A (Frozen Base)",
+        "Branch B (Space-Prefixed)",
+        "Branch C (Restricted Cross)",
+        "Branch D (Unrestricted Cross)",
+    ]:
         bpb = summary[b]["true_lm_bpb"]
         ce = summary[b]["val_loss"]
         pts.append((bpb, ce))
         sz = 260 if "D" in b else (200 if "C" in b else 150)
-        plt.scatter([bpb], [ce], color=colors_dict[b], marker=markers_dict[b], s=sz, edgecolors="black" if "D" in b or "C" in b else None, label=b, zorder=7)
-        plt.annotate(f"{b.split('(')[1].replace(')', '')}\nBPB: {bpb:.3f}, CE: {ce:.2f}", (bpb + 0.02, ce + 0.02), fontsize=8.5, color=colors_dict[b])
+        plt.scatter(
+            [bpb],
+            [ce],
+            color=colors_dict[b],
+            marker=markers_dict[b],
+            s=sz,
+            edgecolors="black" if "D" in b or "C" in b else None,
+            label=b,
+            zorder=7,
+        )
+        plt.annotate(
+            f"{b.split('(')[1].replace(')', '')}\nBPB: {bpb:.3f}, CE: {ce:.2f}",
+            (bpb + 0.02, ce + 0.02),
+            fontsize=8.5,
+            color=colors_dict[b],
+        )
 
     # Trajectory curve
-    plt.plot([p[0] for p in pts], [p[1] for p in pts], color="#ff7f0e", linestyle="--", linewidth=2, alpha=0.7, zorder=5)
+    plt.plot(
+        [p[0] for p in pts], [p[1] for p in pts], color="#ff7f0e", linestyle="--", linewidth=2, alpha=0.7, zorder=5
+    )
 
     plt.title("Phase Six: Cross-Word Multi-Gram Merging Pareto Frontier (V = 16,384)", fontsize=12, fontweight="bold")
     plt.xlabel("True LM BPB (lower is better) -> [Optimal: Left]", fontsize=11)

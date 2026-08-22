@@ -1,4 +1,4 @@
-﻿"""
+"""
 Phase Five: Full 5-Seed Confirmatory Benchmark of Patched Caliper vs SentencePiece & Boundary-BPE.
 Runs 30 GPU training runs across 5 paired seeds (101, 202, 303, 404, 505) at 8K and 16K scale.
 Applies paired t-tests, 95% CI, Cohen's d_z, and Holm-Bonferroni multiple testing correction.
@@ -23,6 +23,7 @@ from tempfile import TemporaryDirectory
 from typing import Any, Callable, Dict, List, Tuple
 
 import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
@@ -86,7 +87,9 @@ def run_confirmatory_benchmark(
 
     print("=" * 145)
     print("PHASE FIVE: 5-SEED CONFIRMATORY BENCHMARK (PATCHED CALIPER VS SP & BOUNDARY-BPE)")
-    print(f"Scales: {scales} | Seeds: {seeds} | Matched FLOPs: {TARGET_TRAINING_FLOPS:.3e} | Runs: {len(scales) * len(seeds) * 3}")
+    print(
+        f"Scales: {scales} | Seeds: {seeds} | Matched FLOPs: {TARGET_TRAINING_FLOPS:.3e} | Runs: {len(scales) * len(seeds) * 3}"
+    )
     print("=" * 145)
 
     records: List[ConfirmatoryRecord] = []
@@ -95,9 +98,9 @@ def run_confirmatory_benchmark(
     t0_all = time.perf_counter()
 
     for V in scales:
-        print(f"\n===================================================================================================")
+        print("\n===================================================================================================")
         print(f"  VOCABULARY SCALE: V = {V:,} (5 Paired Seeds)")
-        print(f"===================================================================================================")
+        print("===================================================================================================")
 
         for seed in seeds:
             print(f"\n---> [Scale: {V:,} | Seed: {seed}] Generating corpus...")
@@ -129,10 +132,14 @@ def run_confirmatory_benchmark(
                 min_frequency=1,
                 verbose=False,
             )
-            pretok_chunks = [tok for d in train_docs for tok in tok_base.pre_tokenizer.pre_tokenize(tok_base.normalizer.normalize(d))]
+            pretok_chunks = [
+                tok for d in train_docs for tok in tok_base.pre_tokenizer.pre_tokenize(tok_base.normalizer.normalize(d))
+            ]
             cem = CrossEntropyMerging(max_merges=actual_merges, cross_word=True, verbose=False)
             sbp_model = cem.optimize(tok_base.model, chunks=pretok_chunks)
-            caliper_sbp = CustomTokenizer(normalizer=tok_base.normalizer, pre_tokenizer=tok_base.pre_tokenizer, model=sbp_model)
+            caliper_sbp = CustomTokenizer(
+                normalizer=tok_base.normalizer, pre_tokenizer=tok_base.pre_tokenizer, model=sbp_model
+            )
             caliper_v = len(caliper_sbp.model.vocab)
             t_cal = time.perf_counter() - t0_step
 
@@ -171,9 +178,27 @@ def run_confirmatory_benchmark(
             assert bpe_v == V, f"FATAL: Boundary-BPE vocab ({bpe_v}) != target ({V})"
 
             engines = [
-                ("Caliper-SuperBPE (Patched)", caliper_v, list(caliper_sbp.model.vocab.keys()), lambda t: caliper_sbp.encode_to_ids(t), lambda t: caliper_sbp.encode(t)),
-                ("SentencePiece-Unigram", sp_v, sp_vocab, lambda t: sp_proc.encode(t, out_type=int), lambda t: sp_proc.encode_as_pieces(t)),
-                ("Boundary-BPE", bpe_v, list(bpe_model.vocab), lambda t: bpe_model.encode_to_ids(t), lambda t: bpe_model.encode(t)),
+                (
+                    "Caliper-SuperBPE (Patched)",
+                    caliper_v,
+                    list(caliper_sbp.model.vocab.keys()),
+                    lambda t: caliper_sbp.encode_to_ids(t),
+                    lambda t: caliper_sbp.encode(t),
+                ),
+                (
+                    "SentencePiece-Unigram",
+                    sp_v,
+                    sp_vocab,
+                    lambda t: sp_proc.encode(t, out_type=int),
+                    lambda t: sp_proc.encode_as_pieces(t),
+                ),
+                (
+                    "Boundary-BPE",
+                    bpe_v,
+                    list(bpe_model.vocab),
+                    lambda t: bpe_model.encode_to_ids(t),
+                    lambda t: bpe_model.encode(t),
+                ),
             ]
 
             for name, v_act, vocab_list, enc_fn, piece_fn in engines:
@@ -222,7 +247,10 @@ def run_confirmatory_benchmark(
                     corpus_val_sha256=val_sha,
                 )
                 records.append(rec)
-                print(f"  [{eval_idx:>2}/{total_evals}] [{name:<28}] BPB: {lm_bpb:.3f} | CE: {val_loss:.3f} | B/Tok: {bpt:.2f} | Fert: {fertility:.2f} | Active: {active_cov*100.0:.1f}% | >=6B: {pct_ge_6b:.1f}% | Time: {wall_clock:.2f}s", flush=True)
+                print(
+                    f"  [{eval_idx:>2}/{total_evals}] [{name:<28}] BPB: {lm_bpb:.3f} | CE: {val_loss:.3f} | B/Tok: {bpt:.2f} | Fert: {fertility:.2f} | Active: {active_cov * 100.0:.1f}% | >=6B: {pct_ge_6b:.1f}% | Time: {wall_clock:.2f}s",
+                    flush=True,
+                )
 
     # Save JSON records
     json_path = Path(__file__).resolve().parent / "phase_five_confirmatory_records.json"
@@ -269,17 +297,19 @@ def compute_paired_statistics(records: List[ConfirmatoryRecord]) -> None:
                 label_metric = "Token CE Loss" if metric == "token_ce_loss" else "True LM BPB"
                 comp_str = f"Caliper vs {'SentencePiece' if 'SentencePiece' in name_b else 'Boundary-BPE'}"
 
-                hypothesis_results.append({
-                    "scale": V,
-                    "comp": comp_str,
-                    "metric": label_metric,
-                    "d_bar": d_bar,
-                    "s_d": s_d,
-                    "t_stat": t_stat,
-                    "p_raw": p_raw,
-                    "ci": (ci_low, ci_high),
-                    "d_z": d_z,
-                })
+                hypothesis_results.append(
+                    {
+                        "scale": V,
+                        "comp": comp_str,
+                        "metric": label_metric,
+                        "d_bar": d_bar,
+                        "s_d": s_d,
+                        "t_stat": t_stat,
+                        "p_raw": p_raw,
+                        "ci": (ci_low, ci_high),
+                        "d_z": d_z,
+                    }
+                )
 
     # Holm-Bonferroni correction applied across the eight paired hypotheses
     hypothesis_results.sort(key=lambda x: x["p_raw"])
@@ -298,13 +328,17 @@ def compute_paired_statistics(records: List[ConfirmatoryRecord]) -> None:
     print("\n" + "=" * 145)
     print("PHASE FIVE: CONFIRMATORY STATISTICAL AUDIT (PAIRED T-TEST, 95% CI, COHEN'S d_z, HOLM CORRECTION)")
     print("=" * 145)
-    print(f"{'Scale':<7} | {'Comparison':<27} | {'Metric':<14} | {'d_bar':>7} | {'s_d':>7} | {'t(4)':>7} | {'p-raw':>10} | {'p-Holm':>10} | {'95% CI':<21} | {'Cohen dz':>8} | {'Holm Sig'}")
+    print(
+        f"{'Scale':<7} | {'Comparison':<27} | {'Metric':<14} | {'d_bar':>7} | {'s_d':>7} | {'t(4)':>7} | {'p-raw':>10} | {'p-Holm':>10} | {'95% CI':<21} | {'Cohen dz':>8} | {'Holm Sig'}"
+    )
     print("-" * 145)
 
     for r in hypothesis_results:
         ci_str = f"[{r['ci'][0]:+.3f}, {r['ci'][1]:+.3f}]"
         sig_str = "YES (p<0.05)" if r["is_sig"] else "NO"
-        print(f"{r['scale']:<7} | {r['comp']:<27} | {r['metric']:<14} | {r['d_bar']:>+7.3f} | {r['s_d']:>7.4f} | {r['t_stat']:>7.2f} | {r['p_raw']:>10.2e} | {r['p_holm']:>10.2e} | {ci_str:<21} | {r['d_z']:>+8.2f} | {sig_str}")
+        print(
+            f"{r['scale']:<7} | {r['comp']:<27} | {r['metric']:<14} | {r['d_bar']:>+7.3f} | {r['s_d']:>7.4f} | {r['t_stat']:>7.2f} | {r['p_raw']:>10.2e} | {r['p_holm']:>10.2e} | {ci_str:<21} | {r['d_z']:>+8.2f} | {sig_str}"
+        )
     print("=" * 145 + "\n")
 
 
@@ -319,9 +353,24 @@ def generate_confirmatory_plots(records: List[ConfirmatoryRecord]) -> None:
     # Panel A: True LM BPB vs Scale
     ax_a = axes[0, 0]
     for tok in tokenizers:
-        means = [float(np.mean([r.true_lm_bpb for r in records if r.scale_target == V and r.tokenizer_name == tok])) for V in scales]
-        stds = [float(np.std([r.true_lm_bpb for r in records if r.scale_target == V and r.tokenizer_name == tok], ddof=1)) for V in scales]
-        ax_a.errorbar([f"{V//1024}K" for V in scales], means, yerr=stds, label=tok, color=colors[tok], marker=markers[tok], linewidth=2, capsize=4)
+        means = [
+            float(np.mean([r.true_lm_bpb for r in records if r.scale_target == V and r.tokenizer_name == tok]))
+            for V in scales
+        ]
+        stds = [
+            float(np.std([r.true_lm_bpb for r in records if r.scale_target == V and r.tokenizer_name == tok], ddof=1))
+            for V in scales
+        ]
+        ax_a.errorbar(
+            [f"{V // 1024}K" for V in scales],
+            means,
+            yerr=stds,
+            label=tok,
+            color=colors[tok],
+            marker=markers[tok],
+            linewidth=2,
+            capsize=4,
+        )
     ax_a.set_title("Panel A: True LM BPB (lower is better)", fontsize=11, fontweight="bold")
     ax_a.set_ylabel("True LM BPB (Bits / Byte)", fontsize=10)
     ax_a.grid(True, linestyle="--", alpha=0.5)
@@ -330,9 +379,24 @@ def generate_confirmatory_plots(records: List[ConfirmatoryRecord]) -> None:
     # Panel B: Token Cross-Entropy Loss
     ax_b = axes[0, 1]
     for tok in tokenizers:
-        means = [float(np.mean([r.token_ce_loss for r in records if r.scale_target == V and r.tokenizer_name == tok])) for V in scales]
-        stds = [float(np.std([r.token_ce_loss for r in records if r.scale_target == V and r.tokenizer_name == tok], ddof=1)) for V in scales]
-        ax_b.errorbar([f"{V//1024}K" for V in scales], means, yerr=stds, label=tok, color=colors[tok], marker=markers[tok], linewidth=2, capsize=4)
+        means = [
+            float(np.mean([r.token_ce_loss for r in records if r.scale_target == V and r.tokenizer_name == tok]))
+            for V in scales
+        ]
+        stds = [
+            float(np.std([r.token_ce_loss for r in records if r.scale_target == V and r.tokenizer_name == tok], ddof=1))
+            for V in scales
+        ]
+        ax_b.errorbar(
+            [f"{V // 1024}K" for V in scales],
+            means,
+            yerr=stds,
+            label=tok,
+            color=colors[tok],
+            marker=markers[tok],
+            linewidth=2,
+            capsize=4,
+        )
     ax_b.set_title("Panel B: Token Cross-Entropy Loss (lower is better)", fontsize=11, fontweight="bold")
     ax_b.set_ylabel("Validation Cross-Entropy (nats)", fontsize=10)
     ax_b.grid(True, linestyle="--", alpha=0.5)
@@ -341,9 +405,26 @@ def generate_confirmatory_plots(records: List[ConfirmatoryRecord]) -> None:
     # Panel C: Bytes per Token
     ax_c = axes[1, 0]
     for tok in tokenizers:
-        means = [float(np.mean([r.bytes_per_token for r in records if r.scale_target == V and r.tokenizer_name == tok])) for V in scales]
-        stds = [float(np.std([r.bytes_per_token for r in records if r.scale_target == V and r.tokenizer_name == tok], ddof=1)) for V in scales]
-        ax_c.errorbar([f"{V//1024}K" for V in scales], means, yerr=stds, label=tok, color=colors[tok], marker=markers[tok], linewidth=2, capsize=4)
+        means = [
+            float(np.mean([r.bytes_per_token for r in records if r.scale_target == V and r.tokenizer_name == tok]))
+            for V in scales
+        ]
+        stds = [
+            float(
+                np.std([r.bytes_per_token for r in records if r.scale_target == V and r.tokenizer_name == tok], ddof=1)
+            )
+            for V in scales
+        ]
+        ax_c.errorbar(
+            [f"{V // 1024}K" for V in scales],
+            means,
+            yerr=stds,
+            label=tok,
+            color=colors[tok],
+            marker=markers[tok],
+            linewidth=2,
+            capsize=4,
+        )
     ax_c.set_title("Panel C: Subword Compression (Bytes/Token) (higher is better)", fontsize=11, fontweight="bold")
     ax_c.set_ylabel("Bytes per Token", fontsize=10)
     ax_c.grid(True, linestyle="--", alpha=0.5)
@@ -355,10 +436,12 @@ def generate_confirmatory_plots(records: List[ConfirmatoryRecord]) -> None:
         for V in scales:
             bpb_m = float(np.mean([r.true_lm_bpb for r in records if r.scale_target == V and r.tokenizer_name == tok]))
             ce_m = float(np.mean([r.token_ce_loss for r in records if r.scale_target == V and r.tokenizer_name == tok]))
-            lbl = f"{tok} ({V//1024}K)" if V == 16384 else None
+            lbl = f"{tok} ({V // 1024}K)" if V == 16384 else None
             sz = 140 if V == 8192 else 200
-            ax_d.scatter([bpb_m], [ce_m], color=colors[tok], marker=markers[tok], s=sz, edgecolors="black", label=lbl, zorder=5)
-            ax_d.annotate(f"{V//1024}K", (bpb_m + 0.02, ce_m + 0.02), fontsize=8)
+            ax_d.scatter(
+                [bpb_m], [ce_m], color=colors[tok], marker=markers[tok], s=sz, edgecolors="black", label=lbl, zorder=5
+            )
+            ax_d.annotate(f"{V // 1024}K", (bpb_m + 0.02, ce_m + 0.02), fontsize=8)
 
     ax_d.set_title("Panel D: 2D Pareto Frontier (Token CE vs True LM BPB)", fontsize=11, fontweight="bold")
     ax_d.set_xlabel("True LM BPB (lower is better)", fontsize=10)
