@@ -202,8 +202,8 @@ class RegexPreTokenizer:
 
         email = r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+"
 
-        hashtag = r"#\w+"
-        mention = r"@\w+"
+        hashtag = rf"{escaped_space}?#\w+"
+        mention = rf"{escaped_space}?@\w+"
 
         emoji = (
             r"(?:[\U0001F300-\U0001FAFF]|[\u2600-\u26FF]|[\u2700-\u27BF])"
@@ -212,19 +212,19 @@ class RegexPreTokenizer:
             r"(?:\u200D(?:[\U0001F300-\U0001FAFF]|[\u2600-\u26FF]|[\u2700-\u27BF])(?:[\uFE0E\uFE0F])?(?:[\U0001F3FB-\U0001F3FF])?)*"
         )
 
-        cjk = r"[\u4e00-\u9fff\u3400-\u4dbf\u3040-\u30ff\uac00-\ud7af]+"
+        cjk = rf"{escaped_space}?[\u4e00-\u9fff\u3400-\u4dbf\u3040-\u30ff\uac00-\ud7af]+"
 
-        word = rf"[^\W\d_\s{escaped_space}]+(?:['’][^\W\d_\s{escaped_space}]+)*"
+        word = rf"{escaped_space}?[^\W\d_\s{escaped_space}]+(?:['’][^\W\d_\s{escaped_space}]+)*"
 
-        number = r"\d" if self.split_digits else r"\d+"
+        number = rf"{escaped_space}?\d" if self.split_digits else rf"{escaped_space}?\d+"
 
         space_marker = rf"{escaped_space}+"
         whitespace = r"\s+"
 
         if self.split_punctuation:
-            punctuation = rf"[^\w\s{escaped_space}]|_"
+            punctuation = rf"{escaped_space}?[^\w\s{escaped_space}]|{escaped_space}?_"
         else:
-            punctuation = rf"[^\w\s{escaped_space}]+|_+"
+            punctuation = rf"{escaped_space}?[^\w\s{escaped_space}]+|{escaped_space}?_+"
 
         self.patterns = [
             special_token,

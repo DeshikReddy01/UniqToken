@@ -248,7 +248,7 @@ class UnigramTrainer:
         max_ngram_length: int = 16,
         min_frequency: int = 2,
         byte_fallback: bool = True,
-        prune_rate: float = 0.20,
+        prune_rate: float = 0.75,
         em_sub_iterations: int = 2,
         special_tokens: List[str] | None = None,
         ranking_strategy: str = "char_savings",
@@ -258,6 +258,8 @@ class UnigramTrainer:
         convergence_tolerance: float = 1e-4,
         script_balance_temperature: Optional[float] = None,
         min_boundary_entropy: Optional[float] = None,
+        length_exponent: float = 1.0,
+        pruning_length_exponent: float = 0.0,
     ):
         if target_vocab_size <= 0:
             raise ValueError("target_vocab_size must be greater than zero")
@@ -286,6 +288,8 @@ class UnigramTrainer:
         self.convergence_tolerance = convergence_tolerance
         self.script_balance_temperature = script_balance_temperature
         self.min_boundary_entropy = min_boundary_entropy
+        self.length_exponent = length_exponent
+        self.pruning_length_exponent = pruning_length_exponent
 
     def train(self, pre_tokenized_chunks: Iterable[str], verbose: bool = True) -> UnigramModel:
         """
@@ -306,6 +310,7 @@ class UnigramTrainer:
             adaptive_multiplier=self.adaptive_multiplier,
             script_balance_temperature=self.script_balance_temperature,
             min_boundary_entropy=self.min_boundary_entropy,
+            length_exponent=self.length_exponent,
         )
 
         seed_tokens: List[SeedToken] = seed_builder.build_seed_vocab(chunk_counts)
@@ -331,38 +336,50 @@ class UnigramTrainer:
             for sub_iter in range(self.em_sub_iterations):
                 expected_counts: Dict[str, float] = {}
                 total_corpus_log_lik = 0.0
-                trie = PrefixTrie.from_vocab(current_vocab_log_probs)
+                if _HAS_CALIPER_CORE:
+                    rust_trie = caliper_core.RustPrefixTrie()
+                    for t, lp in current_vocab_log_probs.items():
+                        rust_trie.insert(t, lp, 0)
+                    for chunk, count in chunk_counts.items():
+                        if chunk in required_tokens and (chunk.startswith("<|") and chunk.endswith("|>")):
+                            expected_counts[chunk] = expected_counts.get(chunk, 0.0) + count
+                            continue
+                        chunk_exp, chunk_log_lik = caliper_core.rust_forward_backward_expectations(
+                            chunk, rust_trie, self.byte_fallback
+                        )
+                        total_corpus_log_lik += chunk_log_lik * count
+                        for tok, exp_val in chunk_exp.items():
+                            expected_counts[tok] = expected_counts.get(tok, 0.0) + (exp_val * count)
+                else:
+                    trie = PrefixTrie.from_vocab(current_vocab_log_probs)
+                    for chunk, count in chunk_counts.items():
+                        if chunk in required_tokens and (chunk.startswith("<|") and chunk.endswith("|>")):
+                            expected_counts[chunk] = expected_counts.get(chunk, 0.0) + count
+                            continue
 
-                for chunk, count in chunk_counts.items():
-                    # Skip special tokens from lattice segmentation
-                    if chunk in required_tokens and (chunk.startswith("<|") and chunk.endswith("|>")):
-                        expected_counts[chunk] = expected_counts.get(chunk, 0.0) + count
-                        continue
+                        lattice = UnigramLattice(
+                            text=chunk,
+                            vocab_log_probs=current_vocab_log_probs,
+                            max_subword_len=self.max_ngram_length,
+                            byte_fallback=self.byte_fallback,
+                            trie=trie,
+                            max_edges_per_node=self.max_edges_per_node,
+                            min_edge_log_prob=self.min_edge_log_prob,
+                        )
 
-                    lattice = UnigramLattice(
-                        text=chunk,
-                        vocab_log_probs=current_vocab_log_probs,
-                        max_subword_len=self.max_ngram_length,
-                        byte_fallback=self.byte_fallback,
-                        trie=trie,
-                        max_edges_per_node=self.max_edges_per_node,
-                        min_edge_log_prob=self.min_edge_log_prob,
-                    )
+                        chunk_exp, chunk_log_lik = lattice.forward_backward()
+                        total_corpus_log_lik += chunk_log_lik * count
 
-                    chunk_exp, chunk_log_lik = lattice.forward_backward()
-                    total_corpus_log_lik += chunk_log_lik * count
+                        for tok, exp_val in chunk_exp.items():
+                            expected_counts[tok] = expected_counts.get(tok, 0.0) + (exp_val * count)
 
-                    for tok, exp_val in chunk_exp.items():
-                        expected_counts[tok] = expected_counts.get(tok, 0.0) + (exp_val * count)
+                total_expected = sum(expected_counts.values())
+                if total_expected <= 0:
+                    break
 
-                # Check convergence
                 delta_log_lik = abs(total_corpus_log_lik - prev_log_lik)
                 prev_log_lik = total_corpus_log_lik
 
-                # M-Step: Update token log probabilities
-                total_expected = sum(expected_counts.values())
-                if total_expected <= 0:
-                    total_expected = 1.0
                 current_vocab_log_probs = {
                     tok: math.log(max(expected_counts.get(tok, 1e-12) / total_expected, 1e-12))
                     for tok in current_vocab_log_probs
@@ -377,18 +394,24 @@ class UnigramTrainer:
                 break
 
             excess = current_size - self.target_vocab_size
-            num_to_prune = max(1, int(excess * self.prune_rate))
-            # Candidates are scored by their contribution to corpus likelihood
-            # Score(t) = E[count(t)] * log p(t). Scores closest to zero have
-            # the smallest expected effect and are pruned first.
+            if excess <= 500 or round_num >= 3:
+                num_to_prune = excess
+            else:
+                num_to_prune = max(1, int(excess * self.prune_rate))
+            # Candidates are scored by their contribution to corpus likelihood with length regularization beta
+            # Score(t) = E[count(t)] * log p(t) * (byte_len ^ beta).
+            # When beta > 0, longer subwords receive higher survival pressure (more negative score).
             candidate_scores: List[Tuple[str, float]] = []
 
             for tok, log_p in current_vocab_log_probs.items():
                 if tok in required_tokens:
                     continue  # Required tokens are immune to pruning
                 exp_c = expected_counts.get(tok, 0.0)
-                # Score measures entropy reduction from having this token
-                score = exp_c * log_p
+                if self.pruning_length_exponent > 0.0:
+                    byte_len = max(len(tok.encode("utf-8")), 1)
+                    score = exp_c * log_p * (float(byte_len) ** self.pruning_length_exponent)
+                else:
+                    score = exp_c * log_p
                 candidate_scores.append((tok, score))
 
             # Deterministic: remove the least negative scores before valuable

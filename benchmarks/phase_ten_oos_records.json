@@ -1,0 +1,512 @@
+{
+  "summary": {
+    "SentencePiece-Unigram": {
+      "true_lm_bpb": 1.9684131514098375,
+      "token_ce_loss": 9.407568507085893,
+      "bytes_per_token": 6.8956725995875985,
+      "indic_bpt": 8.83372768862042,
+      "fertility": 3.1633640888902472,
+      "active_vocab_pct": 83.09814453125,
+      "pct_ge_6b": 43.912208499426924
+    },
+    "Boundary-BPE": {
+      "true_lm_bpb": 2.4364547808254846,
+      "token_ce_loss": 8.511232211429569,
+      "bytes_per_token": 5.039807473807602,
+      "indic_bpt": 6.244995787844905,
+      "fertility": 4.327699588141256,
+      "active_vocab_pct": 66.953125,
+      "pct_ge_6b": 30.830617371734178
+    },
+    "Caliper-SuperBPE (Config B)": {
+      "true_lm_bpb": 2.408527112252467,
+      "token_ce_loss": 9.21220387101324,
+      "bytes_per_token": 5.518195884400759,
+      "indic_bpt": 6.966281221006473,
+      "fertility": 3.952580603379112,
+      "active_vocab_pct": 84.34814453125,
+      "pct_ge_6b": 40.82882635617883
+    }
+  },
+  "hypotheses_tested": [
+    {
+      "comparison": "Caliper vs SentencePiece",
+      "metric": "True LM BPB",
+      "mean_diff": 0.4401139608426298,
+      "std_diff": 0.02885187056840313,
+      "t_stat": 34.10956429870293,
+      "p_raw": 4.407193668010123e-06,
+      "ci_lower": 0.40428963187700884,
+      "ci_upper": 0.4759382898082508,
+      "cohens_dz": 15.254260890959936,
+      "p_adj": 1.7628774672040493e-05,
+      "significant_05": true
+    },
+    {
+      "comparison": "Caliper vs Boundary-BPE",
+      "metric": "Token CE Loss",
+      "mean_diff": 0.7009716595836728,
+      "std_diff": 0.10050747974739391,
+      "t_stat": 15.595061034953236,
+      "p_raw": 9.871679459561022e-05,
+      "ci_lower": 0.5761751404311396,
+      "ci_upper": 0.825768178736206,
+      "cohens_dz": 6.974323317482733,
+      "p_adj": 0.0002961503837868307,
+      "significant_05": true
+    },
+    {
+      "comparison": "Caliper vs SentencePiece",
+      "metric": "Token CE Loss",
+      "mean_diff": -0.19536463607265162,
+      "std_diff": 0.05996963440792784,
+      "t_stat": -7.284496745242893,
+      "p_raw": 0.0018874233578329846,
+      "ci_lower": -0.26982677210241746,
+      "ci_upper": -0.12090250004288577,
+      "cohens_dz": -3.257725980847815,
+      "p_adj": 0.0037748467156659693,
+      "significant_05": true
+    },
+    {
+      "comparison": "Caliper vs Boundary-BPE",
+      "metric": "True LM BPB",
+      "mean_diff": -0.027927668573017428,
+      "std_diff": 0.03342708307901521,
+      "t_stat": -1.8681906894100226,
+      "p_raw": 0.135113604308724,
+      "ci_lower": -0.06943287419719692,
+      "ci_upper": 0.013577537051162061,
+      "cohens_dz": -0.8354802752906013,
+      "p_adj": 0.135113604308724,
+      "significant_05": false
+    }
+  ],
+  "domain_summary": {
+    "English_Technical": {
+      "sp": 2.9023897281994198,
+      "boundary_bpe": 2.2677621640760828,
+      "caliper": 2.2783079936408512,
+      "delta": -0.6240817345585685
+    },
+    "Hindi_Prose": {
+      "sp": 9.1091099400772,
+      "boundary_bpe": 6.56292398375083,
+      "caliper": 7.059692476500198,
+      "delta": -2.0494174635770026
+    },
+    "Telugu_Prose": {
+      "sp": 8.525104222558907,
+      "boundary_bpe": 5.943673588334088,
+      "caliper": 6.728997051642668,
+      "delta": -1.7961071709162395
+    },
+    "Tamil_Prose": {
+      "sp": 9.061327944098617,
+      "boundary_bpe": 6.379471392401595,
+      "caliper": 7.182449878735713,
+      "delta": -1.8788780653629038
+    },
+    "Bengali_Prose": {
+      "sp": 8.665033332332097,
+      "boundary_bpe": 6.116892840973522,
+      "caliper": 6.904120628438347,
+      "delta": -1.7609127038937498
+    },
+    "Arabic_Prose": {
+      "sp": 6.784793523563491,
+      "boundary_bpe": 4.890890751280734,
+      "caliper": 5.257886333477841,
+      "delta": -1.52690719008565
+    },
+    "Chinese_Prose": {
+      "sp": 3.816588714926,
+      "boundary_bpe": 3.104601808602328,
+      "caliper": 4.167720071432969,
+      "delta": 0.3511313565069689
+    },
+    "Russian_Prose": {
+      "sp": 6.1869081034394595,
+      "boundary_bpe": 4.490732928326308,
+      "caliper": 4.472074823108869,
+      "delta": -1.7148332803305903
+    }
+  },
+  "all_records": [
+    {
+      "vocab_size": 16384,
+      "seed": 601,
+      "model_name": "SentencePiece-Unigram",
+      "true_lm_bpb": 1.9466610027796607,
+      "token_ce_loss": 9.439658261417003,
+      "bytes_per_token": 6.995849889624724,
+      "indic_bpt": 8.952697402823775,
+      "fertility": 3.1480194579569147,
+      "active_vocab_pct": 82.7880859375,
+      "pct_ge_6b": 44.370860927152314,
+      "p50_bytes": 4.0,
+      "p90_bytes": 21.0,
+      "script_bpt": {
+        "English_Technical": 2.906665585468699,
+        "Hindi_Prose": 9.004430811179278,
+        "Telugu_Prose": 8.640211640211641,
+        "Tamil_Prose": 9.201775625504439,
+        "Bengali_Prose": 8.971428571428572,
+        "Arabic_Prose": 6.726388763842622,
+        "Chinese_Prose": 3.9118263786957432,
+        "Russian_Prose": 6.401245096367048
+      },
+      "wall_clock_sec": 6.918773651123047
+    },
+    {
+      "vocab_size": 16384,
+      "seed": 601,
+      "model_name": "Boundary-BPE",
+      "true_lm_bpb": 2.4151972836752273,
+      "token_ce_loss": 8.500377623761286,
+      "bytes_per_token": 5.077619425284594,
+      "indic_bpt": 6.2977898350806205,
+      "fertility": 4.337282835302293,
+      "active_vocab_pct": 66.9677734375,
+      "pct_ge_6b": 31.056582309916926,
+      "p50_bytes": 3.0,
+      "p90_bytes": 12.0,
+      "script_bpt": {
+        "English_Technical": 2.2789115646258504,
+        "Hindi_Prose": 6.460597909152045,
+        "Telugu_Prose": 6.0167310944672625,
+        "Tamil_Prose": 6.576235339357816,
+        "Bengali_Prose": 6.1579671150971595,
+        "Arabic_Prose": 4.863615650022785,
+        "Chinese_Prose": 3.1149607613958925,
+        "Russian_Prose": 4.546120767972867
+      },
+      "wall_clock_sec": 20.197253227233887
+    },
+    {
+      "vocab_size": 16384,
+      "seed": 601,
+      "model_name": "Caliper-SuperBPE (Config B)",
+      "true_lm_bpb": 2.3998035059661413,
+      "token_ce_loss": 9.24901430095945,
+      "bytes_per_token": 5.560249842094182,
+      "indic_bpt": 7.013621234104293,
+      "fertility": 3.9608061153578875,
+      "active_vocab_pct": 84.36279296875,
+      "pct_ge_6b": 40.91515194048705,
+      "p50_bytes": 4.0,
+      "p90_bytes": 12.0,
+      "script_bpt": {
+        "English_Technical": 2.271114490274346,
+        "Hindi_Prose": 7.020728142439543,
+        "Telugu_Prose": 6.74154033567948,
+        "Tamil_Prose": 7.355483870967742,
+        "Bengali_Prose": 6.957038638205891,
+        "Arabic_Prose": 5.245752001123438,
+        "Chinese_Prose": 4.133266866068461,
+        "Russian_Prose": 4.59060607913889
+      },
+      "wall_clock_sec": 140.7883780002594
+    },
+    {
+      "vocab_size": 16384,
+      "seed": 702,
+      "model_name": "SentencePiece-Unigram",
+      "true_lm_bpb": 1.9491270531686677,
+      "token_ce_loss": 9.423667560924184,
+      "bytes_per_token": 6.975162770959204,
+      "indic_bpt": 9.084468910748127,
+      "fertility": 3.0938774099923987,
+      "active_vocab_pct": 83.0078125,
+      "pct_ge_6b": 44.49035658845471,
+      "p50_bytes": 4.0,
+      "p90_bytes": 21.0,
+      "script_bpt": {
+        "English_Technical": 2.90770106530048,
+        "Hindi_Prose": 9.33735590778098,
+        "Telugu_Prose": 8.782081194587027,
+        "Tamil_Prose": 9.215627480377458,
+        "Bengali_Prose": 8.989700877664339,
+        "Arabic_Prose": 6.912567803622323,
+        "Chinese_Prose": 3.7605461585490114,
+        "Russian_Prose": 6.0553511568964105
+      },
+      "wall_clock_sec": 3.194183826446533
+    },
+    {
+      "vocab_size": 16384,
+      "seed": 702,
+      "model_name": "Boundary-BPE",
+      "true_lm_bpb": 2.4092199621595447,
+      "token_ce_loss": 8.377646637744592,
+      "bytes_per_token": 5.016723025887758,
+      "indic_bpt": 6.245792551458841,
+      "fertility": 4.3016723101375165,
+      "active_vocab_pct": 66.9677734375,
+      "pct_ge_6b": 30.847637330420323,
+      "p50_bytes": 3.0,
+      "p90_bytes": 12.0,
+      "script_bpt": {
+        "English_Technical": 2.2649015012351934,
+        "Hindi_Prose": 6.59135410044501,
+        "Telugu_Prose": 5.998215196328404,
+        "Tamil_Prose": 6.297595371542217,
+        "Bengali_Prose": 6.100212701306594,
+        "Arabic_Prose": 4.868427868427869,
+        "Chinese_Prose": 3.089919624916276,
+        "Russian_Prose": 4.395169426146817
+      },
+      "wall_clock_sec": 20.39617085456848
+    },
+    {
+      "vocab_size": 16384,
+      "seed": 702,
+      "model_name": "Caliper-SuperBPE (Config B)",
+      "true_lm_bpb": 2.431445478302454,
+      "token_ce_loss": 9.232224873134069,
+      "bytes_per_token": 5.477928729926239,
+      "indic_bpt": 6.914517292303465,
+      "fertility": 3.939499689033239,
+      "active_vocab_pct": 83.97216796875,
+      "pct_ge_6b": 40.57026583755054,
+      "p50_bytes": 4.0,
+      "p90_bytes": 12.0,
+      "script_bpt": {
+        "English_Technical": 2.304756993683125,
+        "Hindi_Prose": 7.048881637092936,
+        "Telugu_Prose": 6.741653532024645,
+        "Tamil_Prose": 7.036293852265841,
+        "Bengali_Prose": 6.822469924556515,
+        "Arabic_Prose": 5.235204010583484,
+        "Chinese_Prose": 4.180561848663344,
+        "Russian_Prose": 4.337510980966325
+      },
+      "wall_clock_sec": 141.71410369873047
+    },
+    {
+      "vocab_size": 16384,
+      "seed": 803,
+      "model_name": "SentencePiece-Unigram",
+      "true_lm_bpb": 1.9786696372960113,
+      "token_ce_loss": 9.405745611085997,
+      "bytes_per_token": 6.857952582484021,
+      "indic_bpt": 8.718411475964794,
+      "fertility": 3.1913999241980497,
+      "active_vocab_pct": 83.21533203125,
+      "pct_ge_6b": 43.814778027293144,
+      "p50_bytes": 4.0,
+      "p90_bytes": 21.0,
+      "script_bpt": {
+        "English_Technical": 2.8579350203061544,
+        "Hindi_Prose": 8.948956499874278,
+        "Telugu_Prose": 8.522742995503286,
+        "Tamil_Prose": 8.7245122985581,
+        "Bengali_Prose": 8.670701168614357,
+        "Arabic_Prose": 6.695883253760923,
+        "Chinese_Prose": 3.849755786791251,
+        "Russian_Prose": 6.3104594167982055
+      },
+      "wall_clock_sec": 3.2133102416992188
+    },
+    {
+      "vocab_size": 16384,
+      "seed": 803,
+      "model_name": "Boundary-BPE",
+      "true_lm_bpb": 2.447858525915629,
+      "token_ce_loss": 8.554617653048135,
+      "bytes_per_token": 5.041837317839795,
+      "indic_bpt": 6.252439116910705,
+      "fertility": 4.340970954070909,
+      "active_vocab_pct": 67.1630859375,
+      "pct_ge_6b": 30.712448804648062,
+      "p50_bytes": 3.0,
+      "p90_bytes": 12.0,
+      "script_bpt": {
+        "English_Technical": 2.2492470342368924,
+        "Hindi_Prose": 6.575722116154462,
+        "Telugu_Prose": 5.988394701664844,
+        "Tamil_Prose": 6.391325959985088,
+        "Bengali_Prose": 6.069946824051891,
+        "Arabic_Prose": 4.856330850646805,
+        "Chinese_Prose": 3.096771438332764,
+        "Russian_Prose": 4.522445820433436
+      },
+      "wall_clock_sec": 21.426111698150635
+    },
+    {
+      "vocab_size": 16384,
+      "seed": 803,
+      "model_name": "Caliper-SuperBPE (Config B)",
+      "true_lm_bpb": 2.4120825767120384,
+      "token_ce_loss": 9.174388455078665,
+      "bytes_per_token": 5.4873099516240496,
+      "indic_bpt": 6.987739528573851,
+      "fertility": 3.9885607966095855,
+      "active_vocab_pct": 84.808349609375,
+      "pct_ge_6b": 40.47771250863856,
+      "p50_bytes": 4.0,
+      "p90_bytes": 12.0,
+      "script_bpt": {
+        "English_Technical": 2.193167515732694,
+        "Hindi_Prose": 7.063843863711544,
+        "Telugu_Prose": 6.762058319039451,
+        "Tamil_Prose": 7.181094666294332,
+        "Bengali_Prose": 6.94676653514345,
+        "Arabic_Prose": 5.18347280334728,
+        "Chinese_Prose": 4.171306948918546,
+        "Russian_Prose": 4.45011424219345
+      },
+      "wall_clock_sec": 143.32922792434692
+    },
+    {
+      "vocab_size": 16384,
+      "seed": 904,
+      "model_name": "SentencePiece-Unigram",
+      "true_lm_bpb": 1.9819810052458264,
+      "token_ce_loss": 9.420002598232694,
+      "bytes_per_token": 6.856872491543306,
+      "indic_bpt": 8.61060110663984,
+      "fertility": 3.1821611518759516,
+      "active_vocab_pct": 82.928466796875,
+      "pct_ge_6b": 43.880181424640256,
+      "p50_bytes": 4.0,
+      "p90_bytes": 21.0,
+      "script_bpt": {
+        "English_Technical": 2.9466374269005846,
+        "Hindi_Prose": 9.270532252379274,
+        "Telugu_Prose": 8.239134041141341,
+        "Tamil_Prose": 9.16044127866574,
+        "Bengali_Prose": 7.88104728409535,
+        "Arabic_Prose": 6.941623882867465,
+        "Chinese_Prose": 3.7789824854045038,
+        "Russian_Prose": 6.260421070432062
+      },
+      "wall_clock_sec": 3.1816673278808594
+    },
+    {
+      "vocab_size": 16384,
+      "seed": 904,
+      "model_name": "Boundary-BPE",
+      "true_lm_bpb": 2.433573525980139,
+      "token_ce_loss": 8.49854836425161,
+      "bytes_per_token": 5.038193195713156,
+      "indic_bpt": 6.201847742402971,
+      "fertility": 4.3308528312335595,
+      "active_vocab_pct": 66.522216796875,
+      "pct_ge_6b": 30.813493490613535,
+      "p50_bytes": 3.0,
+      "p90_bytes": 12.0,
+      "script_bpt": {
+        "English_Technical": 2.252374743900168,
+        "Hindi_Prose": 6.6231427851926465,
+        "Telugu_Prose": 5.8006890913338,
+        "Tamil_Prose": 6.316183517010062,
+        "Bengali_Prose": 6.098089017900339,
+        "Arabic_Prose": 4.958033410294717,
+        "Chinese_Prose": 3.11810752688172,
+        "Russian_Prose": 4.50870783095847
+      },
+      "wall_clock_sec": 21.628291606903076
+    },
+    {
+      "vocab_size": 16384,
+      "seed": 904,
+      "model_name": "Caliper-SuperBPE (Config B)",
+      "true_lm_bpb": 2.388992075352547,
+      "token_ce_loss": 9.158694156578608,
+      "bytes_per_token": 5.530869179951044,
+      "indic_bpt": 6.954598547559799,
+      "fertility": 3.945071300013845,
+      "active_vocab_pct": 83.935546875,
+      "pct_ge_6b": 41.02964529175915,
+      "p50_bytes": 4.0,
+      "p90_bytes": 12.0,
+      "script_bpt": {
+        "English_Technical": 2.285867305147754,
+        "Hindi_Prose": 7.050127328776304,
+        "Telugu_Prose": 6.739788302347673,
+        "Tamil_Prose": 7.106132075471698,
+        "Bengali_Prose": 6.920933424845573,
+        "Arabic_Prose": 5.424771528345345,
+        "Chinese_Prose": 4.1497424155695475,
+        "Russian_Prose": 4.397054456915494
+      },
+      "wall_clock_sec": 143.3377640247345
+    },
+    {
+      "vocab_size": 16384,
+      "seed": 1005,
+      "model_name": "SentencePiece-Unigram",
+      "true_lm_bpb": 1.9856270585590212,
+      "token_ce_loss": 9.348768503769584,
+      "bytes_per_token": 6.7925252633267394,
+      "indic_bpt": 8.802459546925567,
+      "fertility": 3.201362500427921,
+      "active_vocab_pct": 83.551025390625,
+      "pct_ge_6b": 43.004865529594184,
+      "p50_bytes": 4.0,
+      "p90_bytes": 21.0,
+      "script_bpt": {
+        "English_Technical": 2.893009543021181,
+        "Hindi_Prose": 8.984274229172188,
+        "Telugu_Prose": 8.441351241351242,
+        "Tamil_Prose": 9.004283037387347,
+        "Bengali_Prose": 8.812288759857873,
+        "Arabic_Prose": 6.647503913724126,
+        "Chinese_Prose": 3.7818327651894927,
+        "Russian_Prose": 5.907063776703571
+      },
+      "wall_clock_sec": 3.245166778564453
+    },
+    {
+      "vocab_size": 16384,
+      "seed": 1005,
+      "model_name": "Boundary-BPE",
+      "true_lm_bpb": 2.476424606396884,
+      "token_ce_loss": 8.624970778342217,
+      "bytes_per_token": 5.024664404312711,
+      "indic_bpt": 6.227109693371388,
+      "fertility": 4.327719009962,
+      "active_vocab_pct": 67.144775390625,
+      "pct_ge_6b": 30.722924923072053,
+      "p50_bytes": 3.0,
+      "p90_bytes": 12.0,
+      "script_bpt": {
+        "English_Technical": 2.293375976382311,
+        "Hindi_Prose": 6.5638030078099785,
+        "Telugu_Prose": 5.914337857876126,
+        "Tamil_Prose": 6.3160167741127875,
+        "Bengali_Prose": 6.158248546511628,
+        "Arabic_Prose": 4.908045977011494,
+        "Chinese_Prose": 3.1032496914849856,
+        "Russian_Prose": 4.48122079611995
+      },
+      "wall_clock_sec": 21.19034719467163
+    },
+    {
+      "vocab_size": 16384,
+      "seed": 1005,
+      "model_name": "Caliper-SuperBPE (Config B)",
+      "true_lm_bpb": 2.410311924929156,
+      "token_ce_loss": 9.246697569315412,
+      "bytes_per_token": 5.534621718408281,
+      "indic_bpt": 6.960929502490957,
+      "fertility": 3.9289651158810037,
+      "active_vocab_pct": 84.661865234375,
+      "pct_ge_6b": 41.15135620245885,
+      "p50_bytes": 4.0,
+      "p90_bytes": 12.0,
+      "script_bpt": {
+        "English_Technical": 2.3366336633663365,
+        "Hindi_Prose": 7.114881410480655,
+        "Telugu_Prose": 6.659944769122086,
+        "Tamil_Prose": 7.233244928678948,
+        "Bengali_Prose": 6.8733946194403135,
+        "Arabic_Prose": 5.200231323989659,
+        "Chinese_Prose": 4.203722277944946,
+        "Russian_Prose": 4.5850883563301865
+      },
+      "wall_clock_sec": 144.49240469932556
+    }
+  ]
+}

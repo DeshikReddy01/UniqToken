@@ -29,19 +29,18 @@ class BPEModel:
         self.special_tokens = list(special_tokens or [])
         self.byte_fallback = byte_fallback
 
+    @property
+    def vocab_size(self) -> int:
+        return len(self.vocab)
+
     def _get_pairs(self, word: List[str]) -> Set[Tuple[str, str]]:
         return set(zip(word[:-1], word[1:]))
 
-    def encode(self, text: str) -> List[str]:
-        """
-        Segments text by greedily applying BPE merges in rank order.
-        """
-        if not text:
+    def _encode_word(self, word: str) -> List[str]:
+        if not word:
             return []
-
-        # Start with base characters
         symbols: List[str] = []
-        for char in text:
+        for char in word:
             if char in self.vocab:
                 symbols.append(char)
             elif self.byte_fallback:
@@ -52,17 +51,15 @@ class BPEModel:
         if len(symbols) <= 1:
             return symbols
 
-        # ponytail: greedy O(n^2) merges; heap if latency matters (vocab>5k or seq>1k)
         while len(symbols) > 1:
             pairs = self._get_pairs(symbols)
-            # Find the pair with the lowest merge rank
             best_pair = min(
                 pairs,
                 key=lambda p: self.merges.get(p, float("inf")),
             )
 
             if best_pair not in self.merges:
-                break  # No more valid merges
+                break
 
             first, second = best_pair
             new_symbols: List[str] = []
@@ -77,6 +74,26 @@ class BPEModel:
             symbols = new_symbols
 
         return symbols
+
+    def encode(self, text: str) -> List[str]:
+        """
+        Segments text by applying BPE merges on whitespace-delimited word tokens.
+        """
+        if not text:
+            return []
+
+        words = text.split(" ")
+        tokens: List[str] = []
+        for idx, word in enumerate(words):
+            if idx > 0:
+                tokens.append(" ")
+            tokens.extend(self._encode_word(word))
+        return tokens
+
+    def encode_to_ids(self, text: str) -> List[int]:
+        tokens = self.encode(text)
+        unk_id = self.token_to_id.get("<|unk|>", 0)
+        return [self.token_to_id.get(t, unk_id) for t in tokens]
 
     def decode(self, token_ids: List[int], space_char: str = "\u2581") -> str:
         """Decodes integer token IDs back to a human-readable string."""

@@ -1,0 +1,74 @@
+{
+  "Config A (Frozen Base)": {
+    "true_lm_bpb": 2.6831613056451946,
+    "val_loss": 9.026067894672659,
+    "bytes_per_token": 4.853157347037405,
+    "indic_bpt": 5.8914693237504805,
+    "fertility": 3.484244913108309,
+    "active_vocab_pct": 79.74039713541667,
+    "pct_ge_6b": 46.58218172616349,
+    "p50_bytes": 4.0,
+    "p90_bytes": 9.0,
+    "delta_bpb": 0.0
+  },
+  "Config B (Length Global \u03b1=1.5)": {
+    "true_lm_bpb": 2.6670055497135188,
+    "val_loss": 9.016936021184724,
+    "bytes_per_token": 4.877621669126147,
+    "indic_bpt": 5.881103633951518,
+    "fertility": 3.4667747242561955,
+    "active_vocab_pct": 79.65901692708333,
+    "pct_ge_6b": 46.491999054841386,
+    "p50_bytes": 4.0,
+    "p90_bytes": 9.0,
+    "delta_bpb": -0.01615575593167584
+  },
+  "Config C (Script Quotas \u03b1=1.0)": {
+    "true_lm_bpb": 2.6831911856558404,
+    "val_loss": 9.026168350329614,
+    "bytes_per_token": 4.853157347037405,
+    "indic_bpt": 5.8914693237504805,
+    "fertility": 3.484244913108309,
+    "active_vocab_pct": 79.74039713541667,
+    "pct_ge_6b": 46.58218172616349,
+    "p50_bytes": 4.0,
+    "p90_bytes": 9.0,
+    "delta_bpb": 2.9880010645744193e-05
+  },
+  "Config D (Script Quotas \u03b1=1.25)": {
+    "true_lm_bpb": 2.678223176176098,
+    "val_loss": 9.016959225689924,
+    "bytes_per_token": 4.8572180534744644,
+    "indic_bpt": 5.886435469259055,
+    "fertility": 3.481331688329469,
+    "active_vocab_pct": 79.68546549479167,
+    "pct_ge_6b": 46.50477410424734,
+    "p50_bytes": 4.0,
+    "p90_bytes": 9.0,
+    "delta_bpb": -0.004938129469096442
+  },
+  "SentencePiece (Anchor)": {
+    "true_lm_bpb": 2.143471119072633,
+    "val_loss": 9.634075744729659,
+    "bytes_per_token": 6.484513172315579,
+    "indic_bpt": 8.120218531652627,
+    "fertility": 2.607739963622015,
+    "active_vocab_pct": 79.998779296875,
+    "pct_ge_6b": 55.88688505760319,
+    "p50_bytes": 6.0,
+    "p90_bytes": 15.0,
+    "delta_bpb": -0.5396901865725616
+  },
+  "Boundary-BPE (Anchor)": {
+    "true_lm_bpb": 2.7584771064038596,
+    "val_loss": 8.427523553743493,
+    "bytes_per_token": 4.407847665207988,
+    "indic_bpt": 5.366803129213362,
+    "fertility": 3.8363064863869596,
+    "active_vocab_pct": 65.18351236979167,
+    "pct_ge_6b": 32.849533676333984,
+    "p50_bytes": 3.0,
+    "p90_bytes": 10.0,
+    "delta_bpb": 0.07531580075866495
+  }
+}

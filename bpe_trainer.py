@@ -64,26 +64,33 @@ class BPETrainer:
         target_size = self.target_vocab_size if self.target_vocab_size is not None else float("inf")
         max_merges = self.num_merges if self.num_merges is not None else float("inf")
 
-        # 2. Greedy merge loop
+        import heapq
+
+        # 2. Inverted index and Max-Heap for O(1) merge extraction
+        pair_counts: Dict[Tuple[str, str], int] = defaultdict(int)
+        pair_to_words: Dict[Tuple[str, str], Set[str]] = defaultdict(set)
+
+        for word, freq in word_counts.items():
+            syms = splits[word]
+            for i in range(len(syms) - 1):
+                p = (syms[i], syms[i + 1])
+                pair_counts[p] += freq
+                pair_to_words[p].add(word)
+
+        # Build initial max heap (-freq, word_concat, pair)
+        heap = [(-freq, p[0] + p[1], p) for p, freq in pair_counts.items() if freq > 0]
+        heapq.heapify(heap)
+
         while len(vocab) < target_size and rank < max_merges:
-            pair_counts: Dict[Tuple[str, str], int] = defaultdict(int)
+            best_pair = None
+            while heap:
+                neg_f, _, p = heapq.heappop(heap)
+                cur_f = pair_counts.get(p, 0)
+                if cur_f > 0 and cur_f == -neg_f:
+                    best_pair = p
+                    break
 
-            for word, freq in word_counts.items():
-                word_symbols = splits[word]
-                for i in range(len(word_symbols) - 1):
-                    pair = (word_symbols[i], word_symbols[i + 1])
-                    pair_counts[pair] += freq
-
-            if not pair_counts:
-                break
-
-            # Select pair with highest frequency (lexical tie breaker for determinism)
-            best_pair = max(
-                pair_counts.keys(),
-                key=lambda p: (pair_counts[p], p[0] + p[1]),
-            )
-
-            if pair_counts[best_pair] < 1:
+            if best_pair is None or pair_counts[best_pair] < 1:
                 break
 
             # Record merge
@@ -92,23 +99,45 @@ class BPETrainer:
             new_token = best_pair[0] + best_pair[1]
             vocab.add(new_token)
 
-            # Apply merge to all active splits
             first, second = best_pair
-            for word in word_counts:
-                word_symbols = splits[word]
-                new_symbols: List[str] = []
+            affected_words = list(pair_to_words.get(best_pair, set()))
+
+            for word in affected_words:
+                old_syms = splits[word]
+                freq = word_counts[word]
+
+                # Decrement old pairs
+                for i in range(len(old_syms) - 1):
+                    p = (old_syms[i], old_syms[i + 1])
+                    pair_counts[p] -= freq
+                    if pair_counts[p] <= 0:
+                        pair_counts.pop(p, None)
+                    pair_to_words[p].discard(word)
+
+                # Form new symbols
+                new_syms: List[str] = []
                 i = 0
-                while i < len(word_symbols):
-                    if i < len(word_symbols) - 1 and word_symbols[i] == first and word_symbols[i + 1] == second:
-                        new_symbols.append(new_token)
+                while i < len(old_syms):
+                    if i < len(old_syms) - 1 and old_syms[i] == first and old_syms[i + 1] == second:
+                        new_syms.append(new_token)
                         i += 2
                     else:
-                        new_symbols.append(word_symbols[i])
+                        new_syms.append(old_syms[i])
                         i += 1
-                splits[word] = new_symbols
+                splits[word] = new_syms
 
-            if verbose and rank % 100 == 0:
-                print(f"[BPE Trainer] Merge {rank:>4}: {best_pair} -> {new_token!r} (Freq: {pair_counts[best_pair]})")
+                # Increment new pairs
+                for i in range(len(new_syms) - 1):
+                    p = (new_syms[i], new_syms[i + 1])
+                    pair_counts[p] += freq
+                    pair_to_words[p].add(word)
+                    heapq.heappush(heap, (-pair_counts[p], p[0] + p[1], p))
+
+            pair_counts.pop(best_pair, None)
+            pair_to_words.pop(best_pair, None)
+
+            if verbose and rank % 500 == 0:
+                print(f"[BPE Trainer] Merge {rank:>5}: {best_pair} -> {new_token!r} | Vocab: {len(vocab):,}")
 
         # 3. Build token-to-id mapping
         token_to_id: Dict[str, int] = {}

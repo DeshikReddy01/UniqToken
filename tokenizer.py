@@ -211,6 +211,8 @@ class CustomTokenizer:
         convergence_tolerance: float = 1e-4,
         script_balance_temperature: Optional[float] = None,
         min_boundary_entropy: Optional[float] = None,
+        length_exponent: float = 1.0,
+        pruning_length_exponent: float = 0.0,
         verbose: bool = True,
     ) -> CustomTokenizer:
         normalizer = Normalizer()
@@ -252,6 +254,8 @@ class CustomTokenizer:
             convergence_tolerance=convergence_tolerance,
             script_balance_temperature=script_balance_temperature,
             min_boundary_entropy=min_boundary_entropy,
+            length_exponent=length_exponent,
+            pruning_length_exponent=pruning_length_exponent,
         )
 
         model = trainer.train(chunks, verbose=verbose)

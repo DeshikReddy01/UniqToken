@@ -51,6 +51,7 @@ class SeedVocabularyBuilder:
         adaptive_multiplier: bool = False,
         script_balance_temperature: Optional[float] = None,
         min_boundary_entropy: Optional[float] = None,
+        length_exponent: float = 1.0,
     ):
         if target_vocab_size <= 0:
             raise ValueError("target_vocab_size must be greater than zero")
@@ -71,6 +72,7 @@ class SeedVocabularyBuilder:
         self.adaptive_multiplier = adaptive_multiplier
         self.script_balance_temperature = script_balance_temperature
         self.min_boundary_entropy = min_boundary_entropy
+        self.length_exponent = length_exponent
         self.seed_vocab_size = int(target_vocab_size * seed_multiplier)
         self.max_ngram_length = max_ngram_length
         self.min_frequency = min_frequency
@@ -142,8 +144,16 @@ class SeedVocabularyBuilder:
                 continue
             if (0x0041 <= cp <= 0x005A) or (0x0061 <= cp <= 0x007A) or (0x00C0 <= cp <= 0x024F):
                 return "latin"
+            elif 0x0900 <= cp <= 0x097F:
+                return "devanagari"
+            elif 0x0C00 <= cp <= 0x0C7F:
+                return "telugu"
+            elif 0x0B80 <= cp <= 0x0BFF:
+                return "tamil"
+            elif 0x0980 <= cp <= 0x09FF:
+                return "bengali"
             elif 0x0900 <= cp <= 0x0D7F:
-                return "indic"
+                return "indic_other"
             elif (0x4E00 <= cp <= 0x9FFF) or (0x3400 <= cp <= 0x4DBF) or (0x3040 <= cp <= 0x30FF) or (0xAC00 <= cp <= 0xD7AF):
                 return "cjk"
             elif (0x0600 <= cp <= 0x06FF) or (0x0750 <= cp <= 0x077F):
@@ -152,8 +162,9 @@ class SeedVocabularyBuilder:
                 return "cyrillic"
             elif 0x0E00 <= cp <= 0x0E7F:
                 return "thai"
+            elif ch.isdigit() or token.startswith("0x") or token.startswith("SYS_"):
+                return "numeric"
         return "symbol"
-
 
     @staticmethod
     def _get_max_ngram_for_chunk(chunk: str, default_max: int) -> int:
@@ -161,13 +172,24 @@ class SeedVocabularyBuilder:
         script = SeedVocabularyBuilder._detect_script(chunk)
         if script == "cjk":
             return min(default_max, 4)
-        elif script in {"indic", "thai"}:
-            return min(default_max, 8)
         return default_max
 
     def mine_ngrams(self, chunk_counts: Counter[str]) -> Counter[str]:
-        counts, _ = self.mine_ngrams_with_entropy(chunk_counts)
-        return counts
+        if self.min_boundary_entropy is not None:
+            counts, _ = self.mine_ngrams_with_entropy(chunk_counts)
+            return counts
+        ngram_counts: Counter[str] = Counter()
+        default_max = self.max_ngram_length
+        for chunk, chunk_freq in chunk_counts.items():
+            if chunk in self.special_tokens or (chunk.startswith("<|") and chunk.endswith("|>")):
+                continue
+            chunk_len = len(chunk)
+            max_len = self._get_max_ngram_for_chunk(chunk, default_max)
+            for start in range(chunk_len):
+                end_limit = min(chunk_len + 1, start + max_len + 1)
+                for end in range(start + 1, end_limit):
+                    ngram_counts[chunk[start:end]] += chunk_freq
+        return ngram_counts
 
     def mine_ngrams_with_entropy(self, chunk_counts: Counter[str]) -> Tuple[Counter[str], Dict[str, float]]:
         ngram_counts: Counter[str] = Counter()
@@ -286,10 +308,17 @@ class SeedVocabularyBuilder:
             def savings_score(t: str) -> float:
                 if is_byte:
                     byte_len = len(t.encode("utf-8"))
-                    # Sub-linear marginal compression gain to prevent memorization runaway
-                    base = float(candidate_counts[t]) * math.log(1.0 + byte_len)
+                    effective_len = max(byte_len - 1, 1)
+                    if self.length_exponent == 1.0:
+                        base = float(candidate_counts[t]) * float(effective_len)
+                    else:
+                        base = float(candidate_counts[t]) * (float(effective_len) ** self.length_exponent)
                 else:
-                    base = float((len(t) - 1) * candidate_counts[t])
+                    char_len = max(len(t) - 1, 1)
+                    if self.length_exponent == 1.0:
+                        base = float(char_len * candidate_counts[t])
+                    else:
+                        base = float(candidate_counts[t]) * (float(char_len) ** self.length_exponent)
 
                 if self.script_balance_temperature is not None:
                     return base * script_weights.get(self._detect_script(t), 1.0)
@@ -358,7 +387,11 @@ class SeedVocabularyBuilder:
         total_unigrams = sum(unigram_counts.values())
 
         # 3. Mine, Filter, and Rank Candidates
-        raw_ngrams, entropies = self.mine_ngrams_with_entropy(chunk_counts)
+        if self.min_boundary_entropy is not None:
+            raw_ngrams, entropies = self.mine_ngrams_with_entropy(chunk_counts)
+        else:
+            raw_ngrams = self.mine_ngrams(chunk_counts)
+            entropies = None
         filtered_candidates = self.filter_candidates(raw_ngrams, seen_tokens, entropies=entropies)
         ranked_candidates = self.rank_candidates(
             filtered_candidates,

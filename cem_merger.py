@@ -41,6 +41,7 @@ class CrossEntropyMerging:
         verbose: bool = False,
         cross_word: bool = False,
         space_char: str = "\u2581",
+        min_pmi: Optional[float] = None,
     ):
         if max_merges < 0:
             raise ValueError("max_merges must not be negative")
@@ -49,6 +50,7 @@ class CrossEntropyMerging:
         self.verbose = verbose
         self.cross_word = cross_word
         self.space_char = space_char
+        self.min_pmi = min_pmi
         self.merges: List[Tuple[str, str, str, float, int]] = []
 
     def optimize(self, model: UnigramModel, chunks: Iterable[str]) -> UnigramModel:
@@ -76,37 +78,92 @@ class CrossEntropyMerging:
                 return False
             return token in model.vocab or token in new_probs
 
+        from collections import defaultdict
+
+        unique_chunks = set(chunk for chunk in chunks if chunk)
+        chunk_enc_map = {chunk: model.encode(chunk) for chunk in unique_chunks}
+
         if self.cross_word:
-            streams: List[List[str]] = [[tok for chunk in chunks if chunk for tok in model.encode(chunk)]]
+            streams: List[List[str]] = []
+            cur_stream: List[str] = []
+            for chunk in chunks:
+                if not chunk:
+                    continue
+                cur_stream.extend(chunk_enc_map[chunk])
+                if len(cur_stream) >= 200:
+                    streams.append(cur_stream)
+                    cur_stream = []
+            if cur_stream:
+                streams.append(cur_stream)
         else:
-            streams = [model.encode(chunk) for chunk in chunks if chunk]
+            streams = [chunk_enc_map[chunk] for chunk in chunks if chunk]
+
+        # 1. Build initial inverted pair index
+        pair_counts: Dict[Tuple[str, str], int] = defaultdict(int)
+        pair_to_streams: Dict[Tuple[str, str], Set[int]] = defaultdict(set)
+        total_pairs = 0
+
+        for s_idx, stream in enumerate(streams):
+            for i in range(len(stream) - 1):
+                p = (stream[i], stream[i + 1])
+                pair_counts[p] += 1
+                pair_to_streams[p].add(s_idx)
+                total_pairs += 1
+
+        import heapq
+
+        def compute_pair_score(a: str, b: str, f: int, tot: int) -> Tuple[float, float, str]:
+            log_p_hat = math.log(f / max(tot, 1))
+            score = f * (log_prob(a) + log_prob(b) - log_p_hat)
+            return score, log_p_hat, a + b
+
+        heap: List[Tuple[float, int, float, Tuple[str, str]]] = []
+        for (a, b), f in pair_counts.items():
+            if f < 2:
+                continue
+            if self.cross_word and (self.space_char not in a and self.space_char not in b):
+                continue
+            if not mergeable(a) or not mergeable(b):
+                continue
+            m = a + b
+            if len(m) > max_len or m in model.vocab or m in new_probs or m in special_tokens:
+                continue
+            sc, lp_hat, _ = compute_pair_score(a, b, f, total_pairs)
+            if self.min_pmi is not None:
+                pmi = (lp_hat - (log_prob(a) + log_prob(b))) / math.log(2)
+                if pmi < self.min_pmi:
+                    continue
+            if sc < self.max_score:
+                heap.append((sc, f, lp_hat, (a, b)))
+        heapq.heapify(heap)
 
         for _ in range(self.max_merges):
-            pair_counts: Counter[Tuple[str, str]] = Counter()
-            for stream in streams:
-                for a, b in zip(stream, stream[1:]):
-                    pair_counts[(a, b)] += 1
-            if not pair_counts:
+            if not pair_counts or total_pairs <= 0:
                 break
-            total_pairs = sum(pair_counts.values())
 
             best_pair: Tuple[str, str, str] | None = None
             best_score = float("inf")
             best_log_p = 0.0
-            for (a, b), f in pair_counts.items():
-                if not mergeable(a) or not mergeable(b):
-                    continue
-                merged = a + b
-                if self.cross_word and self.space_char not in merged:
-                    continue
-                if len(merged) > max_len or merged in model.vocab or merged in new_probs or merged in special_tokens:
-                    continue
-                log_p_hat = math.log(f / total_pairs)
-                score = f * (log_prob(a) + log_prob(b) - log_p_hat)
-                if score < best_score:
-                    best_score = score
-                    best_pair = (a, b, merged)
-                    best_log_p = log_p_hat
+
+            while heap:
+                sc, f_in_heap, lp_hat, (a, b) = heapq.heappop(heap)
+                cur_f = pair_counts.get((a, b), 0)
+                if cur_f >= 2 and cur_f == f_in_heap:
+                    if not mergeable(a) or not mergeable(b):
+                        continue
+                    m = a + b
+                    if len(m) > max_len or m in model.vocab or m in new_probs or m in special_tokens:
+                        continue
+                    sc, lp_hat, _ = compute_pair_score(a, b, cur_f, total_pairs)
+                    if self.min_pmi is not None:
+                        pmi = (lp_hat - (log_prob(a) + log_prob(b))) / math.log(2)
+                        if pmi < self.min_pmi:
+                            continue
+                    if sc < self.max_score:
+                        best_score = sc
+                        best_pair = (a, b, m)
+                        best_log_p = lp_hat
+                        break
 
             if best_pair is None or best_score >= self.max_score:
                 break
@@ -117,18 +174,49 @@ class CrossEntropyMerging:
             new_probs[merged] = best_log_p
             new_count[merged] = pair_count
 
-            for stream in streams:
-                merged_stream: List[str] = []
+            # Incremental update on affected streams only
+            affected_streams = list(pair_to_streams.get((a, b), set()))
+            for s_idx in affected_streams:
+                stream = streams[s_idx]
+                old_len = len(stream)
+
+                # Decrement old pairs
+                for i in range(old_len - 1):
+                    p = (stream[i], stream[i + 1])
+                    pair_counts[p] -= 1
+                    if pair_counts[p] <= 0:
+                        pair_counts.pop(p, None)
+                    pair_to_streams[p].discard(s_idx)
+                total_pairs -= (old_len - 1)
+
+                # Form new stream
+                new_stream: List[str] = []
                 i = 0
                 n = len(stream)
                 while i < n:
                     if i < n - 1 and stream[i] == a and stream[i + 1] == b:
-                        merged_stream.append(merged)
+                        new_stream.append(merged)
                         i += 2
                     else:
-                        merged_stream.append(stream[i])
+                        new_stream.append(stream[i])
                         i += 1
-                stream[:] = merged_stream
+                streams[s_idx] = new_stream
+
+                # Increment new pairs
+                for i in range(len(new_stream) - 1):
+                    p = (new_stream[i], new_stream[i + 1])
+                    pair_counts[p] += 1
+                    pair_to_streams[p].add(s_idx)
+                    a_p, b_p = p
+                    if pair_counts[p] >= 2 and (not self.cross_word or self.space_char in a_p or self.space_char in b_p):
+                        if mergeable(a_p) and mergeable(b_p):
+                            sc, lp_hat, _ = compute_pair_score(a_p, b_p, pair_counts[p], total_pairs)
+                            if sc < self.max_score:
+                                heapq.heappush(heap, (sc, pair_counts[p], lp_hat, p))
+                total_pairs += (len(new_stream) - 1)
+
+            pair_counts.pop((a, b), None)
+            pair_to_streams.pop((a, b), None)
 
             if self.verbose:
                 label = "SuperBPE" if self.cross_word else "CEM"

@@ -1,0 +1,62 @@
+{
+  "Branch A (Frozen Base)": {
+    "true_lm_bpb": 2.7529990994029077,
+    "val_loss": 9.063825770028835,
+    "bytes_per_token": 4.749820498048735,
+    "fertility": 3.5706168266741614,
+    "active_vocab_pct": 75.80159505208333,
+    "cross_tokens_vocab": 1466.3333333333333,
+    "val_bytes_cross_pct": 32.21597167899566,
+    "delta_bpb": 0.0
+  },
+  "Branch B (Space-Prefixed)": {
+    "true_lm_bpb": 2.7181704355146237,
+    "val_loss": 9.084306616291611,
+    "bytes_per_token": 4.821552872444296,
+    "fertility": 3.517491623221275,
+    "active_vocab_pct": 75.44148763020833,
+    "cross_tokens_vocab": 1462.0,
+    "val_bytes_cross_pct": 31.686476125824225,
+    "delta_bpb": -0.034828663888283984
+  },
+  "Branch C (Restricted Cross)": {
+    "true_lm_bpb": 3.2262223392718368,
+    "val_loss": 8.971792182472692,
+    "bytes_per_token": 4.0120763628443425,
+    "fertility": 4.227434578898988,
+    "active_vocab_pct": 72.772216796875,
+    "cross_tokens_vocab": 1779.0,
+    "val_bytes_cross_pct": 15.686947287818152,
+    "delta_bpb": 0.4732232398689291
+  },
+  "Branch D (Unrestricted Cross)": {
+    "true_lm_bpb": 2.7602750072101525,
+    "val_loss": 9.185837117637076,
+    "bytes_per_token": 4.8010820047260365,
+    "fertility": 3.53250141631283,
+    "active_vocab_pct": 72.05810546875,
+    "cross_tokens_vocab": 3430.0,
+    "val_bytes_cross_pct": 36.087672420746124,
+    "delta_bpb": 0.007275907807244852
+  },
+  "SentencePiece (Anchor)": {
+    "true_lm_bpb": 2.1291938730177438,
+    "val_loss": 9.635924235762577,
+    "bytes_per_token": 6.529332471179441,
+    "fertility": 2.597524698216923,
+    "active_vocab_pct": 80.24088541666667,
+    "cross_tokens_vocab": 0.0,
+    "val_bytes_cross_pct": 0.0,
+    "delta_bpb": -0.6238052263851639
+  },
+  "Boundary-BPE (Anchor)": {
+    "true_lm_bpb": 2.7526087488817423,
+    "val_loss": 8.427218766432636,
+    "bytes_per_token": 4.416960620369044,
+    "fertility": 3.839702904280177,
+    "active_vocab_pct": 65.14485677083333,
+    "cross_tokens_vocab": 0.0,
+    "val_bytes_cross_pct": 0.0,
+    "delta_bpb": -0.0003903505211653169
+  }
+}
