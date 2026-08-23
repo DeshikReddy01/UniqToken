@@ -56,6 +56,12 @@ At the 32K × Large (8L-512d) configuration, the three tokenizers form a strict,
 - Boundary-BPE produces the most predictable tokens (lowest CE) but compresses the least (highest BPB).
 - **Caliper sits between both endpoints on both objectives**, with the highest active vocabulary utilization (75.6%).
 
+<p align="center">
+  <img src="benchmarks/phase_fifteen_final_paper_figure.png" alt="Phase 15 — Multi-Objective Pareto Synthesis (4-Panel)" width="900">
+  <br/>
+  <em>Figure 1: Multi-objective Pareto analysis across 27 conditions. Panel A: 32K three-way architectural frontier. Panel B: Full 27-condition BPB vs CE landscape. Panel C: Embedding memory vs BPB scaling. Panel D: Constrained decision boundary under CE threshold.</em>
+</p>
+
 ### Tokenizer–LM Capacity Interaction
 
 A two-way repeated-measures ANOVA confirms that vocabulary scaling and downstream Transformer capacity are statistically coupled:
@@ -69,6 +75,12 @@ A two-way repeated-measures ANOVA confirms that vocabulary scaling and downstrea
 Key findings from pre-registered hypothesis tests (N=5 seeds, Holm-Bonferroni corrected):
 - Scaling from 32K→64K at Medium capacity yields **−0.405 BPB** improvement (t(4) = −70.10, p = 2.48 × 10⁻⁷)
 - At 64K, Small→Medium yields **−0.208 BPB** improvement; Medium→Large yields only **−0.032 BPB** — a clear diminishing-return pattern indicating a 6L-256d capacity threshold
+
+<p align="center">
+  <img src="benchmarks/phase_fourteen_confirmatory.png" alt="Phase 14B — 5-Seed Confirmatory Factorial Scaling" width="900">
+  <br/>
+  <em>Figure 2: Confirmatory factorial scaling experiment (5 paired seeds × 3 tokenizers × 2 vocab scales × 3 LM tiers). Left: BPB scaling curves showing vocabulary–capacity interaction. Right: ANOVA interaction diagnostics confirming F(2, 8) = 425.71, p = 7.51 × 10⁻⁹.</em>
+</p>
 
 ### Memory-Budget Scaling
 
