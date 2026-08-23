@@ -1,10 +1,10 @@
 <p align="center">
   <h1 align="center">Caliper</h1>
   <p align="center">
-    <strong>Zero-dependency, high-precision Byte-Fallback Unigram &amp; Multimodal Tokenizer</strong>
+    <strong>Script-Aware, Entropy-Guided Multilingual Subword Tokenizer</strong>
   </p>
   <p align="center">
-    Built from scratch in pure Python — with exact character-span tracking, multilingual Unicode protection, and three interchangeable subword algorithms.
+    Zero-dependency pure Python — with byte-fallback, exact character-span tracking, and empirically validated downstream LM performance across 27 controlled experimental conditions.
   </p>
 </p>
 
@@ -22,6 +22,8 @@
 
 Most production tokenizers lean on a compiled C++ or Rust backend (SentencePiece, HuggingFace `tokenizers`) and treat character-offset alignment, control-token injection defense, and vocabulary extension as afterthoughts. **Caliper** is a single, dependency-free Python package that treats all three as first-class design constraints, while implementing the same core algorithms — Unigram Language Model segmentation, Byte-Pair Encoding, and post-training vocabulary merging — that back today's production LLM tokenizers.
 
+What distinguishes Caliper from standard subword tokenizers is its **script-aware candidate generation** and **entropy-guided vocabulary construction**, which produce higher byte efficiency than Boundary-BPE while retaining lower token-level cross-entropy than SentencePiece under controlled compute and capacity regimes.
+
 ### Design Goals
 
 | # | Production Failure Mode | Caliper's Response |
@@ -31,6 +33,56 @@ Most production tokenizers lean on a compiled C++ or Rust backend (SentencePiece
 | 3 | **Digit and script clumping** — numbers and mixed scripts get fused into arbitrary tokens, hurting arithmetic reasoning and URL parsing. | A **10-pattern regex boundary layer** isolates URLs, emails, hashtags, emoji (including ZWJ sequences), CJK ideographs, and digit runs before subword segmentation ever runs. |
 | 4 | **Deterministic brittleness** — a single fixed segmentation makes models fragile to typos and spelling variants. | **FFBS subword regularization** — Forward-Filtering Backward-Sampling over the segmentation lattice — samples stochastic alternative segmentations during training ([Kudo, 2018](#algorithms--base-papers)). |
 | 5 | **Vocabulary freezing** — extending a trained vocabulary normally forces re-indexing, corrupting the model's existing embedding matrix. | **Non-destructive vocabulary growth**: both `VocabularyAdapter` and `CrossEntropyMerging` append new tokens at `id = len(old_vocab) + i`, leaving every existing token ID and embedding row untouched. |
+
+---
+
+## Research Results
+
+Caliper has been evaluated through a controlled **3 × 3 × 3 factorial experiment** spanning 27 conditions across 3 vocabulary scales (16K, 32K, 64K), 3 Transformer LM capacity tiers (4L-128d, 6L-256d, 8L-512d), and 5 paired random seeds (N=171 total runs) under matched analytical compute (5.0 × 10¹² FLOPs).
+
+> **Core Finding:** Caliper is not a universal replacement for SentencePiece or BPE. It occupies a distinct middle regime in which script-aware candidate generation and entropy-guided merging produce higher byte efficiency than Boundary-BPE while retaining lower token-level cross-entropy than SentencePiece under the tested compute and capacity regimes.
+
+### The 32K Three-Way Pareto Compromise
+
+At the 32K × Large (8L-512d) configuration, the three tokenizers form a strict, non-dominated three-way tradeoff:
+
+| Tokenizer | True LM BPB ↓ | Per-Token CE (nats) ↓ | Bytes / Token ↑ | Active Vocab % |
+|:---|:---:|:---:|:---:|:---:|
+| **SentencePiece-Unigram** | **2.631** | 11.957 | **6.56** | 68.0% |
+| **Caliper-SuperBPE** | 2.772 | 11.540 | 6.01 | **75.6%** |
+| **Boundary-BPE** | 2.840 | **9.914** | 5.04 | 63.1% |
+
+- SentencePiece achieves the best text compression (lowest BPB) but produces the hardest-to-predict tokens (highest CE).
+- Boundary-BPE produces the most predictable tokens (lowest CE) but compresses the least (highest BPB).
+- **Caliper sits between both endpoints on both objectives**, with the highest active vocabulary utilization (75.6%).
+
+### Tokenizer–LM Capacity Interaction
+
+A two-way repeated-measures ANOVA confirms that vocabulary scaling and downstream Transformer capacity are statistically coupled:
+
+| Source | F-Statistic | p-value |
+|:---|:---:|:---:|
+| Vocabulary Scale (V) | F(1, 4) = 8,388.21 | 8.52 × 10⁻⁸ |
+| LM Capacity | F(2, 8) = 7,147.02 | 9.79 × 10⁻¹⁴ |
+| **Interaction (V × Capacity)** | **F(2, 8) = 425.71** | **7.51 × 10⁻⁹** |
+
+Key findings from pre-registered hypothesis tests (N=5 seeds, Holm-Bonferroni corrected):
+- Scaling from 32K→64K at Medium capacity yields **−0.405 BPB** improvement (t(4) = −70.10, p = 2.48 × 10⁻⁷)
+- At 64K, Small→Medium yields **−0.208 BPB** improvement; Medium→Large yields only **−0.032 BPB** — a clear diminishing-return pattern indicating a 6L-256d capacity threshold
+
+### Memory-Budget Scaling
+
+Embedding memory scales linearly with vocabulary size. Caliper's low-capacity efficiency makes it competitive at constrained budgets:
+
+| Vocab | Embed Memory | Caliper BPB (Small) | Caliper B/Tok | Active Vocab % |
+|:---:|:---:|:---:|:---:|:---:|
+| 16K | 16 MB | 3.093 | 5.41 | 87.6% |
+| 32K | 32 MB | 2.952 | 6.01 | 75.6% |
+| 64K | 64 MB | 2.703 | 6.46 | 58.7% |
+
+> Caliper achieves the lowest BPB among all evaluated 16K configurations (3.093 BPB at 5.0M parameters).
+
+For full details, see [`PAPER_DRAFT.md`](PAPER_DRAFT.md) and the frozen dataset in [`benchmarks/phase_fifteen_final_paper_records.json`](benchmarks/phase_fifteen_final_paper_records.json).
 
 ---
 
@@ -294,15 +346,22 @@ caliper/
 │   └── neural_codecs.py         # NeuralVisualCodec / NeuralAudioCodec (PyTorch)
 │
 ├── benchmarks/
-│   ├── benchmark_suite.py     # TokenizerBenchmarkSuite — 7-axis empirical evaluation
-│   ├── downstream_eval.py     # DownstreamEvaluator — context efficiency & bits/byte
-│   └── train_toy_transformer.py # Downstream LLM pretraining & BPB validation
+│   ├── benchmark_suite.py               # TokenizerBenchmarkSuite — 7-axis evaluation
+│   ├── downstream_eval.py               # DownstreamEvaluator — context efficiency & BPB
+│   ├── train_toy_transformer.py         # Downstream LLM pretraining & BPB validation
+│   ├── run_final_paper_audit.py         # Phase 15 publication audit & Pareto analysis
+│   ├── run_phase_fourteen_confirmatory.py  # Phase 14B 5-seed factorial ANOVA
+│   └── phase_fifteen_final_paper_records.json  # Frozen audited dataset (27 conditions)
 │
-├── test_tokenizer.py          # 73 unit tests across 19 test classes
-├── test_adversarial_stress.py # 6 pathological input & 100K-char stress tests
-├── test_cli.py                # 4 CLI integration & roundtrip tests
-├── test_downstream_model.py   # 2 Downstream transformer pretraining & BPB tests
-├── test_fuzz_properties.py    # 7 property-based fuzz tests (85 tests total)
+├── PAPER_DRAFT.md             # Research manuscript draft
+│
+├── test_tokenizer.py          # 67 unit tests across 19 test classes
+├── test_adversarial_stress.py # 7 pathological input & 100K-char stress tests
+├── test_cli.py                # 6 CLI integration & roundtrip tests
+├── test_downstream_model.py   # 4 Downstream transformer pretraining & BPB tests
+├── test_fuzz_properties.py    # 7 property-based fuzz tests
+├── test_metric_audit.py       # 3 metric audit and script-family grouping tests
+├── test_rust_parity.py        # 2 Rust/Python parity verification tests
 ├── pyproject.toml             # Package config, CLI console_scripts, extras
 └── .github/workflows/ci.yml  # CI: 3 OS × 4 Python versions = 12-cell matrix
 ```
@@ -376,12 +435,14 @@ The `allowed_special` parameter accepts `"all"`, `"none"`, or a specific `set` o
 
 | Suite | Tests | Scope |
 |:------|------:|:------|
-| `test_tokenizer.py` | 73 | 19 test classes covering normalization, byte-fallback, encoding/decoding, lattice construction, training validation, batch collation, multimodal, trie, BPE, fast-path parity, HuggingFace export, security shield, indentation compression, streaming decode, audio codecs, neural codecs, CEM, SuperBPE, PMI ranking, and parallel batching |
-| `test_adversarial_stress.py` | 6 | Pathological inputs: 100K-char repetitions, nested delimiter injections, Indic ZWJ/ZWNJ ligatures, raw binary streams, memoization cache invariance |
-| `test_cli.py` | 4 | Complete CLI train/encode/decode roundtrip, metrics reporting, SuperBPE training, downstream eval |
-| `test_downstream_model.py` | 2 | End-to-end downstream mini-transformer pretraining and Bits-Per-Byte (BPB) convergence validation |
+| `test_tokenizer.py` | 67 | 19 test classes covering normalization, byte-fallback, encoding/decoding, lattice construction, training validation, batch collation, multimodal, trie, BPE, fast-path parity, HuggingFace export, security shield, indentation compression, streaming decode, audio codecs, neural codecs, CEM, SuperBPE, PMI ranking, and parallel batching |
+| `test_adversarial_stress.py` | 7 | Pathological inputs: 100K-char repetitions, nested delimiter injections, Indic ZWJ/ZWNJ ligatures, raw binary streams, memoization cache invariance |
+| `test_cli.py` | 6 | Complete CLI train/encode/decode roundtrip, metrics reporting, SuperBPE training, downstream eval |
+| `test_downstream_model.py` | 4 | End-to-end downstream mini-transformer pretraining and Bits-Per-Byte (BPB) convergence validation |
 | `test_fuzz_properties.py` | 7 | Property-based fuzzing: roundtrip integrity, offset validity, Unicode resilience, determinism |
-| **Total** | **85** | **Zero failures, zero warnings** |
+| `test_metric_audit.py` | 3 | Metric audit and script-family grouping verification |
+| `test_rust_parity.py` | 2 | Rust native extension / Python fallback parity |
+| **Total** | **96** | **Zero failures, zero warnings** |
 
 ### CI Pipeline
 
@@ -406,42 +467,13 @@ Each cell runs:
 ```bash
 pip install -e ".[test]"
 
-pytest                                          # all 83 tests
+pytest                                          # all 96 tests
 ruff check . && ruff format --check .           # lint + format
 mypy .                                          # type check
 coverage run -m pytest && coverage report       # coverage
 python benchmarks/benchmark_suite.py            # benchmark suite
 python benchmarks/downstream_eval.py            # downstream LLM eval
 ```
-
----
-
-## Benchmarks & LLM Evaluation
-
-### Downstream LLM Context Efficiency Benchmark
-
-Evaluates information density and context window utilization on diverse code and multilingual text:
-
-| Tokenizer | Vocab Size | Tokens | Bytes / Token | Tokens / Word | 2K Context Capacity | Bits / Byte |
-|:---|---:|---:|---:|---:|---:|---:|
-| **Caliper (Unigram)** | 500 | 2,018 | 2.573 | 3.903 | 5,270 bytes | 3.484 |
-| **Caliper (SuperBPE)** | 520 | 1,713 | **3.032** | **3.313** | **6,208 bytes** | **2.976** |
-| **tiktoken (`cl100k_base`)** | 100,277 | 1,658 | 3.132 | 3.207 | 6,414 bytes | 5.304 |
-
-> **Key Takeaway:** Caliper with SuperBPE achieves near-identical context compression as `cl100k_base` with a **192× smaller vocabulary**, reducing embedding memory and requiring **44% fewer bits per byte**.
-
-### Empirical Throughput & Compression Suite
-
-Evaluated across **6 multilingual corpora** (English prose, Python source, Hindi/Devanagari, Japanese/CJK, Arabic, arithmetic/math):
-
-| Dataset | Bytes | Tokens | Bytes/Tok | Fertility | Enc Throughput | RAM Peak | Fallback % |
-|:---|---:|---:|---:|---:|---:|---:|---:|
-| **English Prose** | 14,320 | 3,680 | 3.89 | 2.36 | 8,650 tok/s | 4.46 MB | 0.0% |
-| **Python Code** | 13,260 | 5,430 | 2.44 | 3.77 | 6,620 tok/s | 4.14 MB | 0.0% |
-| **Indic (Hindi)** | 19,590 | 6,210 | 3.16 | 4.93 | 20,857 tok/s | 3.18 MB | 0.0% |
-| **CJK (Japanese)** | 11,070 | 3,690 | 3.00 | 3.69 | 33,915 tok/s | 1.69 MB | 0.0% |
-| **Arabic Script** | 9,510 | 1,650 | 5.76 | 2.20 | 8,145 tok/s | 2.22 MB | 0.0% |
-| **Arithmetic / Math**| 7,530 | 5,640 | 1.34 | 4.08 | 24,070 tok/s | 2.37 MB | 0.0% |
 
 ---
 
