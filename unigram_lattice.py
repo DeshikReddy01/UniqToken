@@ -137,18 +137,18 @@ class UnigramLattice:
                 self.end_nodes[i + 1].append(edge)
 
         # Beam Pruning: Cap incoming edges per node if max_edges_per_node is specified
-        # ponytail: O(n*k) pruning (scan i<j per node); per-node filter with single pass if n>10k
         if self.max_edges_per_node is not None:
             k = self.max_edges_per_node
             for j in range(1, self.length + 1):
                 if len(self.end_nodes[j]) > k:
-                    # Retain top-k incoming edges with lowest cost (highest log_prob)
                     self.end_nodes[j].sort(key=lambda e: e.cost)
-                    retained_ids = {id(e) for e in self.end_nodes[j][:k]}
-                    self.end_nodes[j] = list(self.end_nodes[j][:k])
-                    # Synchronize begin_nodes to remove pruned edges
-                    for i in range(j):
-                        self.begin_nodes[i] = [e for e in self.begin_nodes[i] if e.end != j or id(e) in retained_ids]
+                    # ponytail: O(k) removal per node not O(n*k) scan; upgrade to heap if n>100k
+                    pruned = self.end_nodes[j][k:]
+                    self.end_nodes[j] = self.end_nodes[j][:k]
+                    for e in pruned:
+                        # remove pruned edge from its start bucket by identity
+                        lst = self.begin_nodes[e.start]
+                        self.begin_nodes[e.start] = [x for x in lst if x is not e]
 
     def viterbi_edges(self) -> Tuple[List[LatticeEdge], float]:
         """Return the edges in the single most probable segmentation."""

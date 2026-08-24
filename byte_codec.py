@@ -15,6 +15,9 @@ class ByteFallbackEngine:
 
     @classmethod
     def is_byte_token(cls, token: str) -> bool:
+        # ponytail: fast string pre-check avoids regex for 99% non-byte tokens; upgrade to interned set if vocab>100k
+        if len(token) != 6 or not token.startswith("<0x") or token[-1] != ">":
+            return False
         return bool(cls.BYTE_TOKEN_PATTERN.match(token))
 
     @classmethod

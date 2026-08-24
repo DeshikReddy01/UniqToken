@@ -115,7 +115,7 @@ class BatchCollator:
                         batch_ids.append(ids)
                         batch_tokens.append(tokens)
                     use_rust_batch = True
-            except Exception:
+            except (ImportError, AttributeError, ValueError):
                 use_rust_batch = False
 
         if not use_rust_batch:

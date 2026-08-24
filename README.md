@@ -365,14 +365,16 @@ caliper/
 │   ├── run_phase_fourteen_confirmatory.py  # Phase 14B 5-seed factorial ANOVA
 │   └── phase_fifteen_final_paper_records.json  # Frozen audited dataset (27 conditions)
 │
+├── caliper_core.pyi           # Static typing stub for PyO3 C-extension
 ├── PAPER_DRAFT.md             # Research manuscript draft
 │
-├── test_tokenizer.py          # 67 unit tests across 19 test classes
+├── test_tokenizer.py          # 68 unit tests across 19 test classes
 ├── test_adversarial_stress.py # 7 pathological input & 100K-char stress tests
+├── test_batch_parity.py       # 4 batch vs single encoding parity tests
 ├── test_cli.py                # 6 CLI integration & roundtrip tests
 ├── test_downstream_model.py   # 4 Downstream transformer pretraining & BPB tests
 ├── test_fuzz_properties.py    # 7 property-based fuzz tests
-├── test_metric_audit.py       # 3 metric audit and script-family grouping tests
+├── test_metric_audit.py       # 2 metric accounting invariant tests
 ├── test_rust_parity.py        # 2 Rust/Python parity verification tests
 ├── pyproject.toml             # Package config, CLI console_scripts, extras
 └── .github/workflows/ci.yml  # CI: 3 OS × 4 Python versions = 12-cell matrix
@@ -447,14 +449,15 @@ The `allowed_special` parameter accepts `"all"`, `"none"`, or a specific `set` o
 
 | Suite | Tests | Scope |
 |:------|------:|:------|
-| `test_tokenizer.py` | 67 | 19 test classes covering normalization, byte-fallback, encoding/decoding, lattice construction, training validation, batch collation, multimodal, trie, BPE, fast-path parity, HuggingFace export, security shield, indentation compression, streaming decode, audio codecs, neural codecs, CEM, SuperBPE, PMI ranking, and parallel batching |
+| `test_tokenizer.py` | 68 | 19 test classes covering normalization, byte-fallback, encoding/decoding, lattice construction, training validation, batch collation, multimodal, trie, BPE, fast-path parity, HuggingFace export, security shield, indentation compression, streaming decode, audio codecs, neural codecs, CEM, SuperBPE, PMI ranking, and parallel batching |
 | `test_adversarial_stress.py` | 7 | Pathological inputs: 100K-char repetitions, nested delimiter injections, Indic ZWJ/ZWNJ ligatures, raw binary streams, memoization cache invariance |
+| `test_batch_parity.py` | 4 | Batch vs single-sentence encoding parity, offset span consistency, Rust batch acceleration parity |
 | `test_cli.py` | 6 | Complete CLI train/encode/decode roundtrip, metrics reporting, SuperBPE training, downstream eval |
 | `test_downstream_model.py` | 4 | End-to-end downstream mini-transformer pretraining and Bits-Per-Byte (BPB) convergence validation |
 | `test_fuzz_properties.py` | 7 | Property-based fuzzing: roundtrip integrity, offset validity, Unicode resilience, determinism |
-| `test_metric_audit.py` | 3 | Metric audit and script-family grouping verification |
+| `test_metric_audit.py` | 2 | Metric accounting invariants (TID-BPB formula, byte/token sums) and 12-script vocabulary distribution audit |
 | `test_rust_parity.py` | 2 | Rust native extension / Python fallback parity |
-| **Total** | **96** | **Zero failures, zero warnings** |
+| **Total** | **100** | **Zero failures, zero warnings** |
 
 ### CI Pipeline
 
@@ -479,7 +482,7 @@ Each cell runs:
 ```bash
 pip install -e ".[test]"
 
-pytest                                          # all 96 tests
+pytest                                          # all 100 tests
 ruff check . && ruff format --check .           # lint + format
 mypy .                                          # type check
 coverage run -m pytest && coverage report       # coverage

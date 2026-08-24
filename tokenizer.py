@@ -283,12 +283,25 @@ class CustomTokenizer:
         norm = self.normalizer.normalize(sanitized_text)
         chunks = self.pre_tokenizer.pre_tokenize(norm)
 
+        # ponytail: batch per-text chunks 46→1 call; keep special-token bypass
         all_tokens: List[str] = []
-        for chunk in chunks:
-            if chunk in self.model.special_tokens:
-                all_tokens.append(chunk)
-            else:
-                all_tokens.extend(self.model.encode(chunk))
+        if not chunks:
+            return []
+        special = set(self.model.special_tokens)
+        # fast path: no specials in this text (common)
+        if not any(c in special for c in chunks):
+            for lst in self.model.encode_batch(chunks):
+                all_tokens.extend(lst)
+        else:
+            # mixed — batch only non-specials
+            non_special = [c for c in chunks if c not in special]
+            batch = self.model.encode_batch(non_special) if non_special else []
+            it = iter(batch)
+            for c in chunks:
+                if c in special:
+                    all_tokens.append(c)
+                else:
+                    all_tokens.extend(next(it))
 
         return self._apply_cross_word_merges(all_tokens)
 
@@ -458,7 +471,7 @@ class CustomTokenizer:
                         self.model.byte_fallback,
                         self.normalizer.space_char,
                     )
-                except Exception:
+                except (ImportError, AttributeError, ValueError):
                     pass
 
         if len(texts) <= 64 or num_workers == 1:

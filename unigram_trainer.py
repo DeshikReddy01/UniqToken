@@ -13,7 +13,7 @@ from byte_codec import ByteFallbackEngine
 try:
     import caliper_core
 
-    _HAS_CALIPER_CORE = True
+    _HAS_CALIPER_CORE = hasattr(caliper_core, "RustPrefixTrie")
 except ImportError:
     _HAS_CALIPER_CORE = False
 
@@ -162,6 +162,57 @@ class UnigramModel:
         spans = self.encode_with_spans(text)
         return [token for token, _, _ in spans]
 
+    def encode_batch(self, chunks: List[str]) -> List[List[str]]:
+        """Batched encode — single trie/cache lookup, one Rust batch if available."""
+        if not chunks:
+            return []
+        # ponytail: batch cuts 4600→100 FFI/cache checks; Rust batch when compiled else hoisted Python
+        rust_trie = self._get_rust_trie()
+        if rust_trie is not None:
+            try:
+                import caliper_core
+
+                # ponytail: rust_encode_tokens_batch returns Vec<Vec<String>> directly — no ViterbiSpan wrapper, single FFI
+                if hasattr(caliper_core, "rust_encode_tokens_batch"):
+                    # ponytail: no span cache for token-only batch; encode_with_spans will compute exact spans on miss
+                    return caliper_core.rust_encode_tokens_batch(chunks, rust_trie, self.byte_fallback)
+                batch_spans = caliper_core.rust_viterbi_decode_batch(chunks, rust_trie, self.byte_fallback)
+                res: List[List[str]] = []
+                cache = self._get_seg_cache()
+                for chunk, spans in zip(chunks, batch_spans):
+                    lst = [s.token for s in spans]
+                    if len(chunk) <= 64 and len(cache) < self._MAX_CACHE_SIZE and chunk not in cache:
+                        cache[chunk] = [(s.token, s.start, s.end) for s in spans]
+                    res.append(lst)
+                return res
+            except (ImportError, AttributeError, ValueError):
+                pass
+        # Python fallback — hoisted trie/cache
+        cache = self._get_seg_cache()
+        trie = self._get_trie()
+        out: List[List[str]] = []
+        for chunk in chunks:
+            if len(chunk) == 1 and chunk in self.vocab:
+                out.append([chunk])
+                continue
+            cached = cache.get(chunk)
+            if cached is not None:
+                out.append([t for t, _, _ in cached])
+                continue
+            fast = self._encode_fast(chunk)
+            if fast is not None:
+                spans = fast
+            else:
+                lattice = UnigramLattice(
+                    chunk, self.vocab, max_subword_len=self.max_subword_len, byte_fallback=self.byte_fallback, trie=trie
+                )
+                edges, _ = lattice.viterbi_edges()
+                spans = [(token, edge.start, edge.end) for edge in edges for token in edge.tokens]
+            if len(chunk) <= 64 and len(cache) < self._MAX_CACHE_SIZE:
+                cache[chunk] = spans
+            out.append([t for t, _, _ in spans])
+        return out
+
     def encode_with_spans(self, text: str) -> List[Tuple[str, int, int]]:
         """Encode text and retain normalized character spans for every output token."""
         if len(text) == 1 and text in self.vocab:
@@ -185,7 +236,7 @@ class UnigramModel:
                 if len(text) <= 64 and len(cache) < self._MAX_CACHE_SIZE:
                     cache[text] = spans
                 return spans
-            except Exception:
+            except (ImportError, AttributeError, ValueError):
                 pass
 
         # 2. Pure Python fast path or full lattice DAG

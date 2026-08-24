@@ -37,12 +37,39 @@ class SecurityShield:
         - allowed_special="none": disallows and sanitizes all control sequences.
         - allowed_special={"<|user|>"}: whitelists specified control sequences only.
         """
-        sanitized, _ = self.sanitize_with_alignment(
-            text,
-            allowed_special=allowed_special,
-            disallowed_special_action=disallowed_special_action,
-        )
-        return sanitized
+        # ponytail: fast path without alignment — avoids 120k tuple allocs per 240 texts; with_alignment kept exact
+        if not isinstance(text, str):
+            raise TypeError(f"text must be a string, got {type(text).__name__}")
+        if disallowed_special_action not in {"escape", "raise", "ignore"}:
+            raise ValueError("disallowed_special_action must be 'escape', 'raise', or 'ignore'")
+        if allowed_special == "all":
+            allowed_set = self.special_tokens
+        elif allowed_special == "none" or not allowed_special:
+            allowed_set = set()
+        elif isinstance(allowed_special, str):
+            allowed_set = {allowed_special}
+        else:
+            allowed_set = set(allowed_special)
+
+        output: List[str] = []
+        cursor = 0
+        for match in self.pattern.finditer(text):
+            output.append(text[cursor : match.start()])
+            token = match.group(0)
+            if token in allowed_set:
+                output.append(token)
+            elif disallowed_special_action == "raise":
+                raise ValueError(
+                    f"Security Exception: Input contains unauthorized control token {token!r}. "
+                    f"Whitelist via allowed_special={{{token!r}}} if intentional."
+                )
+            elif disallowed_special_action == "escape":
+                output.append(f"<\\|{token[2:-2]}\\|>")
+            elif disallowed_special_action == "ignore":
+                pass
+            cursor = match.end()
+        output.append(text[cursor:])
+        return "".join(output)
 
     def sanitize_with_alignment(
         self,

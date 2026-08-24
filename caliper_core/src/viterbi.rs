@@ -209,6 +209,34 @@ pub fn rust_viterbi_decode_batch(
     })
 }
 
+/// Batch encodes strings to token strings (no ViterbiSpan wrapper) — single FFI, minimal conversion.
+#[pyfunction]
+#[pyo3(signature = (texts, trie, byte_fallback, max_edges_per_node=None))]
+pub fn rust_encode_tokens_batch(
+    py: Python<'_>,
+    texts: Vec<String>,
+    trie: &RustPrefixTrie,
+    byte_fallback: bool,
+    max_edges_per_node: Option<usize>,
+) -> PyResult<Vec<Vec<String>>> {
+    if matches!(max_edges_per_node, Some(0)) {
+        return Err(PyValueError::new_err(
+            "max_edges_per_node must be greater than zero",
+        ));
+    }
+    py.allow_threads(|| {
+        texts
+            .par_iter()
+            .map(|text| {
+                let chars: Vec<char> = text.chars().collect();
+                let spans = viterbi_decode_chars(&chars, trie, byte_fallback, max_edges_per_node)
+                    .map_err(PyValueError::new_err)?;
+                Ok(spans.into_iter().map(|s| s.token).collect())
+            })
+            .collect()
+    })
+}
+
 /// Batch encodes strings directly to token integer IDs using parallel Rayon workers (releases GIL).
 #[pyfunction]
 #[pyo3(signature = (texts, trie, byte_fallback, max_edges_per_node=None))]

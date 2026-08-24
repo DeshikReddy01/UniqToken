@@ -49,7 +49,80 @@ from pre_tokenizer import Normalizer, RegexPreTokenizer
 from seed_builder import SeedToken, SeedVocabularyBuilder
 from tokenizer import CustomTokenizer
 from unigram_trainer import UnigramTrainer
-from benchmarks.run_phase_twelve_scaling_experiment import generate_high_entropy_corpus
+
+
+def generate_high_entropy_corpus(num_docs: int = 1000, seed: int = 42) -> Tuple[List[str], Dict[str, str]]:
+    rng = random.Random(seed)
+    scripts = {
+        "English": (
+            "abcdefghijklmnopqrstuvwxyz",
+            [
+                "tion", "ing", "ness", "able", "ment", "ship", "hood", "ism",
+                "ize", "ate", "ous", "ive", "al", "ity", "ward", "wise",
+                "less", "ful", "ance", "ence",
+            ],
+        ),
+        "Hindi": (
+            "अआइईउऊऋएऐओऔकखगघङचछजझञटठडढणतथदधनपफबभमयरलवशषसह",
+            [
+                "कारी", "वादी", "करण", "शीलता", "पूर्वक", "त्मक", "त्व", "मय",
+                "वान", "अनुसार", "प्रणाली", "योजना", "विज्ञान", "संस्थान",
+            ],
+        ),
+        "Telugu": (
+            "అఆఇఈఉఊఋఎఏఐఒఓఔకఖగఘఙచఛజఝఞటఠడఢణతథదధనపఫబభమయరలవశషసహ",
+            ["త్వము", "శీలత", "పూర్వక", "మైన", "కరమైన", "వాద", "నిర్వహణ", "వ్యవస్థ", "విధానము", "అభివృద్ధి", "పరిశోధన"],
+        ),
+        "Tamil": (
+            "அஆஇஈஉஊஎஏஐஒஓஔகஙசஞடணதநபமயரலவழளறன",
+            ["மை", "வாதம்", "பூர்வ", "மான", "கரமான", "த்துவம்", "மேலாண்மை", "அமைப்பு", "வளர்ச்சி", "திட்டம்", "ஆராய்ச்சி"],
+        ),
+        "Bengali": (
+            "অআইঈউঊঋএঐওঔকখগঘঙচছজঝঞটঠডঢণতথদধনপফবভমযরলবশষসহ",
+            ["কারী", "বাদী", "করণ", "শীলতা", "মূলক", "ত্ব", "ময়", "ব্যবস্থাপনা", "পদ্ধতি", "উন্নয়ন", "গবেষণা"],
+        ),
+        "Arabic": (
+            "ابتثجحخدذرزسشصضطظعغفقكلمنهوي",
+            ["ية", "يات", "يون", "ين", "ستان", "ات", "ان", "المعلوماتية", "الاستراتيجية", "التكنولوجية", "المؤسساتية"],
+        ),
+        "Chinese": (
+            "的一是在不了有和人这中大为上个国我以要他时来用们生到作地于出就分对成会可主发年动同工也能下过子说产种面而方后多定行学法所民得经十三之进着等部度家电力里如水化高自二理起小物现实加量都两体制机当使点从业本去把建争性好应各想向开特立数正日月明天地玄黄宇宙洪荒日月盈昃辰宿列张寒来暑往秋收冬藏闰余成岁律吕调阳云腾致雨露结为霜金生丽水玉出昆冈剑号巨阙珠称夜光果珍李柰菜重芥姜海咸河淡鳞潜羽翔龙师火帝鸟官人皇始制文字乃服衣裳推位让国有虞陶唐吊民伐罪周发殷汤坐朝问道垂拱平章爱育黎首臣伏戎羌遐迩一体率宾归王鸣凤在竹白驹食场化被草木赖及万方盖此身发四大五常恭惟鞠养岂敢毁伤女慕贞洁男效才良知过必改得能莫忘罔谈彼短靡恃己长信使可覆器欲难量墨悲丝染诗赞羔羊景行维贤克念作圣德建名立形端表正空谷传声虚堂习听祸因恶积福缘善庆尺璧非宝寸阴是竞资父事君曰严与敬孝当竭力忠则尽命临深履薄夙兴温凊似兰斯馨如松之盛川流不息渊澄取映容止若思言辞安定笃初诚美慎终宜令荣业所基籍甚无竟学优登仕摄职从政存以甘棠去而益咏乐殊贵贱礼别尊卑上和下睦夫唱妇随",
+            [],
+        ),
+        "Russian": (
+            "абвгдеёжзийклмнопрстуфхцчшщъыьэюя",
+            ["ость", "ение", "ация", "ический", "ованный", "тель", "ство", "изм", "ирование", "ование", "тельский"],
+        ),
+    }
+
+    train_docs: List[str] = []
+    val_by_lang: Dict[str, str] = {}
+
+    for lang, (chars, affixes) in scripts.items():
+        raw_words = ["".join(rng.choices(chars, k=rng.randint(2, 4 if lang == "Chinese" else 7))) for _ in range(12000)]
+        if affixes:
+            extra = [w + aff for w in raw_words[:6000] for aff in rng.sample(affixes, k=min(len(affixes), 3))]
+            raw_words.extend(extra)
+        vocab_pool = list(set(raw_words))
+        n_pool = len(vocab_pool)
+
+        docs_lang = []
+        for _ in range(num_docs):
+            d_len = rng.randint(25, 50)
+            w_sample = [vocab_pool[rng.randrange(n_pool)] for _ in range(d_len)]
+            if rng.random() < 0.25:
+                w_sample.append(f"SYS_{rng.randint(100, 99999)}")
+            if rng.random() < 0.25:
+                w_sample.append(f"0x{rng.randint(0, 0xFFFFFFFF):08x}")
+            if rng.random() < 0.30:
+                w_sample.append(str(rng.randint(100, 999999)))
+            docs_lang.append("".join(w_sample) if lang == "Chinese" else " ".join(w_sample))
+
+        split = int(num_docs * 0.8)
+        train_docs.extend(docs_lang[:split])
+        val_by_lang[lang] = "\n".join(docs_lang[split:])
+
+    return train_docs, val_by_lang
 
 TARGET_TRAINING_FLOPS = 5.0e12
 
@@ -150,7 +223,7 @@ class CausalMiniTransformer(nn.Module):
         self.block_size = block_size
         self.embed = nn.Embedding(v_sz, cfg.d_model)
         self.pos = nn.Parameter(torch.randn(1, block_size, cfg.d_model) * 0.02)
-        
+
         layer = nn.TransformerEncoderLayer(
             d_model=cfg.d_model,
             nhead=cfg.num_heads,
@@ -279,19 +352,19 @@ def compute_repeated_measures_anova_2way(data_matrix: np.ndarray) -> Dict[str, A
 
     SS_total = np.sum((data_matrix - grand_mean) ** 2)
     SS_subj = a * b * np.sum((mean_subj - grand_mean) ** 2)
-    
+
     SS_A = b * s * np.sum((mean_a - grand_mean) ** 2)
     SS_B = a * s * np.sum((mean_b - grand_mean) ** 2)
     SS_AB = s * np.sum((mean_ab - mean_a[:, None] - mean_b[None, :] + grand_mean) ** 2)
 
     SS_As = b * np.sum((mean_as.T - mean_a[:, None] - mean_subj[None, :] + grand_mean) ** 2)
     SS_Bs = a * np.sum((mean_bs.T - mean_b[:, None] - mean_subj[None, :] + grand_mean) ** 2)
-    
+
     SS_ABs = 0.0
     for k in range(s):
         for i in range(a):
             for j in range(b):
-                dev = (data_matrix[k, i, j] - mean_ab[i, j] - mean_as[k, i] - mean_bs[k, j] 
+                dev = (data_matrix[k, i, j] - mean_ab[i, j] - mean_as[k, i] - mean_bs[k, j]
                        + mean_a[i] + mean_b[j] + mean_subj[k] - grand_mean)
                 SS_ABs += dev ** 2
 
@@ -707,7 +780,7 @@ def run_phase_fourteen_confirmatory(
     ax_b = axes[0, 1]
     bpb_64_means = [summary_grid[lm][65536]["Caliper-SuperBPE (Config B)"]["true_lm_bpb_mean"] for lm in lm_tiers]
     ce_64_means = [summary_grid[lm][65536]["Caliper-SuperBPE (Config B)"]["token_ce_loss_mean"] for lm in lm_tiers]
-    
+
     x_pos = np.arange(len(lm_tiers))
     ax_b.plot(x_pos, bpb_64_means, "ro-", linewidth=2.4, markersize=9, label="True LM BPB (Left)")
     for i, val in enumerate(bpb_64_means):

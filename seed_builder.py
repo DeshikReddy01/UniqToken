@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import math
-from collections import Counter
+from collections import Counter, deque
 from dataclasses import dataclass
-from typing import Dict, Iterable, List, Optional, Set, Tuple
+from typing import Deque, Dict, Iterable, List, Optional, Set, Tuple
 
 
 @dataclass(frozen=True)
@@ -192,6 +192,19 @@ class SeedVocabularyBuilder:
         if self.min_boundary_entropy is not None:
             counts, _ = self.mine_ngrams_with_entropy(chunk_counts)
             return counts
+        # ponytail: Rust &str slice + AHashMap if available; Python fallback exact
+        try:
+            import caliper_core  # type: ignore
+
+            if hasattr(caliper_core, "rust_mine_ngrams"):
+                rust_res = caliper_core.rust_mine_ngrams(
+                    dict(chunk_counts),
+                    self.max_ngram_length,
+                    set(self.special_tokens) if self.special_tokens else None,
+                )
+                return Counter(rust_res)
+        except (ImportError, AttributeError, ValueError, TypeError):
+            pass
         ngram_counts: Counter[str] = Counter()
         default_max = self.max_ngram_length
         for chunk, chunk_freq in chunk_counts.items():
@@ -279,12 +292,17 @@ class SeedVocabularyBuilder:
         - "frequency": raw freq
         - "pmi": Pointwise Mutual Information cohesion scaled by savings
         """
+        # ponytail: cache script label once; _detect_script scans token O(|t|)
+        script_of: Dict[str, str] = {}
+        if candidate_counts:
+            script_of = {t: self._detect_script(t) for t in candidate_counts}
+
         script_weights: Dict[str, float] = {}
         if self.script_balance_temperature is not None and candidate_counts:
             T = self.script_balance_temperature
             script_totals: Counter[str] = Counter()
             for t, cnt in candidate_counts.items():
-                script_totals[self._detect_script(t)] += cnt
+                script_totals[script_of[t]] += cnt
 
             temp_totals = {s: (tot**T) for s, tot in script_totals.items()}
             sum_temp = sum(temp_totals.values())
@@ -304,7 +322,7 @@ class SeedVocabularyBuilder:
                 pmi = log_p_t - sum_char_log_p
                 base = (len(t) - 1) * freq * max(0.1, pmi)
                 if self.script_balance_temperature is not None:
-                    return base * script_weights.get(self._detect_script(t), 1.0)
+                    return base * script_weights.get(script_of[t], 1.0)
                 return base
 
             return sorted(
@@ -318,10 +336,14 @@ class SeedVocabularyBuilder:
             )
         elif self.ranking_strategy in {"char_savings", "byte_savings"}:
             is_byte = self.ranking_strategy == "byte_savings"
+            # ponytail: cache byte_len to avoid encode per comparator call
+            byte_len_of: Dict[str, int] = {}
+            if is_byte:
+                byte_len_of = {t: len(t.encode("utf-8")) for t in candidate_counts}
 
             def savings_score(t: str) -> float:
                 if is_byte:
-                    byte_len = len(t.encode("utf-8"))
+                    byte_len = byte_len_of[t]
                     effective_len = max(byte_len - 1, 1)
                     if self.length_exponent == 1.0:
                         base = float(candidate_counts[t]) * float(effective_len)
@@ -335,7 +357,7 @@ class SeedVocabularyBuilder:
                         base = float(candidate_counts[t]) * (float(char_len) ** self.length_exponent)
 
                 if self.script_balance_temperature is not None:
-                    return base * script_weights.get(self._detect_script(t), 1.0)
+                    return base * script_weights.get(script_of[t], 1.0)
                 return base
 
             return sorted(
@@ -352,7 +374,7 @@ class SeedVocabularyBuilder:
             def freq_score(t: str) -> float:
                 base = float(candidate_counts[t])
                 if self.script_balance_temperature is not None:
-                    return base * script_weights.get(self._detect_script(t), 1.0)
+                    return base * script_weights.get(script_of[t], 1.0)
                 return base
 
             return sorted(
@@ -424,27 +446,29 @@ class SeedVocabularyBuilder:
         candidate_budget = max(0, effective_seed_size - len(seed_vocab))
 
         # Bucket candidates by script family
-        script_buckets: Dict[str, List[str]] = {}
+        script_buckets: Dict[str, Deque[str]] = {}
         for token in ranked_candidates:
             if token not in seen_tokens:
                 s = self._detect_script(token)
                 if s not in script_buckets:
-                    script_buckets[s] = []
+                    script_buckets[s] = deque()
                 script_buckets[s].append(token)
 
         # Interleave candidates across active scripts (round-robin stratified quotas)
         selected_candidates: List[str] = []
         if script_buckets:
             active_scripts = list(script_buckets.keys())
+            # ponytail: deque popleft is O(1) vs list pop(0) O(n); upgrade to heap quotas if script skew matters
+            remaining = sum(len(v) for v in script_buckets.values())
             idx = 0
-            while len(selected_candidates) < candidate_budget and any(script_buckets.values()):
+            while len(selected_candidates) < candidate_budget and remaining > 0:
                 s = active_scripts[idx % len(active_scripts)]
-                if script_buckets[s]:
-                    tok = script_buckets[s].pop(0)
-                    selected_candidates.append(tok)
+                bucket = script_buckets[s]
+                if bucket:
+                    selected_candidates.append(bucket.popleft())
+                    remaining -= 1
                 idx += 1
-                if all(len(b) == 0 for b in script_buckets.values()):
-                    break
+                # early exit when all buckets drained is covered by remaining==0
 
         for token in selected_candidates:
             seed_vocab.append(

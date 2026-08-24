@@ -12,12 +12,53 @@ use unicode_normalization::UnicodeNormalization;
 const DEFAULT_BYTE_LOG_P: f64 = -10.0;
 
 static PRETOK_REGEX: OnceLock<Regex> = OnceLock::new();
+static PRETOK_FULL_REGEX: OnceLock<Regex> = OnceLock::new();
 
 fn get_pretok_regex() -> &'static Regex {
     PRETOK_REGEX.get_or_init(|| {
         // High-speed unicode-aware word/punctuation/whitespace splitting regex
         Regex::new(r"<\|[^\s|]+\|>|\p{L}+(?:['’]\p{L}+)*|\p{N}+|[^\s\p{L}\p{N}\u{2581}]+|\u{2581}+|\s+").unwrap()
     })
+}
+
+fn get_full_pretok_regex() -> &'static Regex {
+    PRETOK_FULL_REGEX.get_or_init(|| {
+        let escaped_space = regex::escape("\u{2581}");
+        let special_token = r"<\|[^\s|]+\|>";
+        let url = r"https?://[a-zA-Z0-9][-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b(?:[-a-zA-Z0-9()@:%_\+.~#?&/=]*)";
+        let email = r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+";
+        let hashtag = format!(r"{}?#\w+", escaped_space);
+        let mention = format!(r"{}?@\w+", escaped_space);
+        let emoji = r"(?:[\U0001F300-\U0001FAFF]|[\u2600-\u26FF]|[\u2700-\u27BF])(?:[\uFE0E\uFE0F])?(?:[\U0001F3FB-\U0001F3FF])?(?:\u200D(?:[\U0001F300-\U0001FAFF]|[\u2600-\u26FF]|[\u2700-\u27BF])(?:[\uFE0E\uFE0F])?(?:[\U0001F3FB-\U0001F3FF])?)*";
+        let cjk = format!(r"{}?[\u4e00-\u9fff\u3400-\u4dbf\u3040-\u30ff\uac00-\ud7af]+", escaped_space);
+        let word = format!(r"{}?[^\W\d_\s{}]+(?:['’][^\W\d_\s{}]+)*", escaped_space, escaped_space, escaped_space);
+        let number = format!(r"{}?\d+", escaped_space);
+        let space_marker = format!(r"{}+", escaped_space);
+        let whitespace = r"\s+";
+        let punctuation = format!(r"{}?[^\w\s{}]|{}?_", escaped_space, escaped_space, escaped_space);
+        let patterns = vec![
+            special_token.to_string(),
+            url.to_string(),
+            email.to_string(),
+            hashtag,
+            mention,
+            emoji.to_string(),
+            cjk,
+            word,
+            number,
+            space_marker,
+            whitespace.to_string(),
+            punctuation,
+        ];
+        let combined = patterns.into_iter().map(|p| format!("(?:{})", p)).collect::<Vec<_>>().join("|");
+        Regex::new(&combined).unwrap()
+    })
+}
+
+#[pyfunction]
+pub fn rust_pre_tokenize(text: &str) -> Vec<String> {
+    let re = get_full_pretok_regex();
+    re.find_iter(text).map(|m| m.as_str().to_string()).collect()
 }
 
 /// Normalizes a single string directly in native Rust.

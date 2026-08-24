@@ -3,6 +3,14 @@ import unicodedata
 from dataclasses import dataclass
 from typing import Iterator, List, Optional, Sequence, Tuple, Union
 
+try:
+    import caliper_core as _caliper_core
+
+    _HAS_RUST_NORM = hasattr(_caliper_core, "rust_normalize_with_alignment")
+except ImportError:
+    _caliper_core = None  # type: ignore
+    _HAS_RUST_NORM = False
+
 
 @dataclass(frozen=True)
 class PreToken:
@@ -48,6 +56,12 @@ class Normalizer:
     )
 
     UNICODE_SPACES = re.compile(r"[\u00A0\u1680\u2000-\u200A\u202F\u205F\u3000]")
+    # ponytail: set lookup O(1) vs regex fullmatch per char; upgrade to table if more spaces
+    _UNICODE_SPACE_SET = frozenset(
+        [chr(0x00A0), chr(0x1680)]
+        + [chr(cp) for cp in range(0x2000, 0x200B)]
+        + [chr(0x202F), chr(0x205F), chr(0x3000)]
+    )
     _ESCAPE_PREFIX = "\ue000"
     _ESCAPED_METASPACE = "\ue001"
 
@@ -82,46 +96,86 @@ class Normalizer:
         if not isinstance(text, str):
             raise TypeError(f"text must be a string, got {type(text).__name__}")
 
-        units: List[Tuple[str, Tuple[int, int]]] = [(char, (i, i + 1)) for i, char in enumerate(text)]
+        # ponytail: Rust normalizer with exact parity; Python fallback if mismatch
+        if _HAS_RUST_NORM:
+            try:
+                res = _caliper_core.rust_normalize_with_alignment(  # type: ignore
+                    text,
+                    self.space_char,
+                    self.normalize_unicode,
+                    self.normalize_unicode_spaces,
+                    self.normalize_punctuation,
+                    self.lowercase,
+                    self.collapse_whitespaces,
+                    self.strip_whitespace,
+                )
+                # ponytail: no per-element tuple() — Rust already returns List[Tuple]
+                return res[0], res[1]  # type: ignore
+            except (ValueError, AttributeError, ImportError, TypeError):
+                pass
 
+        # ponytail: single-pass list accumulation + set lookup vs regex; Rust with SIMD if stays top
+        n = len(text)
         if self.normalize_unicode:
-            normalized: List[Tuple[str, Tuple[int, int]]] = []
+            # avoid building initial units then discarding; handle combining clusters directly
+            units: List[Tuple[str, Tuple[int, int]]] = []
+            # local bind for speed
+            _comb = unicodedata.combining
+            _norm = unicodedata.normalize
             i = 0
-            while i < len(text):
+            while i < n:
                 end = i + 1
-                while end < len(text) and unicodedata.combining(text[end]):
+                while end < n and _comb(text[end]):
                     end += 1
-                value = unicodedata.normalize("NFKC", text[i:end])
-                normalized.extend(self._expand(value, (i, end)))
+                val = _norm("NFKC", text[i:end])
+                span = (i, end)
+                # inline _expand to avoid per-char list alloc
+                for ch in val:
+                    units.append((ch, span))
                 i = end
-            units = normalized
+        else:
+            units = [(char, (i, i + 1)) for i, char in enumerate(text)]
 
         if self.normalize_unicode_spaces:
-            units = [(" " if self.UNICODE_SPACES.fullmatch(char) else char, span) for char, span in units]
+            # set lookup vs regex fullmatch per char
+            _space_set = self._UNICODE_SPACE_SET
+            units = [(" " if char in _space_set else char, span) for char, span in units]
 
         if self.normalize_punctuation:
+            _map = self.PUNCT_MAP
             translated: List[Tuple[str, Tuple[int, int]]] = []
             for char, span in units:
-                translated.extend(self._expand(char.translate(self.PUNCT_MAP), span))
+                t = char.translate(_map)
+                if len(t) == 1:
+                    translated.append((t, span))
+                elif t:
+                    for c in t:
+                        translated.append((c, span))
             units = translated
 
         if self.lowercase:
             lowered: List[Tuple[str, Tuple[int, int]]] = []
             for char, span in units:
-                lowered.extend(self._expand(char.lower(), span))
+                lo = char.lower()
+                if len(lo) == 1:
+                    lowered.append((lo, span))
+                elif lo:
+                    for c in lo:
+                        lowered.append((c, span))
             units = lowered
 
         if self.collapse_whitespaces:
             collapsed: List[Tuple[str, Tuple[int, int]]] = []
             i = 0
-            while i < len(units):
+            ulen = len(units)
+            while i < ulen:
                 char, span = units[i]
                 if char not in {" ", "\t"}:
                     collapsed.append((char, span))
                     i += 1
                     continue
                 end = i + 1
-                while end < len(units) and units[end][0] in {" ", "\t"}:
+                while end < ulen and units[end][0] in {" ", "\t"}:
                     end += 1
                 collapsed.append((" ", (span[0], units[end - 1][1][1])))
                 i = end
@@ -136,20 +190,46 @@ class Normalizer:
                 end -= 1
             units = units[start:end]
 
+        # metaspace escape — single pass, avoid _expand
         escaped: List[Tuple[str, Tuple[int, int]]] = []
+        sc = self.space_char
+        ep = self._ESCAPE_PREFIX
+        em = self._ESCAPED_METASPACE
+        ep2 = ep * 2
+        esc_seq = ep + em
         for char, span in units:
-            if char == self._ESCAPE_PREFIX:
-                escaped.extend(self._expand(self._ESCAPE_PREFIX * 2, span))
-            elif char == self.space_char:
-                escaped.extend(self._expand(self._ESCAPE_PREFIX + self._ESCAPED_METASPACE, span))
+            if char == ep:
+                # two chars share same span
+                escaped.append((ep, span))
+                escaped.append((ep, span))
+            elif char == sc:
+                escaped.append((ep, span))
+                escaped.append((em, span))
             elif char == " ":
-                escaped.append((self.space_char, span))
+                escaped.append((sc, span))
             else:
                 escaped.append((char, span))
 
-        return "".join(char for char, _ in escaped), [span for _, span in escaped]
+        # one final join
+        return "".join(c for c, _ in escaped), [s for _, s in escaped]
 
     def normalize(self, text: str) -> str:
+        if not isinstance(text, str):
+            raise TypeError(f"text must be a string, got {type(text).__name__}")
+        if _HAS_RUST_NORM:
+            try:
+                return _caliper_core.rust_normalize(  # type: ignore
+                    text,
+                    self.space_char,
+                    self.normalize_unicode,
+                    self.normalize_unicode_spaces,
+                    self.normalize_punctuation,
+                    self.lowercase,
+                    self.collapse_whitespaces,
+                    self.strip_whitespace,
+                )
+            except (ValueError, AttributeError, ImportError, TypeError):
+                pass
         return self.normalize_with_alignment(text)[0]
 
     def restore_escaped_metaspace(self, text: str) -> str:
@@ -275,7 +355,22 @@ class RegexPreTokenizer:
         """
         Returns a flat list of pre-tokenized chunk strings.
         """
-        return [pt.text for pt in self.pre_tokenize_iter(text)]
+        if not isinstance(text, str):
+            raise TypeError(f"text must be a string, got {type(text).__name__}")
+        # ponytail: Rust pre_tokenize for default config; Python fallback exact
+        if (
+            _HAS_RUST_NORM
+            and self.space_char == "\u2581"
+            and not self.split_digits
+            and self.split_punctuation
+            and self.keep_special_tokens
+            and self.special_token_pattern == r"<\|[^\s|]+\|>"
+        ):
+            try:
+                return _caliper_core.rust_pre_tokenize(text)  # type: ignore
+            except (ImportError, AttributeError, ValueError):
+                pass
+        return [m.group(0) for m in self.regex.finditer(text)]
 
     def pre_tokenize_with_offsets(
         self,
