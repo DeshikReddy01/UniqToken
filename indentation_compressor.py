@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import List, Tuple
+from typing import List, Optional, Sequence, Set, Tuple, Union
 
 
 RawSpan = Tuple[int, int]
@@ -30,18 +30,25 @@ class IndentationCompressor:
     ]
 
     @classmethod
-    def compress_indents(cls, text: str) -> str:
+    def compress_indents(cls, text: str, vocab: Optional[Union[Set[str], Sequence[str]]] = None) -> str:
         """
         Replaces structured indentation whitespace with deterministic tokens.
         """
-        compressed, _ = cls.compress_indents_with_alignment(text)
+        compressed, _ = cls.compress_indents_with_alignment(text, vocab=vocab)
         return compressed
 
     @classmethod
-    def compress_indents_with_alignment(cls, text: str) -> Tuple[str, List[RawSpan]]:
+    def compress_indents_with_alignment(
+        cls, text: str, vocab: Optional[Union[Set[str], Sequence[str]]] = None
+    ) -> Tuple[str, List[RawSpan]]:
         """Compress whitespace while retaining the span of every emitted character."""
         if not isinstance(text, str):
             raise TypeError(f"text must be a string, got {type(text).__name__}")
+
+        allowed_map = cls.INDENT_MAP
+        if vocab is not None:
+            vocab_set = set(vocab)
+            allowed_map = [(count, token) for count, token in cls.INDENT_MAP if token in vocab_set]
 
         output: List[str] = []
         alignment: List[RawSpan] = []
@@ -49,8 +56,12 @@ class IndentationCompressor:
         while index < len(text):
             if text[index] == "\t":
                 token = "<|tab|>"
-                output.append(token)
-                alignment.extend([(index, index + 1)] * len(token))
+                if vocab is None or token in set(vocab):
+                    output.append(token)
+                    alignment.extend([(index, index + 1)] * len(token))
+                else:
+                    output.append("\t")
+                    alignment.append((index, index + 1))
                 index += 1
                 continue
 
@@ -66,7 +77,7 @@ class IndentationCompressor:
 
             cursor = index
             remaining = run_end - index
-            for count, token in cls.INDENT_MAP:
+            for count, token in allowed_map:
                 while remaining >= count:
                     output.append(token)
                     alignment.extend([(cursor, cursor + count)] * len(token))

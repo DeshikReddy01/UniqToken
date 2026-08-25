@@ -237,7 +237,7 @@ def train_toy_transformer(
                 out = self.norm(out)
                 return self.head(out)
 
-        device = torch.device("cpu")
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         torch.manual_seed(42)
         model = MiniCausalLM(vs=vocab_size, d=dim, h=heads, n_l=layers, max_s=seq_len).to(device)
         optimizer = torch.optim.AdamW(model.parameters(), lr=3e-3, weight_decay=1e-2)
@@ -277,7 +277,7 @@ def train_toy_transformer(
             weighted_validation_loss = 0.0
             with torch.no_grad():
                 for start in range(0, len(val_flat) - 1, seq_len):
-                    chunk = val_tensor[start : start + seq_len + 1]
+                    chunk = val_tensor[start : start + seq_len + 1].to(device)
                     prediction_count = len(chunk) - 1
                     if prediction_count == 0:
                         continue

@@ -32,6 +32,7 @@ pub(crate) fn get_full_pretok_regex() -> &'static Regex {
         let emoji = r"(?:[\U0001F300-\U0001FAFF]|[\u2600-\u26FF]|[\u2700-\u27BF])(?:[\uFE0E\uFE0F])?(?:[\U0001F3FB-\U0001F3FF])?(?:\u200D(?:[\U0001F300-\U0001FAFF]|[\u2600-\u26FF]|[\u2700-\u27BF])(?:[\uFE0E\uFE0F])?(?:[\U0001F3FB-\U0001F3FF])?)*";
         let cjk = format!(r"{}?[\u4e00-\u9fff\u3400-\u4dbf\u3040-\u30ff\uac00-\ud7af]+", escaped_space);
         let word = format!(r"{}?[^\W\d_\s{}]+(?:['’][^\W\d_\s{}]+)*", escaped_space, escaped_space, escaped_space);
+        let hex_number = format!(r"{}?0[xX][0-9a-fA-F]+|{}?0[bB][01]+", escaped_space, escaped_space);
         let number = format!(r"{}?\d+", escaped_space);
         let space_marker = format!(r"{}+", escaped_space);
         let whitespace = r"\s+";
@@ -45,6 +46,7 @@ pub(crate) fn get_full_pretok_regex() -> &'static Regex {
             emoji.to_string(),
             cjk,
             word,
+            hex_number,
             number,
             space_marker,
             whitespace.to_string(),

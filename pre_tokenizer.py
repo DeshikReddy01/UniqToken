@@ -269,12 +269,31 @@ class RegexPreTokenizer:
         split_punctuation: bool = True,
         keep_special_tokens: bool = True,
         special_token_pattern: str = r"<\|[^\s|]+\|>",
+        hex_literals: bool = True,
+        digit_chunk_size: Optional[int] = None,
+        preset: Optional[str] = None,
     ):
+        if preset == "code":
+            split_digits = False
+            hex_literals = True
+            digit_chunk_size = 3
+        elif preset == "math":
+            split_digits = True
+            hex_literals = True
+            digit_chunk_size = None
+        elif preset == "llama3" or preset == "gpt4":
+            split_digits = False
+            hex_literals = True
+            digit_chunk_size = 3
+
         self.space_char = space_char
         self.split_digits = split_digits
         self.split_punctuation = split_punctuation
         self.keep_special_tokens = keep_special_tokens
         self.special_token_pattern = special_token_pattern
+        self.hex_literals = hex_literals
+        self.digit_chunk_size = digit_chunk_size
+        self.preset = preset
 
         escaped_space = re.escape(self.space_char)
         special_token = special_token_pattern if self.keep_special_tokens else r"(?!x)x"
@@ -296,7 +315,15 @@ class RegexPreTokenizer:
 
         word = rf"{escaped_space}?[^\W\d_\s{escaped_space}]+(?:['’][^\W\d_\s{escaped_space}]+)*"
 
-        number = rf"{escaped_space}?\d" if self.split_digits else rf"{escaped_space}?\d+"
+        # Code hexadecimal / binary literals (e.g. 0xDEADBEEF, 0b1010)
+        hex_number = rf"{escaped_space}?0[xX][0-9a-fA-F]+|{escaped_space}?0[bB][01]+" if self.hex_literals else None
+
+        if self.split_digits:
+            number = rf"{escaped_space}?\d"
+        elif self.digit_chunk_size is not None and self.digit_chunk_size > 0:
+            number = rf"{escaped_space}?\d{{1,{self.digit_chunk_size}}}"
+        else:
+            number = rf"{escaped_space}?\d+"
 
         space_marker = rf"{escaped_space}+"
         whitespace = r"\s+"
@@ -315,11 +342,15 @@ class RegexPreTokenizer:
             emoji,
             cjk,
             word,
+        ]
+        if hex_number:
+            self.patterns.append(hex_number)
+        self.patterns.extend([
             number,
             space_marker,
             whitespace,
             punctuation,
-        ]
+        ])
 
         combined_pattern = "|".join(f"(?:{p})" for p in self.patterns)
         self.regex = re.compile(combined_pattern)
