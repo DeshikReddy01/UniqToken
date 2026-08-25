@@ -42,7 +42,73 @@ pub struct ViterbiSpan {
     pub end: usize,
 }
 
-fn viterbi_decode_chars(
+pub(crate) fn diagnostic_viterbi_inner(
+    chars: &[char],
+    trie: &RustPrefixTrie,
+    byte_fallback: bool,
+) -> (f64, f64, usize, usize) {
+    use std::time::Instant;
+    let n = chars.len();
+    let mut t_trie = 0.0;
+    let mut t_dp = 0.0;
+    let mut edges = 0usize;
+    let mut incoming: Vec<Vec<Edge>> = vec![Vec::new(); n + 1];
+    for i in 0..n {
+        let t = Instant::now();
+        let matches = trie.common_prefix_search_chars(chars, i);
+        t_trie += t.elapsed().as_secs_f64();
+        if matches.is_empty() && byte_fallback {
+            let mut pieces = Vec::new();
+            let mut edge_log_p = 0.0;
+            let mut encoded_buf = [0_u8; 4];
+            for byte in chars[i].encode_utf8(&mut encoded_buf).as_bytes() {
+                let token = format!("<0x{byte:02X}>");
+                let (token_id, log_p) = trie.exact_metadata(&token).unwrap_or((None, DEFAULT_BYTE_LOG_P));
+                pieces.push(TokenPiece { token, token_id });
+                edge_log_p += log_p;
+            }
+            incoming[i + 1].push(Edge { prev_node: i, pieces, log_p: edge_log_p, length: 1 });
+            edges += 1;
+        } else {
+            for (token, token_id, log_p, char_len) in matches {
+                let end = i + char_len;
+                if end <= n {
+                    incoming[end].push(Edge { prev_node: i, pieces: vec![TokenPiece { token, token_id }], log_p, length: char_len });
+                    edges += 1;
+                }
+            }
+        }
+    }
+    let mut nodes: Vec<Node> = (0..=n).map(|_| Node { best_score: f64::NEG_INFINITY, best_edge: None }).collect();
+    nodes[0].best_score = 0.0;
+    let t = Instant::now();
+    for end in 1..=n {
+        for edge in &incoming[end] {
+            let prev = nodes[edge.prev_node].best_score;
+            if prev == f64::NEG_INFINITY { continue; }
+            let score = prev + edge.log_p;
+            if score > nodes[end].best_score {
+                nodes[end].best_score = score;
+                nodes[end].best_edge = Some(edge.clone());
+            }
+        }
+    }
+    t_dp = t.elapsed().as_secs_f64();
+    (t_trie, t_dp, edges, n + 1)
+}
+
+#[pyfunction]
+pub fn rust_diagnostic_viterbi(
+    text: &str,
+    trie: &RustPrefixTrie,
+    byte_fallback: bool,
+) -> PyResult<(f64, f64, usize, usize)> {
+    let chars: Vec<char> = text.chars().collect();
+    let (t_trie, t_dp, edges, states) = diagnostic_viterbi_inner(&chars, trie, byte_fallback);
+    Ok((t_trie, t_dp, edges, states))
+}
+
+pub(crate) fn viterbi_decode_chars(
     chars: &[char],
     trie: &RustPrefixTrie,
     byte_fallback: bool,

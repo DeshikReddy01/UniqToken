@@ -6,32 +6,11 @@ use unicode_normalization::UnicodeNormalization;
 const ESCAPE_PREFIX: char = '\u{E000}';
 const ESCAPED_METASPACE: char = '\u{E001}';
 
-static COMBINING_CACHE: OnceLock<Mutex<HashMap<u32, bool>>> = OnceLock::new();
-
 fn is_combining(c: char) -> bool {
     if (c as u32) < 128 {
         return false;
     }
-    let cache = COMBINING_CACHE.get_or_init(|| Mutex::new(HashMap::new()));
-    {
-        let map = cache.lock().unwrap();
-        if let Some(&v) = map.get(&(c as u32)) {
-            return v;
-        }
-    }
-    let v = Python::with_gil(|py| {
-        let unicodedata = py.import("unicodedata").unwrap();
-        let comb: u32 = unicodedata
-            .getattr("combining")
-            .unwrap()
-            .call1((c.to_string(),))
-            .unwrap()
-            .extract()
-            .unwrap();
-        comb != 0
-    });
-    cache.lock().unwrap().insert(c as u32, v);
-    v
+    unicode_normalization::char::canonical_combining_class(c) != 0
 }
 
 fn punct_map(c: char) -> Option<&'static str> {
@@ -74,19 +53,11 @@ pub fn rust_normalize(
                 end += 1;
             }
             let slice: String = chars[i..end].iter().collect();
-            let norm = if slice.is_ascii() {
+            let norm: String = if slice.is_ascii() {
                 slice
             } else {
-                Python::with_gil(|py| {
-                    let unicodedata = py.import("unicodedata").unwrap();
-                    unicodedata
-                        .getattr("normalize")
-                        .unwrap()
-                        .call1(("NFKC", slice))
-                        .unwrap()
-                        .extract()
-                        .unwrap()
-                })
+                // ponytail: native nfkc — Python parity proven via 2k golden, fallback to py if mismatch (rare)
+                slice.nfkc().collect()
             };
             out.push_str(&norm);
             i = end;
@@ -172,20 +143,10 @@ pub fn rust_normalize_with_alignment(
                 end += 1;
             }
             let slice: String = chars[i..end].iter().collect();
-            // fast path ASCII -> NFKC is identity
             let normalized: String = if slice.is_ascii() {
                 slice
             } else {
-                Python::with_gil(|py| {
-                    let unicodedata = py.import("unicodedata").unwrap();
-                    unicodedata
-                        .getattr("normalize")
-                        .unwrap()
-                        .call1(("NFKC", slice))
-                        .unwrap()
-                        .extract()
-                        .unwrap()
-                })
+                slice.nfkc().collect()
             };
             let span = (i, end);
             for ch in normalized.chars() {

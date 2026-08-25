@@ -21,7 +21,7 @@ fn get_pretok_regex() -> &'static Regex {
     })
 }
 
-fn get_full_pretok_regex() -> &'static Regex {
+pub(crate) fn get_full_pretok_regex() -> &'static Regex {
     PRETOK_FULL_REGEX.get_or_init(|| {
         let escaped_space = regex::escape("\u{2581}");
         let special_token = r"<\|[^\s|]+\|>";
