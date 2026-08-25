@@ -523,6 +523,18 @@ class SecurityAndIndentationTests(unittest.TestCase):
         )
         self.assertEqual(IndentationCompressor.decompress_indents("<|space_4|>x"), "    x")
 
+    def test_indentation_compression_skips_tokens_not_in_vocab(self):
+        vocab = {"x": log(0.5), "\u2581": log(0.5)}
+        model = UnigramModel(
+            vocab=vocab,
+            token_to_id={"x": 0, "\u2581": 1},
+            id_to_token={0: "x", 1: "\u2581"},
+            special_tokens=[],
+            byte_fallback=False,
+        )
+        tokenizer = CustomTokenizer(Normalizer(normalize_unicode=False), RegexPreTokenizer(), model)
+        self.assertEqual(tokenizer.encode("    x"), ["\u2581", "\u2581", "\u2581", "\u2581", "x"])
+
     def test_rejects_invalid_security_action(self):
         shield = SecurityShield(["<|user|>"])
         with self.assertRaises(ValueError):

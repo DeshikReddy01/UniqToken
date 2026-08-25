@@ -200,7 +200,7 @@ class CustomTokenizer:
             disallowed_special_action=disallowed_special_action,
         )
         if self._indent_compression_enabled:
-            return IndentationCompressor.compress_indents(sanitized)
+            return IndentationCompressor.compress_indents(sanitized, vocab=self.model.vocab)
         return sanitized
 
     def _prepare_text_with_alignment(
@@ -217,7 +217,9 @@ class CustomTokenizer:
         if not self._indent_compression_enabled:
             return sanitized, sanitized_alignment
 
-        compressed, compressed_alignment = IndentationCompressor.compress_indents_with_alignment(sanitized)
+        compressed, compressed_alignment = IndentationCompressor.compress_indents_with_alignment(
+            sanitized, vocab=self.model.vocab
+        )
         return compressed, self._compose_alignment(compressed_alignment, sanitized_alignment)
 
     @classmethod
@@ -230,6 +232,9 @@ class CustomTokenizer:
         min_frequency: int = 2,
         byte_fallback: bool = True,
         split_digits: bool = False,
+        hex_literals: bool = True,
+        digit_chunk_size: Optional[int] = None,
+        preset: Optional[str] = None,
         special_tokens: Optional[List[str]] = None,
         compress_indents: bool = False,
         ranking_strategy: str = "char_savings",
@@ -244,7 +249,12 @@ class CustomTokenizer:
         verbose: bool = True,
     ) -> CustomTokenizer:
         normalizer = Normalizer()
-        pre_tokenizer = RegexPreTokenizer(split_digits=split_digits)
+        pre_tokenizer = RegexPreTokenizer(
+            split_digits=split_digits,
+            hex_literals=hex_literals,
+            digit_chunk_size=digit_chunk_size,
+            preset=preset,
+        )
 
         combined_special = (
             list(SeedVocabularyBuilder.DEFAULT_SPECIAL_TOKENS) if special_tokens is None else list(special_tokens)
@@ -289,25 +299,12 @@ class CustomTokenizer:
         model = trainer.train(chunks, verbose=verbose)
         return cls(normalizer=normalizer, pre_tokenizer=pre_tokenizer, model=model)
 
-    def encode(
+    def _is_rust_fast_path_eligible(
         self,
-        text: str,
-        allowed_special: Union[str, Set[str], List[str]] = "none",
-        disallowed_special_action: str = "escape",
-    ) -> List[str]:
-        if not isinstance(text, str):
-            raise TypeError(f"text must be a string, got {type(text).__name__}")
-        if not text:
-            return []
-
-        sanitized_text = self._prepare_text(
-            text,
-            allowed_special=allowed_special,
-            disallowed_special_action=disallowed_special_action,
-        )
-
-        # v17: one FFI RustTokenizer (norm+pre_tok+viterbi) for default config
-        if (
+        allowed_special: Union[str, Set[str], List[str]],
+        disallowed_special_action: str,
+    ) -> bool:
+        return (
             _HAS_RUST_TOKENIZER
             and allowed_special == "none"
             and disallowed_special_action == "escape"
@@ -324,7 +321,32 @@ class CustomTokenizer:
             and self.pre_tokenizer.split_punctuation
             and self.pre_tokenizer.keep_special_tokens
             and self.pre_tokenizer.special_token_pattern == r"<\|[^\s|]+\|>"
-        ):
+            and self.pre_tokenizer.digit_chunk_size in (None, 3)
+            and self.pre_tokenizer.hex_literals
+        )
+
+    def encode(
+        self,
+        text: str,
+        allowed_special: Union[str, Set[str], List[str]] = "none",
+        disallowed_special_action: str = "escape",
+    ) -> List[str]:
+        """
+        Tokenizes input text into string tokens with byte fallback.
+        """
+        if not isinstance(text, str):
+            raise TypeError(f"text must be a string, got {type(text).__name__}")
+        if not text:
+            return []
+
+        sanitized_text = self._prepare_text(
+            text,
+            allowed_special=allowed_special,
+            disallowed_special_action=disallowed_special_action,
+        )
+
+        # v17: one FFI RustTokenizer (norm+pre_tok+viterbi) for standard config
+        if self._is_rust_fast_path_eligible(allowed_special, disallowed_special_action):
             rt = self._get_rust_tokenizer()
             if rt is not None:
                 try:
@@ -364,10 +386,13 @@ class CustomTokenizer:
         allowed_special: Union[str, Set[str], List[str]] = "none",
         disallowed_special_action: str = "escape",
     ) -> List[str]:
+        """Sample tokenization using Subword Regularization (Kudo 2018)."""
         if not isinstance(text, str):
             raise TypeError(f"text must be a string, got {type(text).__name__}")
         if not text:
             return []
+        if alpha < 0:
+            raise ValueError(f"alpha must be non-negative, got {alpha}")
 
         sanitized_text = self._prepare_text(
             text,
@@ -393,24 +418,7 @@ class CustomTokenizer:
         disallowed_special_action: str = "escape",
     ) -> List[int]:
         # v18 token-only Vec<u32> path — no String per token
-        if (
-            _HAS_RUST_TOKENIZER
-            and allowed_special == "none"
-            and disallowed_special_action == "escape"
-            and not self._cross_word_tokens()
-            and self.normalizer.space_char == "\u2581"
-            and self.normalizer.normalize_unicode
-            and self.normalizer.normalize_unicode_spaces
-            and not self.normalizer.normalize_punctuation
-            and not self.normalizer.lowercase
-            and not self.normalizer.collapse_whitespaces
-            and not self.normalizer.strip_whitespace
-            and self.pre_tokenizer.space_char == "\u2581"
-            and not self.pre_tokenizer.split_digits
-            and self.pre_tokenizer.split_punctuation
-            and self.pre_tokenizer.keep_special_tokens
-            and self.pre_tokenizer.special_token_pattern == r"<\|[^\s|]+\|>"
-        ):
+        if self._is_rust_fast_path_eligible(allowed_special, disallowed_special_action):
             rt = self._get_rust_tokenizer()
             if rt is not None:
                 try:
@@ -497,25 +505,7 @@ class CustomTokenizer:
         if num_workers is not None and num_workers < 1:
             raise ValueError(f"num_workers must be >= 1 (or None), got {num_workers}")
         # v17 single FFI batch
-        if (
-            _HAS_RUST_TOKENIZER
-            and allowed_special == "none"
-            and disallowed_special_action == "escape"
-            and not self._cross_word_tokens()
-            and self.normalizer.space_char == "\u2581"
-            and self.normalizer.normalize_unicode
-            and self.normalizer.normalize_unicode_spaces
-            and not self.normalizer.normalize_punctuation
-            and not self.normalizer.lowercase
-            and not self.normalizer.collapse_whitespaces
-            and not self.normalizer.strip_whitespace
-            and self.pre_tokenizer.space_char == "\u2581"
-            and not self.pre_tokenizer.split_digits
-            and self.pre_tokenizer.split_punctuation
-            and self.pre_tokenizer.keep_special_tokens
-            and self.pre_tokenizer.special_token_pattern == r"<\|[^\s|]+\|>"
-            and num_workers is None
-        ):
+        if num_workers is None and self._is_rust_fast_path_eligible(allowed_special, disallowed_special_action):
             rt = self._get_rust_tokenizer()
             if rt is not None:
                 try:
@@ -562,25 +552,7 @@ class CustomTokenizer:
             raise ValueError(f"num_workers must be >= 1 (or None), got {num_workers}")
 
         # v18 Vec<u32> zero-copy
-        if (
-            _HAS_RUST_TOKENIZER
-            and num_workers is None
-            and not self._cross_word_tokens()
-            and allowed_special == "none"
-            and disallowed_special_action == "escape"
-            and self.normalizer.space_char == "\u2581"
-            and self.normalizer.normalize_unicode
-            and self.normalizer.normalize_unicode_spaces
-            and not self.normalizer.normalize_punctuation
-            and not self.normalizer.lowercase
-            and not self.normalizer.collapse_whitespaces
-            and not self.normalizer.strip_whitespace
-            and self.pre_tokenizer.space_char == "\u2581"
-            and not self.pre_tokenizer.split_digits
-            and self.pre_tokenizer.split_punctuation
-            and self.pre_tokenizer.keep_special_tokens
-            and self.pre_tokenizer.special_token_pattern == r"<\|[^\s|]+\|>"
-        ):
+        if num_workers is None and self._is_rust_fast_path_eligible(allowed_special, disallowed_special_action):
             rt = self._get_rust_tokenizer()
             if rt is not None:
                 try:

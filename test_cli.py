@@ -209,6 +209,32 @@ class CLITests(unittest.TestCase):
         args = parser.parse_args(["train", "--corpus", "dummy.txt", "--out", "dummy_dir"])
         self.assertEqual(args.ranking_strategy, "char_savings")
 
+    def test_cli_train_with_preset_and_digit_chunking(self):
+        with TemporaryDirectory() as tmp_dir:
+            tmp = Path(tmp_dir)
+            corpus_file = tmp / "code_corpus.txt"
+            model_dir = tmp / "code_model"
+
+            corpus_file.write_text("x = 0xDEADBEEF + 123456\ny = 0b1010\n", encoding="utf-8")
+
+            ret = cli.main(
+                [
+                    "train",
+                    "--corpus",
+                    str(corpus_file),
+                    "--vocab-size",
+                    "320",
+                    "--preset",
+                    "code",
+                    "--digit-chunk-size",
+                    "3",
+                    "--out",
+                    str(model_dir),
+                ]
+            )
+            self.assertEqual(ret, 0)
+            self.assertTrue((model_dir / "tokenizer.json").exists())
+
     def test_cli_downstream_eval_smoke(self):
         ret = cli.main(["eval-downstream", "--smoke-test"])
         self.assertEqual(ret, 0)

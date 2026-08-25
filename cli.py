@@ -72,6 +72,10 @@ def train_command(args: argparse.Namespace) -> int:
         script_balance_temperature=args.script_temp,
         min_boundary_entropy=args.min_boundary_entropy,
         byte_fallback=not args.no_byte_fallback,
+        split_digits=args.split_digits,
+        hex_literals=not args.no_hex_literals,
+        digit_chunk_size=args.digit_chunk_size,
+        preset=args.preset,
         compress_indents=args.compress_indents,
         verbose=args.verbose,
     )
@@ -259,6 +263,15 @@ def build_parser() -> argparse.ArgumentParser:
     p_train.add_argument("--script-temp", type=float, default=None, help="Script temperature balancing (e.g. 0.5)")
     p_train.add_argument("--min-boundary-entropy", type=float, default=None, help="Min branch entropy threshold")
     p_train.add_argument("--superbpe-merges", type=int, default=0, help="Post-training SuperBPE merge count")
+    p_train.add_argument(
+        "--preset",
+        choices=["default", "code", "math", "llama3", "gpt4"],
+        default=None,
+        help="Pre-tokenization domain preset (default: None)",
+    )
+    p_train.add_argument("--split-digits", action="store_true", help="Split individual digits into discrete tokens")
+    p_train.add_argument("--digit-chunk-size", type=int, default=None, help="Max digits per numeric token (e.g. 3)")
+    p_train.add_argument("--no-hex-literals", action="store_true", help="Disable hexadecimal/binary literal matching")
     p_train.add_argument("--compress-indents", action="store_true", help="Enable whitespace indentation compression")
     p_train.add_argument("--no-byte-fallback", action="store_true", help="Disable UTF-8 byte fallback")
     p_train.add_argument("-v", "--verbose", action="store_true", help="Verbose training progress output")
