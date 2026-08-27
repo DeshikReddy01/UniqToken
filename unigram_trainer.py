@@ -51,7 +51,7 @@ class UnigramModel:
         self._sync_cache()
         trie = self.__dict__.get("_trie")
         if trie is None:
-            trie = PrefixTrie.from_vocab(self.vocab)
+            trie = PrefixTrie.from_vocab(self.vocab, self.token_to_id)
             self._trie = trie
         return trie
 

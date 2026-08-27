@@ -11,20 +11,6 @@ from byte_codec import ByteFallbackEngine
 from cem_merger import CrossEntropyMerging
 from hf_exporter import HuggingFaceExporter
 from indentation_compressor import IndentationCompressor
-from multimodal.audio_codec import AudioSegment, ResidualVectorQuantizer
-from multimodal.image_patcher import DynamicImagePatcher, ImagePatch
-from multimodal.multimodal_tokenizer import (
-    ImageElement,
-    MultimodalSequence,
-    MultimodalTokenizer,
-)
-from multimodal.neural_codecs import (
-    HAS_TORCH,
-    NeuralAudioCodec,
-    NeuralCodecFacade,
-    NeuralVisualCodec,
-)
-from multimodal.visual_codebook import VisualCodebook
 from pre_tokenizer import Normalizer, PreToken, RegexPreTokenizer
 from security_shield import SecurityShield
 from seed_builder import SeedToken, SeedVocabularyBuilder
@@ -36,6 +22,39 @@ from unigram_trainer import UnigramModel, UnigramTrainer
 from vocab_adapter import VocabularyAdapter
 
 __version__ = "1.0.0"
+
+# ponytail: the multimodal subpackage pulls in torch-optional neural codecs;
+# import it lazily (PEP 562) so text-only use pays neither the import cost nor
+# its failure surface. Upgrade to a package split if multimodal grows deps.
+_LAZY_MULTIMODAL = {
+    "AudioSegment": "multimodal.audio_codec",
+    "ResidualVectorQuantizer": "multimodal.audio_codec",
+    "DynamicImagePatcher": "multimodal.image_patcher",
+    "ImagePatch": "multimodal.image_patcher",
+    "ImageElement": "multimodal.multimodal_tokenizer",
+    "MultimodalSequence": "multimodal.multimodal_tokenizer",
+    "MultimodalTokenizer": "multimodal.multimodal_tokenizer",
+    "HAS_TORCH": "multimodal.neural_codecs",
+    "NeuralAudioCodec": "multimodal.neural_codecs",
+    "NeuralCodecFacade": "multimodal.neural_codecs",
+    "NeuralVisualCodec": "multimodal.neural_codecs",
+    "VisualCodebook": "multimodal.visual_codebook",
+}
+
+
+def __getattr__(name: str):
+    module_name = _LAZY_MULTIMODAL.get(name)
+    if module_name is None:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    import importlib
+
+    value = getattr(importlib.import_module(module_name), name)
+    globals()[name] = value  # cache for subsequent accesses
+    return value
+
+
+def __dir__() -> list[str]:
+    return sorted(set(globals()) | set(_LAZY_MULTIMODAL))
 __all__ = [
     # Core Engine
     "CustomTokenizer",

@@ -100,6 +100,17 @@ class BatchCollator:
                         tokens = [s.token for s in spans]
                         ids = [s.token_id if s.token_id is not None else unk_id for s in spans]
 
+                        # Truncate content FIRST (reserving room for specials), so
+                        # BOS/EOS survive truncation like HF convention.
+                        if truncation and max_length is not None:
+                            budget = max_length
+                            if add_special_tokens:
+                                budget -= (1 if self.bos_id is not None and self.bos_token else 0) + (
+                                    1 if self.eos_id is not None and self.eos_token else 0
+                                )
+                            ids = ids[: max(budget, 0)]
+                            tokens = tokens[: max(budget, 0)]
+
                         if add_special_tokens:
                             if self.bos_id is not None and self.bos_token:
                                 ids = [self.bos_id] + ids
@@ -107,10 +118,6 @@ class BatchCollator:
                             if self.eos_id is not None and self.eos_token:
                                 ids = ids + [self.eos_id]
                                 tokens = tokens + [self.eos_token]
-
-                        if truncation and max_length is not None:
-                            ids = ids[:max_length]
-                            tokens = tokens[:max_length]
 
                         batch_ids.append(ids)
                         batch_tokens.append(tokens)
@@ -127,6 +134,17 @@ class BatchCollator:
 
                 ids = [self.tokenizer.model.token_to_id.get(t, unk_id) for t in tokens]
 
+                # Truncate content FIRST (reserving room for specials), so BOS/EOS
+                # survive truncation like HF convention.
+                if truncation and max_length is not None:
+                    budget = max_length
+                    if add_special_tokens:
+                        budget -= (1 if self.bos_id is not None and self.bos_token else 0) + (
+                            1 if self.eos_id is not None and self.eos_token else 0
+                        )
+                    ids = ids[: max(budget, 0)]
+                    tokens = tokens[: max(budget, 0)]
+
                 # Inject BOS / EOS if requested
                 if add_special_tokens:
                     if self.bos_id is not None and self.bos_token:
@@ -135,11 +153,6 @@ class BatchCollator:
                     if self.eos_id is not None and self.eos_token:
                         ids = ids + [self.eos_id]
                         tokens = tokens + [self.eos_token]
-
-                # Truncation
-                if truncation and max_length is not None:
-                    ids = ids[:max_length]
-                    tokens = tokens[:max_length]
 
                 batch_ids.append(ids)
                 batch_tokens.append(tokens)

@@ -43,8 +43,8 @@ def train_command(args: argparse.Namespace) -> int:
     if args.superbpe_merges < 0:
         print("Error: --superbpe-merges must not be negative.", file=sys.stderr)
         return 1
-    if args.script_temp is not None and args.script_temp < 0:
-        print("Error: --script-temp must not be negative.", file=sys.stderr)
+    if args.script_temp is not None and args.script_temp <= 0:
+        print("Error: --script-temp must be greater than zero.", file=sys.stderr)
         return 1
     if args.min_boundary_entropy is not None and args.min_boundary_entropy < 0:
         print("Error: --min-boundary-entropy must not be negative.", file=sys.stderr)
@@ -123,7 +123,7 @@ def encode_command(args: argparse.Namespace) -> int:
 
     try:
         tok = CustomTokenizer.load(str(model_path))
-    except (FileNotFoundError, json.JSONDecodeError, KeyError) as e:
+    except (OSError, json.JSONDecodeError, KeyError, TypeError) as e:
         print(f"Error: Failed to load model from {args.model}: {e}", file=sys.stderr)
         return 1
 
@@ -192,7 +192,7 @@ def decode_command(args: argparse.Namespace) -> int:
 
     try:
         tok = CustomTokenizer.load(str(model_path))
-    except (FileNotFoundError, json.JSONDecodeError, KeyError) as e:
+    except (OSError, json.JSONDecodeError, KeyError, TypeError) as e:
         print(f"Error: Failed to load model from {args.model}: {e}", file=sys.stderr)
         return 1
 

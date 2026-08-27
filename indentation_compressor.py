@@ -46,8 +46,8 @@ class IndentationCompressor:
             raise TypeError(f"text must be a string, got {type(text).__name__}")
 
         allowed_map = cls.INDENT_MAP
-        if vocab is not None:
-            vocab_set = set(vocab)
+        vocab_set = None if vocab is None else set(vocab)
+        if vocab_set is not None:
             allowed_map = [(count, token) for count, token in cls.INDENT_MAP if token in vocab_set]
 
         output: List[str] = []
@@ -56,7 +56,7 @@ class IndentationCompressor:
         while index < len(text):
             if text[index] == "\t":
                 token = "<|tab|>"
-                if vocab is None or token in set(vocab):
+                if vocab_set is None or token in vocab_set:
                     output.append(token)
                     alignment.extend([(index, index + 1)] * len(token))
                 else:

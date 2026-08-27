@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import json
+import warnings
 from pathlib import Path
 from typing import Any, Dict, List, Union
 
+from pre_tokenizer import Normalizer
 from tokenizer import CustomTokenizer
 
 
@@ -50,23 +52,77 @@ class HuggingFaceExporter:
             # OOV recovery; without an <|unk|> token we can only point at id 0.
             unk_id = 0
 
-        hf_schema: Dict[str, Any] = {
-            "version": "1.0",
-            "truncation": None,
-            "padding": None,
-            "added_tokens": added_tokens,
-            "normalizer": {
-                "type": "Sequence",
-                "normalizers": [{"type": "NFKC"}] if normalizer.normalize_unicode else [],
-            },
-            "pre_tokenizer": {
+        # Build a normalizer Sequence mirroring Normalizer.normalize's order:
+        # NFKC -> unicode-space map -> punctuation map -> lowercase ->
+        # whitespace collapse -> strip.
+        normalizers: List[Dict[str, Any]] = []
+        if normalizer.normalize_unicode:
+            normalizers.append({"type": "NFKC"})
+        if normalizer.normalize_unicode_spaces:
+            normalizers.append(
+                {
+                    "type": "Replace",
+                    "pattern": {"Regex": "[\\u00A0\\u1680\\u2000-\\u200A\\u202F\\u205F\\u3000]"},
+                    "content": " ",
+                }
+            )
+        if normalizer.normalize_punctuation:
+            for code, repl in Normalizer.PUNCT_MAP.items():
+                normalizers.append({"type": "Replace", "pattern": {"String": chr(code)}, "content": repl})
+        if normalizer.lowercase:
+            normalizers.append({"type": "Lowercase"})
+        if normalizer.collapse_whitespaces:
+            normalizers.append({"type": "Replace", "pattern": {"Regex": "[ \\t]+"}, "content": " "})
+        if normalizer.strip_whitespace:
+            normalizers.append({"type": "Strip"})
+
+        pre = tokenizer.pre_tokenizer
+        hf_pre_tokenizers: List[Dict[str, Any]] = []
+        if pre.split_digits:
+            hf_pre_tokenizers.append({"type": "Digits", "individual_numbers": True})
+        hf_pre_tokenizers.append(
+            {
                 "type": "Metaspace",
                 "replacement": normalizer.space_char,
                 # Caliper replaces existing whitespace but does not prepend a
                 # metaspace token to text with no leading whitespace.
                 "prepend_scheme": "never",
                 "split": True,
-            },
+            }
+        )
+        if pre.split_punctuation:
+            # HF variant enum is capitalized
+            hf_pre_tokenizers.append({"type": "Punctuation", "behavior": "Isolated"})
+        hf_pre_tokenizer: Dict[str, Any] = (
+            hf_pre_tokenizers[0]
+            if len(hf_pre_tokenizers) == 1
+            else {"type": "Sequence", "pretokenizers": hf_pre_tokenizers}
+        )
+
+        unrepresentable = []
+        if pre.hex_literals:
+            unrepresentable.append("hex_literals")
+        if pre.digit_chunk_size is not None:
+            unrepresentable.append("digit_chunk_size")
+        if pre.preset is not None:
+            unrepresentable.append("preset")
+        if not pre.keep_special_tokens:
+            unrepresentable.append("keep_special_tokens=False")
+        if unrepresentable:
+            warnings.warn(
+                "HuggingFace export cannot fully represent this Caliper pre-tokenizer "
+                f"configuration ({', '.join(unrepresentable)}); the exported tokenizer "
+                "may tokenize differently from the source model.",
+                stacklevel=2,
+            )
+
+        hf_schema: Dict[str, Any] = {
+            "version": "1.0",
+            "truncation": None,
+            "padding": None,
+            "added_tokens": added_tokens,
+            "normalizer": {"type": "Sequence", "normalizers": normalizers},
+            "pre_tokenizer": hf_pre_tokenizer,
             "post_processor": None,
             "decoder": {
                 "type": "Sequence",

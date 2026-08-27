@@ -93,10 +93,18 @@ class BPETrainer:
             if best_pair is None or pair_counts[best_pair] < 1:
                 break
 
+            new_token = best_pair[0] + best_pair[1]
+            if new_token in vocab:
+                # Two different pairs can concat to the same string ("a"+"bc" vs
+                # "ab"+"c"); recording the merge would burn a rank without growing
+                # the vocab, so drop the pair instead of merging it.
+                pair_counts.pop(best_pair, None)
+                pair_to_words.pop(best_pair, None)
+                continue
+
             # Record merge
             merges[best_pair] = rank
             rank += 1
-            new_token = best_pair[0] + best_pair[1]
             vocab.add(new_token)
 
             first, second = best_pair

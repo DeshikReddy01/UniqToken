@@ -391,8 +391,8 @@ class CustomTokenizer:
             raise TypeError(f"text must be a string, got {type(text).__name__}")
         if not text:
             return []
-        if alpha < 0:
-            raise ValueError(f"alpha must be non-negative, got {alpha}")
+        if alpha <= 0:
+            raise ValueError(f"alpha must be greater than zero, got {alpha}")
 
         sanitized_text = self._prepare_text(
             text,

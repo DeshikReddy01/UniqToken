@@ -63,7 +63,6 @@ class CrossEntropyMerging:
         byte_pattern = ByteFallbackEngine.BYTE_TOKEN_PATTERN
         max_len = model.max_subword_len
         new_probs: Dict[str, float] = {}
-        new_count: Dict[str, int] = {}
 
         def log_prob(token: str) -> float:
             lp = model.vocab.get(token)
@@ -80,7 +79,10 @@ class CrossEntropyMerging:
 
         from collections import defaultdict
 
-        unique_chunks = set(chunk for chunk in chunks if chunk)
+        # ponytail: materialize once — chunks is consumed multiple times below and
+        # a generator input would silently yield an empty model
+        chunks = [chunk for chunk in chunks if chunk]
+        unique_chunks = set(chunks)
         chunk_enc_map = {chunk: model.encode(chunk) for chunk in unique_chunks}
 
         if self.cross_word:
@@ -148,6 +150,16 @@ class CrossEntropyMerging:
             while heap:
                 sc, f_in_heap, lp_hat, (a, b) = heapq.heappop(heap)
                 cur_f = pair_counts.get((a, b), 0)
+                if cur_f >= 2 and cur_f != f_in_heap:
+                    # Count drifted since this entry was pushed; re-score and
+                    # re-insert so the pair doesn't transiently drop out of
+                    # consideration. The next pop re-validates mergeability and
+                    # vocab membership, so this terminates (cur_f is stable
+                    # between merges).
+                    sc2, lp2, _ = compute_pair_score(a, b, cur_f, total_pairs)
+                    if sc2 < self.max_score:
+                        heapq.heappush(heap, (sc2, cur_f, lp2, (a, b)))
+                    continue
                 if cur_f >= 2 and cur_f == f_in_heap:
                     if not mergeable(a) or not mergeable(b):
                         continue
@@ -172,7 +184,6 @@ class CrossEntropyMerging:
             pair_count = pair_counts[(a, b)]
             self.merges.append((a, b, merged, best_score, pair_count))
             new_probs[merged] = best_log_p
-            new_count[merged] = pair_count
 
             # Incremental update on affected streams only
             affected_streams = list(pair_to_streams.get((a, b), set()))
@@ -232,9 +243,10 @@ class CrossEntropyMerging:
             return model
 
         # Re-normalize the probability distribution over old + new tokens.
-        probs: Dict[str, float] = {tok: math.exp(lp) for tok, lp in model.vocab.items()}
+        # ponytail: floor at 1e-300 — exp() underflow to 0.0 would crash log(p/total) below
+        probs: Dict[str, float] = {tok: max(math.exp(lp), 1e-300) for tok, lp in model.vocab.items()}
         for tok, lp in new_probs.items():
-            probs[tok] = math.exp(lp)
+            probs[tok] = max(math.exp(lp), 1e-300)
         total_p = sum(probs.values())
         updated_vocab = {tok: math.log(p / total_p) for tok, p in probs.items()}
 

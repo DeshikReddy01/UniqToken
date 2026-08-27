@@ -36,20 +36,30 @@ class SecurityShield:
         - allowed_special="all": preserves all matching control sequences as active tokens.
         - allowed_special="none": disallows and sanitizes all control sequences.
         - allowed_special={"<|user|>"}: whitelists specified control sequences only.
+          (Policy spellings "all"/"none" are matched case-insensitively so a typo
+          like "ALL" can never silently act as a whitelist of that literal.)
+
+        NOTE: the escape form ``<\\|token\\|>`` is not injective — input that already
+        contains that literal spelling is indistinguishable from an escaped control
+        token. Do not feed pre-escaped text through sanitize twice.
         """
         # ponytail: fast path without alignment — avoids 120k tuple allocs per 240 texts; with_alignment kept exact
         if not isinstance(text, str):
             raise TypeError(f"text must be a string, got {type(text).__name__}")
         if disallowed_special_action not in {"escape", "raise", "ignore"}:
             raise ValueError("disallowed_special_action must be 'escape', 'raise', or 'ignore'")
-        if allowed_special == "all":
-            allowed_set = self.special_tokens
-        elif allowed_special == "none" or not allowed_special:
-            allowed_set = set()
-        elif isinstance(allowed_special, str):
-            allowed_set = {allowed_special}
-        else:
+        if isinstance(allowed_special, str):
+            policy = allowed_special.strip().lower()
+            if policy == "all":
+                allowed_set = self.special_tokens
+            elif policy in ("none", ""):
+                allowed_set = set()
+            else:
+                allowed_set = {allowed_special}
+        elif allowed_special:
             allowed_set = set(allowed_special)
+        else:
+            allowed_set = set()
 
         output: List[str] = []
         cursor = 0
@@ -83,14 +93,18 @@ class SecurityShield:
         if disallowed_special_action not in {"escape", "raise", "ignore"}:
             raise ValueError("disallowed_special_action must be 'escape', 'raise', or 'ignore'")
 
-        if allowed_special == "all":
-            allowed_set = self.special_tokens
-        elif allowed_special == "none" or not allowed_special:
-            allowed_set = set()
-        elif isinstance(allowed_special, str):
-            allowed_set = {allowed_special}
-        else:
+        if isinstance(allowed_special, str):
+            policy = allowed_special.strip().lower()
+            if policy == "all":
+                allowed_set = self.special_tokens
+            elif policy in ("none", ""):
+                allowed_set = set()
+            else:
+                allowed_set = {allowed_special}
+        elif allowed_special:
             allowed_set = set(allowed_special)
+        else:
+            allowed_set = set()
 
         output: List[str] = []
         alignment: List[RawSpan] = []

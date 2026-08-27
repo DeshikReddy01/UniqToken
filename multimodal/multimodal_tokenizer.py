@@ -102,7 +102,9 @@ class MultimodalTokenizer:
     @property
     def vocab_size(self) -> int:
         """Size required for an embedding table spanning the unified ID space."""
-        return max(self._token_to_id.values(), default=-1) + 1
+        # _next_id is maintained by _assign_id/__init__/load; max()+1 over the
+        # dict would be O(n) per access and can lag behind newly assigned IDs.
+        return self._next_id
 
     def _assign_id(self, token: str) -> int:
         """Returns the ID for a token, registering metadata tokens or enforcing frozen vocabulary."""
@@ -164,7 +166,9 @@ class MultimodalTokenizer:
 
         for element in elements:
             if isinstance(element, str):
-                text_toks = self.text_tokenizer.encode(element, allowed_special="all")
+                text_toks = self.text_tokenizer.encode(
+                    element, allowed_special=set(self.multimodal_specials)
+                )
                 for t in text_toks:
                     all_tokens.append(t)
                     is_special = t.startswith("<|") and t.endswith("|>")
@@ -258,10 +262,17 @@ class MultimodalTokenizer:
             and t not in {"<|audio_start|>", "<|audio_end|>"}
         ]
 
-        # Decode text using the text tokenizer
-        decoded_text = self.text_tokenizer.decode(
-            [self.text_tokenizer.model.token_to_id.get(t, 0) for t in filtered_text]
-        )
+        # Decode text using the text tokenizer — a missing token means the stream
+        # does not match this tokenizer; surface it instead of corrupting text
+        # by silently mapping to ID 0.
+        text_model_ids = self.text_tokenizer.model.token_to_id
+        unknown = [t for t in filtered_text if t not in text_model_ids]
+        if unknown:
+            raise KeyError(
+                f"token(s) {unknown[:5]!r} not found in the text tokenizer vocabulary; "
+                "the token stream does not match this tokenizer"
+            )
+        decoded_text = self.text_tokenizer.decode([text_model_ids[t] for t in filtered_text])
         return decoded_text, reconstructed_images
 
     def _reconstruct_image(
@@ -330,6 +341,8 @@ class MultimodalTokenizer:
         mm_config = {
             "patch_size": self.patcher.patch_size,
             "channels": self.patcher.channels,
+            "normalize_pixels": self.patcher.normalize_pixels,
+            "pixel_range": self.patcher.pixel_range,
             "num_visual_tokens": self.codebook.num_embeddings,
             "seed": self.codebook.seed,
             "ema_decay": self.codebook.ema_decay,
@@ -367,6 +380,11 @@ class MultimodalTokenizer:
             seed=mm_config["seed"],
             ema_decay=mm_config.get("ema_decay", 0.99),
         )
+
+        # Restore patcher settings not covered by the constructor (round-trip
+        # for non-default normalization configs; defaults match __init__).
+        mm_tok.patcher.normalize_pixels = bool(mm_config.get("normalize_pixels", True))
+        mm_tok.patcher.pixel_range = mm_config.get("pixel_range")
 
         # Restore codebook state
         mm_tok.codebook = VisualCodebook.from_state(mm_config["codebook_state"])

@@ -62,6 +62,10 @@ class DynamicImagePatcher:
 
         h = len(image_pixels)
         w = len(image_pixels[0]) if h > 0 else 0
+        if w == 0:
+            # An empty first row must not mask non-empty later rows; the
+            # jagged-width validation below will then reject the image.
+            w = max((len(row) for row in image_pixels), default=0)
 
         if h == 0 or w == 0:
             return [], (0, 0)
@@ -171,8 +175,8 @@ class DynamicImagePatcher:
         canvas = [[[0.0] * c for _ in range(w)] for _ in range(h)]
 
         for patch in patches:
-            if patch.row >= grid_h or patch.col >= grid_w:
-                continue  # Skip invalid patches
+            if not 0 <= patch.row < grid_h or not 0 <= patch.col < grid_w:
+                continue  # Skip invalid patches (also guards negative indices)
 
             row_start = patch.row * p
             col_start = patch.col * p

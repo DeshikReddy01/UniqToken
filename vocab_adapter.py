@@ -18,6 +18,10 @@ class VocabularyAdapter:
     existing token IDs, preserving downstream neural network embedding weights.
     """
 
+    # New tokens get at most 10% of the probability share implied by their
+    # domain frequency, biasing segmentation toward already-trained subwords.
+    NEW_TOKEN_PROB_SCALE = 0.1
+
     @staticmethod
     def expand_vocabulary(
         tokenizer: CustomTokenizer,
@@ -81,7 +85,7 @@ class VocabularyAdapter:
 
         # Compute prior probabilities for new tokens based on occurrence in new corpus
         total_new_freq = sum(filtered_candidates[t] for t in new_tokens_to_add)
-        min_existing_prob = max(min(math.exp(lp) for lp in old_model.vocab.values()), 1e-12)
+        min_existing_prob = max(min((math.exp(lp) for lp in old_model.vocab.values()), default=1e-12), 1e-12)
         new_vocab_probs = {tok: max(math.exp(lp), 1e-12) for tok, lp in old_model.vocab.items()}
 
         for idx, tok in enumerate(new_tokens_to_add):
@@ -90,7 +94,7 @@ class VocabularyAdapter:
             new_id_to_token[assigned_id] = tok
             # Give new token a proportional probability
             token_prob = max(
-                filtered_candidates[tok] / max(total_new_freq, 1) * 0.1,
+                filtered_candidates[tok] / max(total_new_freq, 1) * VocabularyAdapter.NEW_TOKEN_PROB_SCALE,
                 min_existing_prob,
             )
             new_vocab_probs[tok] = token_prob

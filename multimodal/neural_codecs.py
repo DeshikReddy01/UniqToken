@@ -147,8 +147,25 @@ if HAS_TORCH:
             """
             Reconstructs the continuous image tensor from discrete code indices.
             """
-            b = indices.shape[0] if indices.dim() == 3 else 1
+            device = self.embedding.weight.device
+            if indices.dim() == 3:
+                b = indices.shape[0]
+            elif indices.dim() == 2 and indices.shape[1] == grid_h * grid_w:
+                b = indices.shape[0]  # [B, H*W] per-batch flat indices
+            elif indices.dim() == 2 and indices.shape[0] == grid_h * grid_w:
+                b = 1  # single flat image
+            else:
+                raise ValueError(
+                    f"indices shape {tuple(indices.shape)} is not compatible with grid {grid_h}x{grid_w}"
+                )
+            if indices.device != device:
+                indices = indices.to(device)
             flat_indices = indices.view(-1)
+            if flat_indices.numel() != b * grid_h * grid_w:
+                raise ValueError(
+                    f"indices contain {flat_indices.numel()} entries, expected "
+                    f"{b * grid_h * grid_w} for grid {grid_h}x{grid_w}"
+                )
             z_q = self.embedding(flat_indices).view(b, grid_h, grid_w, self.latent_dim)
             z_q = z_q.permute(0, 3, 1, 2).contiguous()  # [B, D, H', W']
             reconstructed = self.decoder(z_q)
@@ -278,6 +295,8 @@ if HAS_TORCH:
             h = self.res3(self.act(self.up2(h)))
             h = self.res4(self.act(self.up3(h)))
             h = self.act(self.up4(h))
+            # tanh confines output to [-1, 1]: the L1 loss in NeuralAudioCodec
+            # assumes waveforms are normalized to that range.
             out = torch.tanh(self.conv_out(h))
             return out
 
@@ -364,7 +383,12 @@ if HAS_TORCH:
             Synthesizes waveform from hierarchical RVQ code indices [B, T', N_q].
             """
             b, t_prime, n_q = indices.shape
-            z_q_total = torch.zeros(b * t_prime, self.latent_dim, device=indices.device)
+            if n_q != self.num_quantizers:
+                raise ValueError(f"expected {self.num_quantizers} quantizer stages in indices, got {n_q}")
+            device = self.quantizers[0].weight.device
+            if indices.device != device:
+                indices = indices.to(device)
+            z_q_total = torch.zeros(b * t_prime, self.latent_dim, device=device)
 
             flat_indices = indices.view(b * t_prime, n_q)
             for q_idx in range(n_q):

@@ -24,6 +24,10 @@ class VisualCodebook:
     ):
         if num_embeddings <= 0:
             raise ValueError("num_embeddings must be positive")
+        if num_embeddings > 10000:
+            # <|vis_{i:04d}|> is fixed-width to 4 digits; wider indices would
+            # break the format contract shared with decoders.
+            raise ValueError("num_embeddings must not exceed 10000 (fixed-width <|vis_NNNN|> token format)")
         if embedding_dim <= 0:
             raise ValueError("embedding_dim must be positive")
         if not 0 < ema_decay < 1:
@@ -194,6 +198,9 @@ class VisualCodebook:
                 if cumsum >= r:
                     centroids.append(patch_vectors[i][:])
                     break
+            else:
+                # float rounding: cumsum never reached r — take the farthest point
+                centroids.append(patch_vectors[max(range(len(min_dists)), key=min_dists.__getitem__)][:])
 
         # Run k-means iterations
         for _ in range(max_iter):
@@ -258,7 +265,13 @@ class VisualCodebook:
             ema_decay=state.get("ema_decay", 0.99),
             epsilon=state.get("epsilon", 1e-5),
         )
-        cb.codebook = state["codebook"]
+        codebook = state["codebook"]
+        if len(codebook) != cb.num_embeddings:
+            raise ValueError("visual codebook state has an invalid codebook size")
+        if any(len(vector) != cb.embedding_dim for vector in codebook):
+            raise ValueError("visual codebook state has an invalid vector dimension")
+        # copy: avoid aliasing the caller's nested lists
+        cb.codebook = [vector[:] for vector in codebook]
         cb._ema_cluster_size = state.get("ema_cluster_size", [0.0] * cb.num_embeddings)
         cb._ema_embed_sum = state.get(
             "ema_embed_sum",

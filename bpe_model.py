@@ -28,6 +28,14 @@ class BPEModel:
         self.merges = merges
         self.special_tokens = list(special_tokens or [])
         self.byte_fallback = byte_fallback
+        # Resolve the OOV token from the actual vocab; a hardcoded "<|unk|>"
+        # could be absent from custom special-token configurations.
+        if "<|unk|>" in token_to_id:
+            self._unk_token: Optional[str] = "<|unk|>"
+        elif self.special_tokens:
+            self._unk_token = self.special_tokens[0]
+        else:
+            self._unk_token = None
 
     @property
     def vocab_size(self) -> int:
@@ -45,8 +53,12 @@ class BPEModel:
                 symbols.append(char)
             elif self.byte_fallback:
                 symbols.extend(ByteFallbackEngine.char_to_byte_tokens(char))
+            elif self._unk_token is not None:
+                symbols.append(self._unk_token)
             else:
-                symbols.append("<|unk|>")
+                # No unk configured — keep the raw character so it maps through
+                # unk_id at the ID stage instead of emitting an out-of-vocab token.
+                symbols.append(char)
 
         if len(symbols) <= 1:
             return symbols

@@ -69,7 +69,10 @@ class ResidualVectorQuantizer:
 
     def _quantize_stage(self, residual_vector: List[float], stage: int) -> Tuple[int, str, List[float]]:
         """
-        Finds the nearest centroid in the stage-th codebook using dot product distance.
+        Finds the nearest centroid in the stage-th codebook.
+
+        Computes ``||y||^2 - 2<x, y>``, which omits the constant ``||x||^2`` term
+        of ``||x - y||^2`` — identical argmin, but the value is NOT a distance.
         """
         cb = self.codebooks[stage]
         norms = self._codebook_norms[stage]
@@ -142,23 +145,36 @@ class ResidualVectorQuantizer:
             if t.startswith("<|aud_q") and t.endswith("|>"):
                 stage_tokens.append(t)
 
-        # Process tokens in blocks of num_quantizers
-        num_blocks = len(stage_tokens) // self.num_quantizers
-        for b in range(num_blocks):
+        # Process tokens in blocks of num_quantizers; strict validation — a
+        # silently dropped or misaligned token would shift every subsequent frame
+        # and corrupt the audio with no error.
+        if len(stage_tokens) % self.num_quantizers != 0:
+            raise ValueError(
+                f"audio token stream has {len(stage_tokens)} stage tokens, which is "
+                f"not a multiple of num_quantizers ({self.num_quantizers})"
+            )
+        for b in range(0, len(stage_tokens), self.num_quantizers):
             frame_acc = [0.0] * self.frame_size
             for q in range(self.num_quantizers):
-                tok = stage_tokens[b * self.num_quantizers + q]
+                tok = stage_tokens[b + q]
                 # Parse stage and code index: <|aud_q{q}_{idx}|>
                 parts = tok[7:-2].split("_")
-                if len(parts) == 2:
-                    try:
-                        stage_num = int(parts[0])
-                        code_idx = int(parts[1])
-                    except ValueError:
-                        continue
-                    if 0 <= stage_num < self.num_quantizers and 0 <= code_idx < self.codebook_size:
-                        centroid = self.codebooks[stage_num][code_idx]
-                        frame_acc = [a + c for a, c in zip(frame_acc, centroid)]
+                if len(parts) != 2:
+                    raise ValueError(f"malformed audio token {tok!r}")
+                try:
+                    stage_num = int(parts[0])
+                    code_idx = int(parts[1])
+                except ValueError:
+                    raise ValueError(f"malformed audio token {tok!r}") from None
+                if stage_num != q:
+                    raise ValueError(
+                        f"audio token {tok!r} declares stage {stage_num}, but stream "
+                        f"position {b + q} expects stage {q}"
+                    )
+                if not 0 <= code_idx < self.codebook_size:
+                    raise ValueError(f"audio token {tok!r} has out-of-range code index {code_idx}")
+                centroid = self.codebooks[q][code_idx]
+                frame_acc = [a + c for a, c in zip(frame_acc, centroid)]
             reconstructed.extend(frame_acc)
 
         if original_length is not None and original_length < len(reconstructed):
@@ -192,7 +208,8 @@ class ResidualVectorQuantizer:
             raise ValueError("audio codebook state has an invalid codebook size")
         if any(len(vector) != quantizer.frame_size for codebook in codebooks for vector in codebook):
             raise ValueError("audio codebook state has an invalid vector dimension")
-        quantizer.codebooks = codebooks
+        # copy: avoid aliasing the caller's nested lists
+        quantizer.codebooks = [[vector[:] for vector in codebook] for codebook in codebooks]
         quantizer._codebook_norms = [
             [sum(value * value for value in vector) for vector in codebook] for codebook in quantizer.codebooks
         ]
