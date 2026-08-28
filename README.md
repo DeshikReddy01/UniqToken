@@ -443,6 +443,28 @@ The `allowed_special` parameter accepts `"all"`, `"none"`, or a specific `set` o
 
 ---
 
+## External-Format Compatibility
+
+### tiktoken ranks importer
+
+Caliper loads any tiktoken `.tiktoken` rank file (e.g. `cl100k_base.tiktoken`, `o200k_base.tiktoken`, `gpt2` via tiktoken's file dump) and produces **exactly the same integer IDs** as tiktoken — no tiktoken package required, only the lightweight `regex` module for pattern fidelity:
+
+```python
+from tiktoken_adapter import TiktokenEncoding
+
+enc = TiktokenEncoding.from_file(
+    "cl100k_base.tiktoken",
+    pattern="cl100k_base",
+    special_tokens={"<|endoftext|>": 100257, "<|fim_prefix|>": 100258},
+)
+ids = enc.encode("Hello, world!")            # identical to tiktoken.encode()
+text = enc.decode(ids)
+```
+
+`to_caliper_bpe_model()` additionally converts the ranks into Caliper's native `BPEModel` (IDs preserved) for reuse in training/analysis. CI runs token-for-token differential tests against the real `tiktoken` package on multilingual, emoji/ZWJ, and code inputs.
+
+---
+
 ## Testing & CI
 
 ### Test Suite
@@ -457,8 +479,9 @@ The `allowed_special` parameter accepts `"all"`, `"none"`, or a specific `set` o
 | `test_fuzz_properties.py` | 7 | Property-based fuzzing: roundtrip integrity, offset validity, Unicode resilience, determinism |
 | `test_metric_audit.py` | 2 | Metric accounting invariants (TID-BPB formula, byte/token sums) and 12-script vocabulary distribution audit |
 | `test_rust_parity.py` | 2 | Rust native extension / Python fallback parity |
+| `test_tiktoken_adapter.py` | 8 | tiktoken ranks importer: exact-ID parity vs real cl100k_base, synthetic rank files, specials policy, byte fallback |
 | `test_audit_regressions.py` | 8 | External-audit regressions: BPE inter-word space roundtrip, batch single/batch security parity, tab/newline batch parity, CEM deterministic merge order, strict BPE decode |
-| **Total** | **110** | Run `pytest -q` for the current count — do not trust this table's total |
+| **Total** | **118** | Run `pytest -q` for the current count — do not trust this table's total |
 
 ### CI Pipeline
 

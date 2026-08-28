@@ -43,10 +43,19 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
       - name: Install Build & Test Tooling
         run: |
           python -m pip install --upgrade pip setuptools wheel build
-          python -m pip install ruff mypy pytest coverage tokenizers transformers sentencepiece
+          python -m pip install ruff mypy pytest coverage maturin regex tokenizers transformers sentencepiece
+
+      - name: Build & Install Native Extension (fresh from source)
+        shell: pwsh
+        run: |
+          python -m maturin build --release --manifest-path caliper_core/Cargo.toml -o dist
+          python -m pip install --force-reinstall (Get-Item dist/caliper_core-*.whl).FullName
 
       - name: Install Caliper Tokenizer (Editable)
         run: |
@@ -75,3 +84,50 @@ jobs:
       - name: Verify Package Build
         run: |
           python -m build
+
+  native-wheels:
+    name: Native wheels (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Build sdist + wheels for all supported Pythons
+        uses: PyO3/maturin-action@v1
+        with:
+          working-directory: caliper_core
+          command: build
+          args: --release --out dist --find-interpreter
+
+      - name: Upload wheel artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: caliper-core-wheels-${{ matrix.os }}
+          path: caliper_core/dist/*.whl
+          if-no-files-found: error
+
+  pypi-release:
+    name: Publish caliper-core wheels to PyPI
+    needs: [native-wheels, test]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write  # trusted publishing (no API token needed)
+    steps:
+      - name: Download all wheel artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Publish to PyPI
+        uses: PyO3/maturin-action@v1
+        with:
+          command: upload
+          args: --skip-existing dist/*
+

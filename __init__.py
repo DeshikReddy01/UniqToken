@@ -41,9 +41,16 @@ _LAZY_MULTIMODAL = {
     "VisualCodebook": "multimodal.visual_codebook",
 }
 
+# External-format compatibility adapters (lazy for the same reason)
+_LAZY_COMPAT = {
+    "TiktokenEncoding": "tiktoken_adapter",
+    "load_tiktoken_ranks": "tiktoken_adapter",
+    "TIKTOKEN_PATTERNS": "tiktoken_adapter",
+}
+
 
 def __getattr__(name: str):
-    module_name = _LAZY_MULTIMODAL.get(name)
+    module_name = _LAZY_MULTIMODAL.get(name) or _LAZY_COMPAT.get(name)
     if module_name is None:
         raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
     import importlib
@@ -54,7 +61,7 @@ def __getattr__(name: str):
 
 
 def __dir__() -> list[str]:
-    return sorted(set(globals()) | set(_LAZY_MULTIMODAL))
+    return sorted(set(globals()) | set(_LAZY_MULTIMODAL) | set(_LAZY_COMPAT))
 __all__ = [
     # Core Engine
     "CustomTokenizer",
@@ -98,4 +105,8 @@ __all__ = [
     "NeuralVisualCodec",
     "NeuralAudioCodec",
     "HAS_TORCH",
+    # External-format compatibility
+    "TiktokenEncoding",
+    "load_tiktoken_ranks",
+    "TIKTOKEN_PATTERNS",
 ]

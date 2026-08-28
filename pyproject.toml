@@ -49,7 +49,11 @@ test = [
     "pytest>=7.0.0",
     "coverage>=7.0.0",
     "ruff>=0.4.0",
-    "mypy>=1.8.0"
+    "mypy>=1.8.0",
+    "regex>=2023.0.0"
+]
+tiktoken = [
+    "regex>=2023.0.0"
 ]
 bench = [
     "sentencepiece>=0.1.99",
@@ -89,6 +93,7 @@ py-modules = [
     "security_shield",
     "seed_builder",
     "streaming_decoder",
+    "tiktoken_adapter",
     "tokenizer",
     "trie",
     "unigram_lattice",
