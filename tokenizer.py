@@ -504,13 +504,17 @@ class CustomTokenizer:
             return []
         if num_workers is not None and num_workers < 1:
             raise ValueError(f"num_workers must be >= 1 (or None), got {num_workers}")
-        # v17 single FFI batch
-        if num_workers is None and self._is_rust_fast_path_eligible(allowed_special, disallowed_special_action):
+        # v17 single FFI batch — must use _prepare_text (sanitize+indent) not just sanitize
+        if (
+            num_workers is None
+            and not self._indent_compression_enabled
+            and self._is_rust_fast_path_eligible(allowed_special, disallowed_special_action)
+        ):
             rt = self._get_rust_tokenizer()
             if rt is not None:
                 try:
                     sanitized = [
-                        self.security.sanitize(t, allowed_special, disallowed_special_action) for t in texts
+                        self._prepare_text(t, allowed_special, disallowed_special_action) for t in texts
                     ]
                     return rt.encode_batch(sanitized)  # type: ignore
                 except Exception:
@@ -551,13 +555,17 @@ class CustomTokenizer:
         if num_workers is not None and num_workers < 1:
             raise ValueError(f"num_workers must be >= 1 (or None), got {num_workers}")
 
-        # v18 Vec<u32> zero-copy
-        if num_workers is None and self._is_rust_fast_path_eligible(allowed_special, disallowed_special_action):
+        # v18 Vec<u32> zero-copy — must use _prepare_text (sanitize+indent) not just sanitize
+        if (
+            num_workers is None
+            and not self._indent_compression_enabled
+            and self._is_rust_fast_path_eligible(allowed_special, disallowed_special_action)
+        ):
             rt = self._get_rust_tokenizer()
             if rt is not None:
                 try:
                     sanitized = [
-                        self.security.sanitize(t, allowed_special, disallowed_special_action) for t in texts
+                        self._prepare_text(t, allowed_special, disallowed_special_action) for t in texts
                     ]
                     return rt.encode_ids_batch(sanitized)  # type: ignore
                 except (ImportError, AttributeError, ValueError, TypeError):
@@ -683,6 +691,34 @@ class CustomTokenizer:
         token_ids = [self.model.token_to_id.get(t, unk_id) for t in tokens]
         return self.decode(token_ids)
 
+    def decode_batch(
+        self,
+        token_id_sequences: Sequence[Sequence[int]],
+        num_workers: Optional[int] = None,
+    ) -> List[str]:
+        """Decodes a batch of token-ID sequences in parallel.
+
+        This is the batch counterpart of :meth:`encode_batch`. It
+        delegates to :meth:`decode` for each row; for large batches a
+        thread pool provides modest speedup because the inner
+        :meth:`BPEModel.decode` is Python-bound and the GIL is
+        released during the byte-fallback decoding step.
+        """
+        if not token_id_sequences:
+            return []
+        if num_workers is not None and num_workers < 1:
+            raise ValueError(f"num_workers must be >= 1 (or None), got {num_workers}")
+        if len(token_id_sequences) <= 64 or num_workers == 1:
+            return [self.decode(list(seq)) for seq in token_id_sequences]
+        workers = num_workers or min(os.cpu_count() or 1, 8)
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            return list(
+                executor.map(
+                    lambda seq: self.decode(list(seq)),
+                    token_id_sequences,
+                )
+            )
+
     def get_streaming_decoder(self, skip_special_tokens: bool = True) -> StreamingDecoder:
         indent_replacements = {}
         if self._indent_compression_enabled:
@@ -727,6 +763,9 @@ class CustomTokenizer:
                 "split_punctuation": self.pre_tokenizer.split_punctuation,
                 "keep_special_tokens": self.pre_tokenizer.keep_special_tokens,
                 "special_token_pattern": self.pre_tokenizer.special_token_pattern,
+                "hex_literals": self.pre_tokenizer.hex_literals,
+                "digit_chunk_size": self.pre_tokenizer.digit_chunk_size,
+                "preset": self.pre_tokenizer.preset,
             },
         }
 
@@ -771,6 +810,9 @@ class CustomTokenizer:
             split_punctuation=pre_tokenizer_config.get("split_punctuation", True),
             keep_special_tokens=pre_tokenizer_config.get("keep_special_tokens", True),
             special_token_pattern=pre_tokenizer_config.get("special_token_pattern", r"<\|[^\s|]+\|>"),
+            hex_literals=pre_tokenizer_config.get("hex_literals", True),
+            digit_chunk_size=pre_tokenizer_config.get("digit_chunk_size"),
+            preset=pre_tokenizer_config.get("preset"),
         )
 
         return cls(normalizer=normalizer, pre_tokenizer=pre_tokenizer, model=model)

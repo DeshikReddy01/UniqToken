@@ -512,6 +512,8 @@ ids = tok.encode_to_ids("hello world")      # IDs preserved; leading-word may di
 | `test_sentencepiece_importer.py` | 11 | SentencePiece `.model` importer: dependency-free protobuf parser, differential vocab/ID/encode parity vs real `sentencepiece` package (Unigram + byte fallback), `add_dummy_prefix` warning, decode round-trip, BPE rejection |
 | `test_audit_regressions.py` | 8 | External-audit regressions: BPE inter-word space roundtrip, batch single/batch security parity, tab/newline batch parity, CEM deterministic merge order, strict BPE decode |
 | `test_vocab_quality_race.py` | 6 | Matched-budget vocab quality race harness: report shape, BPB invariant, category tagging, JSON serialization, dataclass invariants. Skipped automatically if the heavy `transformers + sklearn + pandas + pyarrow` import chain is not importable in the current environment |
+| `test_tokenizer.py::BPETests` (heap encode) | 3 | Rank-priority BPE encode parity vs the naive O(merges × len) algorithm, unknown-word fallback, Unicode word round-trip |
+| `test_tokenizer.py::DecodeBatchTests` | 4 | `decode_batch` round-trip, empty input, invalid `num_workers`, serial vs parallel agreement |
 | **Total** | **128+** | Run `pytest -q` for the current count — do not trust this table's total |
 
 ### CI Pipeline

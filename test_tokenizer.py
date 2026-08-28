@@ -358,6 +358,142 @@ class BPETests(unittest.TestCase):
         decoded = bpe_model.decode(ids)
         self.assertEqual(decoded, "lowest")
 
+    def test_bpe_heap_encode_matches_naive_algorithm(self):
+        """The rank-priority heap encode must produce identical segmentations
+        to the original O(merges * len) algorithm on a representative mix of
+        inputs (long words, words with no learnable merges, multibyte chars,
+        repeated patterns that would stress the heap's stale-entry handling).
+        """
+        from bpe_model import BPEModel
+
+        corpus = (
+            ["the quick brown fox jumps over the lazy dog"] * 5
+            + ["lowest low lower lowest lowering"] * 6
+            + ["unigram tokenization byte fallback"] * 4
+            + ["aaaaaa bbbbbb cccccc abcdef xyz"] * 3
+        )
+        trainer = BPETrainer(num_merges=20, byte_fallback=True)
+        bpe_model = trainer.train(corpus)
+
+        def naive_encode_word(model: BPEModel, word: str) -> list:
+            syms = model._build_symbols(word)
+            if len(syms) <= 1:
+                return list(syms)
+            while len(syms) > 1:
+                pairs = set(zip(syms[:-1], syms[1:]))
+                best = min(pairs, key=lambda p: model.merges.get(p, float("inf")))
+                if best not in model.merges:
+                    break
+                first, second = best
+                merged = first + second
+                out = []
+                i = 0
+                while i < len(syms):
+                    if i < len(syms) - 1 and syms[i] == first and syms[i + 1] == second:
+                        out.append(merged)
+                        i += 2
+                    else:
+                        out.append(syms[i])
+                        i += 1
+                syms = out
+            return syms
+
+        test_words = [
+            "lowest",
+            "low",
+            "hello",
+            "the",
+            "fox",
+            "lowestlowest",
+            "unigram tokenization byte",
+            "helloworld",
+            "aaaaaa",
+            "abcdef",
+            "no_learned_merges_here",
+            "loweringlowest",
+            "a",
+            "ab",
+            "abcdefghij",
+        ]
+        for word in test_words:
+            heap_result = bpe_model._encode_word(word)
+            naive_result = naive_encode_word(bpe_model, word)
+            self.assertEqual(
+                heap_result,
+                naive_result,
+                f"heap vs naive disagreement on {word!r}: "
+                f"heap={heap_result!r} naive={naive_result!r}",
+            )
+
+    def test_bpe_heap_encode_handles_unknown_words(self):
+        """Words with no learned merges (or empty merges table) must fall back
+        to the per-character symbols without crashing or losing fidelity."""
+        from bpe_model import BPEModel
+
+        trainer = BPETrainer(num_merges=3, byte_fallback=True)
+        bpe_model = trainer.train(["hello", "world"])
+        result = bpe_model._encode_word("completely_unknown_word")
+        self.assertTrue(len(result) > 0)
+        joined = bpe_model.decode(
+            [bpe_model.token_to_id.get(t, 0) for t in result]
+        )
+        self.assertEqual(joined, "completely_unknown_word")
+
+    def test_bpe_heap_encode_unicode_word(self):
+        """A word with non-ASCII characters exercises the byte-fallback path
+        (per-char to <0xNN>) combined with the heap merge loop."""
+        trainer = BPETrainer(num_merges=10, byte_fallback=True)
+        bpe_model = trainer.train(["café", "naïve", "résumé", "hello café"] * 4)
+        result = bpe_model._encode_word("café")
+        self.assertTrue(len(result) > 0)
+        joined = bpe_model.decode(
+            [bpe_model.token_to_id.get(t, 0) for t in result]
+        )
+        self.assertEqual(joined, "café")
+
+
+class DecodeBatchTests(unittest.TestCase):
+    def setUp(self):
+        corpus = ["the quick brown fox jumps over the lazy dog"] * 4
+        self.tok = CustomTokenizer.train_from_corpus(
+            corpus=corpus,
+            target_vocab_size=500,
+            ranking_strategy="char_savings",
+            verbose=False,
+        )
+
+    def test_decode_batch_round_trip(self):
+        texts = [
+            "the quick brown fox",
+            "hello world",
+            "lowest low",
+            "",
+            "the lazy dog",
+        ]
+        ids_batch = self.tok.encode_to_ids_batch(texts)
+        self.assertEqual(len(ids_batch), len(texts))
+        decoded = self.tok.decode_batch(ids_batch)
+        self.assertEqual(len(decoded), len(texts))
+        for original, decoded_text in zip(texts, decoded):
+            self.assertEqual(
+                original, decoded_text,
+                f"roundtrip mismatch: {original!r} -> {decoded_text!r}",
+            )
+
+    def test_decode_batch_empty_input(self):
+        self.assertEqual(self.tok.decode_batch([]), [])
+
+    def test_decode_batch_rejects_bad_num_workers(self):
+        with self.assertRaises(ValueError):
+            self.tok.decode_batch([[0, 1, 2]], num_workers=0)
+
+    def test_decode_batch_serial_and_parallel_agree(self):
+        texts = ["the quick", "brown fox", "lowest"]
+        ids_batch = self.tok.encode_to_ids_batch(texts)
+        serial = self.tok.decode_batch(ids_batch, num_workers=1)
+        parallel = self.tok.decode_batch(ids_batch, num_workers=4)
+        self.assertEqual(serial, parallel)
+
 
 class LatticeFastPathTests(unittest.TestCase):
     def setUp(self):
