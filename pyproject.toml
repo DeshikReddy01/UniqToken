@@ -88,6 +88,7 @@ py-modules = [
     "cem_merger",
     "cli",
     "hf_exporter",
+    "hf_importer",
     "indentation_compressor",
     "pre_tokenizer",
     "security_shield",

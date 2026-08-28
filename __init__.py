@@ -46,6 +46,10 @@ _LAZY_COMPAT = {
     "TiktokenEncoding": "tiktoken_adapter",
     "load_tiktoken_ranks": "tiktoken_adapter",
     "TIKTOKEN_PATTERNS": "tiktoken_adapter",
+    "HFByteLevelBPE": "hf_importer",
+    "import_hf_tokenizer": "hf_importer",
+    "import_hf_unigram": "hf_importer",
+    "import_hf_bpe": "hf_importer",
 }
 
 
@@ -109,4 +113,8 @@ __all__ = [
     "TiktokenEncoding",
     "load_tiktoken_ranks",
     "TIKTOKEN_PATTERNS",
+    "HFByteLevelBPE",
+    "import_hf_tokenizer",
+    "import_hf_unigram",
+    "import_hf_bpe",
 ]

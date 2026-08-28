@@ -463,6 +463,22 @@ text = enc.decode(ids)
 
 `to_caliper_bpe_model()` additionally converts the ranks into Caliper's native `BPEModel` (IDs preserved) for reuse in training/analysis. CI runs token-for-token differential tests against the real `tiktoken` package on multilingual, emoji/ZWJ, and code inputs.
 
+### HuggingFace tokenizer.json importer
+
+`import_hf_tokenizer()` reads an HF `tokenizer.json` (path, directory, or parsed dict) and dispatches on model type:
+
+- **Unigram** → a native Caliper `CustomTokenizer` with scores and token IDs preserved exactly (normalizer/pre-tokenizer mapped best-effort with explicit warnings for unrepresentable components).
+- **BPE** → GPT-2-style **ByteLevel** vocabs return a fully functional `HFByteLevelBPE` with exact-ID encode/decode (verified differentially against the real `tokenizers` package); non-byte-level BPE returns vocab/merges/IDs as a `BPEModel` for data reuse.
+- WordPiece is rejected with a clear error (Caliper has no WordPiece engine).
+
+```python
+from hf_importer import import_hf_tokenizer
+
+cal = import_hf_tokenizer("path/to/tokenizer.json")   # Unigram -> CustomTokenizer
+gpt2 = import_hf_tokenizer("gpt2/tokenizer.json")     # BPE -> HFByteLevelBPE
+ids = gpt2.encode("Hello, world!")                    # same IDs as HF
+```
+
 ---
 
 ## Testing & CI
@@ -480,8 +496,9 @@ text = enc.decode(ids)
 | `test_metric_audit.py` | 2 | Metric accounting invariants (TID-BPB formula, byte/token sums) and 12-script vocabulary distribution audit |
 | `test_rust_parity.py` | 2 | Rust native extension / Python fallback parity |
 | `test_tiktoken_adapter.py` | 8 | tiktoken ranks importer: exact-ID parity vs real cl100k_base, synthetic rank files, specials policy, byte fallback |
+| `test_hf_importer.py` | 10 | HF tokenizer.json importer: differential vocab/ID/encode parity vs real `tokenizers` package (Unigram + ByteLevel BPE), unsupported-component warnings |
 | `test_audit_regressions.py` | 8 | External-audit regressions: BPE inter-word space roundtrip, batch single/batch security parity, tab/newline batch parity, CEM deterministic merge order, strict BPE decode |
-| **Total** | **118** | Run `pytest -q` for the current count — do not trust this table's total |
+| **Total** | **128** | Run `pytest -q` for the current count — do not trust this table's total |
 
 ### CI Pipeline
 
