@@ -141,6 +141,12 @@ class UnigramLattice:
             k = self.max_edges_per_node
             for j in range(1, self.length + 1):
                 if len(self.end_nodes[j]) > k:
+                    # ponytail: APPROXIMATE pruning — edges are ranked by local
+                    # edge cost only, not by best_cost[start] + edge.cost, so a
+                    # locally cheap edge can be globally inferior. This bounds
+                    # lattice size; exact decoding is preserved only when k is
+                    # large enough that no true-best edge is pruned. Upgrade:
+                    # rank by forward DP scores computed before pruning.
                     self.end_nodes[j].sort(key=lambda e: e.cost)
                     # ponytail: O(k) removal per node not O(n*k) scan; upgrade to heap if n>100k
                     pruned = self.end_nodes[j][k:]

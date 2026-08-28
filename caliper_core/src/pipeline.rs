@@ -63,12 +63,29 @@ pub fn rust_pre_tokenize(text: &str) -> Vec<String> {
     re.find_iter(text).map(|m| m.as_str().to_string()).collect()
 }
 
+/// Characters Python's `Normalizer` maps to whitespace replacements.
+///
+/// Mirrors `Normalizer.UNICODE_SPACES` plus the ASCII space; tabs, newlines,
+/// and carriage returns are deliberately NOT mapped here so the pre-tokenizer
+/// regex handles them exactly like the Python single-encode path.
+fn is_python_unicode_space(ch: char) -> bool {
+    matches!(
+        ch,
+        '\u{00A0}' | '\u{1680}' | '\u{2000}'..='\u{200A}' | '\u{202F}' | '\u{205F}' | '\u{3000}'
+    )
+}
+
 /// Normalizes a single string directly in native Rust.
+///
+/// Semantics mirror Python's `Normalizer.normalize` + metaspace substitution:
+/// NFKC first, then only the configured unicode-space set (and plain space)
+/// become the metaspace character. Other whitespace is left for the
+/// pre-tokenizer's `\s` handling to keep Rust/Python parity on tabs/newlines.
 pub fn normalize_string_native(text: &str, space_char: char) -> String {
     let mut normalized = String::with_capacity(text.len() + 8);
     let nfkc: String = text.nfkc().collect();
     for ch in nfkc.chars() {
-        if ch.is_whitespace() {
+        if ch == ' ' || is_python_unicode_space(ch) {
             normalized.push(space_char);
         } else {
             normalized.push(ch);
@@ -100,16 +117,27 @@ pub fn rust_encode_text_batch(
     py.allow_threads(|| {
         texts
             .par_iter()
-            .map(|raw_text| {
+            .enumerate()
+            .map(|(idx, raw_text)| {
                 let chunks = pre_tokenize_native(raw_text, space_char);
                 let mut sentence_ids: Vec<u32> = Vec::with_capacity(chunks.len() * 2);
 
                 for chunk in chunks {
-                    if let Ok(spans) = rust_viterbi_decode(&chunk, trie, byte_fallback, None) {
-                        for span in spans {
-                            if let Some(id) = span.token_id {
-                                sentence_ids.push(id);
+                    match rust_viterbi_decode(&chunk, trie, byte_fallback, None) {
+                        Ok(spans) => {
+                            for span in spans {
+                                if let Some(id) = span.token_id {
+                                    sentence_ids.push(id);
+                                }
                             }
+                        }
+                        // Never silently turn a disconnected lattice into an
+                        // empty or partial sequence — propagate with context.
+                        Err(err) => {
+                            return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                                "rust_encode_text_batch: Viterbi decode failed for input #{} (chunk {:?}): {}",
+                                idx, chunk, err
+                            )));
                         }
                     }
                 }

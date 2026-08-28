@@ -36,6 +36,16 @@ class BPEModel:
             self._unk_token = self.special_tokens[0]
         else:
             self._unk_token = None
+        # Inter-word separator token: must exist in the vocab or encode_to_ids
+        # would silently fall back to unk. Prefer a literal space, then the
+        # byte-fallback token <0x20> (which decodes back to " ").
+        if " " in token_to_id and " " in vocab:
+            self._space_token = " "
+        elif byte_fallback:
+            self._space_token = ByteFallbackEngine.byte_to_token(32)
+        else:
+            # Last resort: raw space maps through unk_id at the ID stage.
+            self._space_token = " "
 
     @property
     def vocab_size(self) -> int:
@@ -98,7 +108,7 @@ class BPEModel:
         tokens: List[str] = []
         for idx, word in enumerate(words):
             if idx > 0:
-                tokens.append(" ")
+                tokens.append(self._space_token)
             tokens.extend(self._encode_word(word))
         return tokens
 
@@ -107,7 +117,19 @@ class BPEModel:
         unk_id = self.token_to_id.get("<|unk|>", 0)
         return [self.token_to_id.get(t, unk_id) for t in tokens]
 
-    def decode(self, token_ids: List[int], space_char: str = "\u2581") -> str:
-        """Decodes integer token IDs back to a human-readable string."""
-        tokens = [self.id_to_token.get(t, "") for t in token_ids]
+    def decode(self, token_ids: List[int], space_char: str = "\u2581", strict: bool = False) -> str:
+        """
+        Decodes integer token IDs back to a human-readable string.
+
+        strict=False (default, lenient): unknown IDs are skipped silently.
+        strict=True: raises ValueError naming the first invalid ID.
+        """
+        tokens: List[str] = []
+        for t in token_ids:
+            tok = self.id_to_token.get(t)
+            if tok is None:
+                if strict:
+                    raise ValueError(f"token id {t} is not in the model vocabulary")
+                continue  # lenient: unknown IDs contribute nothing
+            tokens.append(tok)
         return ByteFallbackEngine.decode_tokens(tokens, space_char=space_char)

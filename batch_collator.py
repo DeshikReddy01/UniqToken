@@ -89,8 +89,14 @@ class BatchCollator:
 
                 rust_trie = self.tokenizer.model._get_rust_trie()
                 if rust_trie is not None and len(texts) > 1:
-                    # Preprocess / normalize chunks
-                    norm_texts = [self.tokenizer.normalizer.normalize(t) for t in texts]
+                    # Preprocess: sanitize with the same defaults as
+                    # tokenizer.encode (allowed_special="none", escape) and then
+                    # normalize, so the native batch path cannot emit unauthorized
+                    # special-token IDs the Python path would have escaped.
+                    shield = self.tokenizer.security
+                    norm_texts = [
+                        self.tokenizer.normalizer.normalize(shield.sanitize(t)) for t in texts
+                    ]
                     raw_spans_batch = caliper_core.rust_viterbi_decode_batch(
                         norm_texts,
                         rust_trie,

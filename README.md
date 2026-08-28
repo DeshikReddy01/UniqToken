@@ -457,7 +457,8 @@ The `allowed_special` parameter accepts `"all"`, `"none"`, or a specific `set` o
 | `test_fuzz_properties.py` | 7 | Property-based fuzzing: roundtrip integrity, offset validity, Unicode resilience, determinism |
 | `test_metric_audit.py` | 2 | Metric accounting invariants (TID-BPB formula, byte/token sums) and 12-script vocabulary distribution audit |
 | `test_rust_parity.py` | 2 | Rust native extension / Python fallback parity |
-| **Total** | **100** | **Zero failures, zero warnings** |
+| `test_audit_regressions.py` | 8 | External-audit regressions: BPE inter-word space roundtrip, batch single/batch security parity, tab/newline batch parity, CEM deterministic merge order, strict BPE decode |
+| **Total** | **110** | Run `pytest -q` for the current count — do not trust this table's total |
 
 ### CI Pipeline
 
@@ -482,7 +483,7 @@ Each cell runs:
 ```bash
 pip install -e ".[test]"
 
-pytest                                          # all 100 tests
+pytest                                          # full test suite
 ruff check . && ruff format --check .           # lint + format
 mypy .                                          # type check
 coverage run -m pytest && coverage report       # coverage

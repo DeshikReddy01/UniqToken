@@ -562,25 +562,12 @@ class CustomTokenizer:
                     return rt.encode_ids_batch(sanitized)  # type: ignore
                 except (ImportError, AttributeError, ValueError, TypeError):
                     pass
-        if (
-            num_workers is None
-            and hasattr(self.model, "_get_rust_trie")
-            and not self._cross_word_tokens()
-            and allowed_special == "none"
-        ):
-            rust_trie = self.model._get_rust_trie()
-            if rust_trie is not None:
-                try:
-                    import caliper_core
-
-                    return caliper_core.rust_encode_text_batch(
-                        list(texts),
-                        rust_trie,
-                        self.model.byte_fallback,
-                        self.normalizer.space_char,
-                    )
-                except (ImportError, AttributeError, ValueError):
-                    pass
+        # ponytail: the former rust_encode_text_batch fast path was removed: it
+        # bypassed SecurityShield (raw texts could emit unauthorized special-token
+        # IDs that single encode() escapes) and its native normalizer mapped ALL
+        # whitespace to the metaspace, diverging from the Python path on
+        # tabs/newlines. Batch fast-pathing goes through RustTokenizer below,
+        # which shares shield output and parity-tested semantics.
 
         if len(texts) <= 64 or num_workers == 1:
             return [

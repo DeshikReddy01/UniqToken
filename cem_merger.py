@@ -214,6 +214,9 @@ class CrossEntropyMerging:
                 streams[s_idx] = new_stream
 
                 # Increment new pairs
+                # ponytail: total_pairs must include THIS stream's new pairs before
+                # scoring — otherwise heap ordering uses a stale f / N denominator.
+                total_pairs += len(new_stream) - 1
                 for i in range(len(new_stream) - 1):
                     p = (new_stream[i], new_stream[i + 1])
                     pair_counts[p] += 1
@@ -226,7 +229,6 @@ class CrossEntropyMerging:
                             sc, lp_hat, _ = compute_pair_score(a_p, b_p, pair_counts[p], total_pairs)
                             if sc < self.max_score:
                                 heapq.heappush(heap, (sc, pair_counts[p], lp_hat, p))
-                total_pairs += len(new_stream) - 1
 
             pair_counts.pop((a, b), None)
             pair_to_streams.pop((a, b), None)
