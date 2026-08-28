@@ -160,10 +160,15 @@ def train_toy_transformer(
     dim: int = 64,
     heads: int = 4,
     layers: int = 2,
+    device: str = "auto",
 ) -> PretrainingMetrics:
     """
     Trains a causal mini-transformer or lightweight probabilistic model
     and measures cross-entropy loss and bits-per-byte (BPB).
+
+    ``device`` selects the compute device: ``"auto"`` (default) uses
+    CUDA when ``torch.cuda.is_available()``, otherwise CPU. Pass
+    ``"cuda"`` or ``"cpu"`` to override.
     """
     if not corpus or not any(corpus):
         raise ValueError("corpus must contain at least one non-empty document")
@@ -171,6 +176,8 @@ def train_toy_transformer(
         raise ValueError("steps, seq_len, and batch_size must be positive")
     if dim < 1 or heads < 1 or layers < 1 or dim % heads != 0:
         raise ValueError("dim, heads, and layers must be positive and dim must be divisible by heads")
+    if device not in ("auto", "cpu", "cuda"):
+        raise ValueError(f"device must be 'auto', 'cpu', or 'cuda' (got {device!r})")
 
     # Keep exact duplicate documents entirely on one side of the split.
     train_docs, val_docs = _split_documents(corpus)
@@ -237,7 +244,12 @@ def train_toy_transformer(
                 out = self.norm(out)
                 return self.head(out)
 
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        if device == "auto":
+            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        else:
+            if device == "cuda" and not torch.cuda.is_available():
+                raise RuntimeError("device='cuda' requested but torch.cuda.is_available() is False")
+            device = torch.device(device)
         torch.manual_seed(42)
         model = MiniCausalLM(vs=vocab_size, d=dim, h=heads, n_l=layers, max_s=seq_len).to(device)
         optimizer = torch.optim.AdamW(model.parameters(), lr=3e-3, weight_decay=1e-2)

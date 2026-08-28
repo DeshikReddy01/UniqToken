@@ -359,6 +359,7 @@ caliper/
 │
 ├── benchmarks/
 │   ├── benchmark_suite.py               # TokenizerBenchmarkSuite — 7-axis evaluation
+│   ├── vocab_quality_race.py            # Matched-budget vocab quality race (Phase 3 experiment)
 │   ├── downstream_eval.py               # DownstreamEvaluator — context efficiency & BPB
 │   ├── train_toy_transformer.py         # Downstream LLM pretraining & BPB validation
 │   ├── run_final_paper_audit.py         # Phase 15 publication audit & Pareto analysis
@@ -510,6 +511,7 @@ ids = tok.encode_to_ids("hello world")      # IDs preserved; leading-word may di
 | `test_hf_importer.py` | 10 | HF tokenizer.json importer: differential vocab/ID/encode parity vs real `tokenizers` package (Unigram + ByteLevel BPE), unsupported-component warnings |
 | `test_sentencepiece_importer.py` | 11 | SentencePiece `.model` importer: dependency-free protobuf parser, differential vocab/ID/encode parity vs real `sentencepiece` package (Unigram + byte fallback), `add_dummy_prefix` warning, decode round-trip, BPE rejection |
 | `test_audit_regressions.py` | 8 | External-audit regressions: BPE inter-word space roundtrip, batch single/batch security parity, tab/newline batch parity, CEM deterministic merge order, strict BPE decode |
+| `test_vocab_quality_race.py` | 6 | Matched-budget vocab quality race harness: report shape, BPB invariant, category tagging, JSON serialization, dataclass invariants. Skipped automatically if the heavy `transformers + sklearn + pandas + pyarrow` import chain is not importable in the current environment |
 | **Total** | **128+** | Run `pytest -q` for the current count — do not trust this table's total |
 
 ### CI Pipeline
