@@ -479,6 +479,17 @@ gpt2 = import_hf_tokenizer("gpt2/tokenizer.json")     # BPE -> HFByteLevelBPE
 ids = gpt2.encode("Hello, world!")                    # same IDs as HF
 ```
 
+#### Loading a SentencePiece `.model` (Unigram)
+
+Caliper can read SentencePiece Unigram models with **zero `protobuf` dependency** (raw wire-format parser) and **byte-for-byte vocab/ID preservation** vs the real `sentencepiece` package. The first word of every encode is subject to a known SPM/Caliper divergence (SPM's `add_dummy_prefix=True` prepends a metaspace that Caliper does not); the importer emits a `UserWarning` for it, and the rest of the encode is byte-for-byte identical:
+
+```python
+from sentencepiece_importer import import_sentencepiece
+
+tok = import_sentencepiece("sp.model")      # Unigram -> CustomTokenizer
+ids = tok.encode_to_ids("hello world")      # IDs preserved; leading-word may differ
+```
+
 ---
 
 ## Testing & CI
@@ -497,8 +508,9 @@ ids = gpt2.encode("Hello, world!")                    # same IDs as HF
 | `test_rust_parity.py` | 2 | Rust native extension / Python fallback parity |
 | `test_tiktoken_adapter.py` | 8 | tiktoken ranks importer: exact-ID parity vs real cl100k_base, synthetic rank files, specials policy, byte fallback |
 | `test_hf_importer.py` | 10 | HF tokenizer.json importer: differential vocab/ID/encode parity vs real `tokenizers` package (Unigram + ByteLevel BPE), unsupported-component warnings |
+| `test_sentencepiece_importer.py` | 11 | SentencePiece `.model` importer: dependency-free protobuf parser, differential vocab/ID/encode parity vs real `sentencepiece` package (Unigram + byte fallback), `add_dummy_prefix` warning, decode round-trip, BPE rejection |
 | `test_audit_regressions.py` | 8 | External-audit regressions: BPE inter-word space roundtrip, batch single/batch security parity, tab/newline batch parity, CEM deterministic merge order, strict BPE decode |
-| **Total** | **128** | Run `pytest -q` for the current count — do not trust this table's total |
+| **Total** | **128+** | Run `pytest -q` for the current count — do not trust this table's total |
 
 ### CI Pipeline
 

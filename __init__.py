@@ -50,6 +50,9 @@ _LAZY_COMPAT = {
     "import_hf_tokenizer": "hf_importer",
     "import_hf_unigram": "hf_importer",
     "import_hf_bpe": "hf_importer",
+    "import_sentencepiece": "sentencepiece_importer",
+    "load_sentencepiece_model": "sentencepiece_importer",
+    "parse_sentencepiece_proto": "sentencepiece_importer",
 }
 
 
@@ -117,4 +120,7 @@ __all__ = [
     "import_hf_tokenizer",
     "import_hf_unigram",
     "import_hf_bpe",
+    "import_sentencepiece",
+    "load_sentencepiece_model",
+    "parse_sentencepiece_proto",
 ]
