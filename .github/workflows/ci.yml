@@ -53,7 +53,7 @@ jobs:
 
       - name: Build & Install Native Extension (fresh from source)
         run: |
-          maturin develop --release --manifest-path caliper_core/Cargo.toml
+          python -m pip install ./caliper_core
 
       - name: Install Caliper Tokenizer (Editable)
         run: |
