@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/banner.png" alt="UniqToken Banner" width="100%">
+  <img src="banner.jpeg" alt="UniqToken Banner" width="100%">
 </p>
 
 <p align="center">
@@ -13,8 +13,8 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/umran666/UniqToken/actions/workflows/ci.yml"><img src="https://github.com/umran666/UniqToken/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI"></a>
-  <a href="https://github.com/umran666/UniqToken/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License"></a>
+  <a href="https://github.com/umran666/caliper/actions/workflows/ci.yml"><img src="https://github.com/umran666/caliper/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI"></a>
+  <a href="https://github.com/umran666/caliper/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License"></a>
   <img src="https://img.shields.io/badge/python-3.9%20%7C%203.10%20%7C%203.11%20%7C%203.12-blue.svg" alt="Python">
   <img src="https://img.shields.io/badge/version-1.0.0-blue.svg" alt="Version">
   <img src="https://img.shields.io/badge/dependencies-zero-brightgreen.svg" alt="Dependencies">
