@@ -27,8 +27,10 @@ import os
 import json
 import numpy as np
 import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+
 
 def load_and_audit_dataset():
     benchmarks_dir = os.path.dirname(os.path.abspath(__file__))
@@ -47,11 +49,7 @@ def load_and_audit_dataset():
         conf_data = json.load(f)
 
     dataset = []
-    tiers = [
-        ("Small (4L-128d)", 4, 128),
-        ("Medium (6L-256d)", 6, 256),
-        ("Large (8L-512d)", 8, 512)
-    ]
+    tiers = [("Small (4L-128d)", 4, 128), ("Medium (6L-256d)", 6, 256), ("Large (8L-512d)", 8, 512)]
     tokenizers = ["SentencePiece-Unigram", "Boundary-BPE", "Caliper-SuperBPE (Config B)"]
 
     # 32K and 64K Scales from Phase 14B
@@ -66,27 +64,30 @@ def load_and_audit_dataset():
                 bpt = float(entry["bytes_per_token_mean"])
                 flops_per_byte = (2 * p_total) / bpt
 
-                dataset.append({
-                    "tier": tier_name,
-                    "num_layers": L,
-                    "d_model": d,
-                    "vocab_size": v,
-                    "vocab_label": v_label,
-                    "tokenizer": tok,
-                    "bpb": float(entry["true_lm_bpb_mean"]),
-                    "bpb_std": float(entry["true_lm_bpb_std"]),
-                    "ce": float(entry["token_ce_loss_mean"]),
-                    "bytes_per_token": bpt,
-                    "active_vocab_pct": float(entry["active_vocab_pct_mean"]),
-                    "total_params": p_total,
-                    "non_embed_params": p_non_embed,
-                    "embed_memory_mb": m_embed_mb,
-                    "flops_per_byte": flops_per_byte,
-                    "num_seeds": 5,
-                    "source": "Phase 14B"
-                })
+                dataset.append(
+                    {
+                        "tier": tier_name,
+                        "num_layers": L,
+                        "d_model": d,
+                        "vocab_size": v,
+                        "vocab_label": v_label,
+                        "tokenizer": tok,
+                        "bpb": float(entry["true_lm_bpb_mean"]),
+                        "bpb_std": float(entry["true_lm_bpb_std"]),
+                        "ce": float(entry["token_ce_loss_mean"]),
+                        "bytes_per_token": bpt,
+                        "active_vocab_pct": float(entry["active_vocab_pct_mean"]),
+                        "total_params": p_total,
+                        "non_embed_params": p_non_embed,
+                        "embed_memory_mb": m_embed_mb,
+                        "flops_per_byte": flops_per_byte,
+                        "num_seeds": 5,
+                        "source": "Phase 14B",
+                    }
+                )
 
     return dataset, conf_data.get("hypothesis_tests", []), conf_data.get("repeated_measures_anova", {})
+
 
 def compute_pareto(subset, cost_keys):
     """
@@ -113,6 +114,7 @@ def compute_pareto(subset, cost_keys):
 
     return [subset[i] for i in range(n) if is_eff[i]]
 
+
 def plot_publication_figure(dataset, pareto_2d, pareto_3d, out_path):
     plt.style.use("seaborn-v0_8-whitegrid" if "seaborn-v0_8-whitegrid" in plt.style.available else "default")
     fig, axs = plt.subplots(2, 2, figsize=(18, 14), dpi=300)
@@ -120,13 +122,9 @@ def plot_publication_figure(dataset, pareto_2d, pareto_3d, out_path):
     tok_colors = {
         "SentencePiece-Unigram": "#2b5c8f",
         "Boundary-BPE": "#d95f02",
-        "Caliper-SuperBPE (Config B)": "#7570b3"
+        "Caliper-SuperBPE (Config B)": "#7570b3",
     }
-    tier_markers = {
-        "Small (4L-128d)": "o",
-        "Medium (6L-256d)": "s",
-        "Large (8L-512d)": "^"
-    }
+    tier_markers = {"Small (4L-128d)": "o", "Medium (6L-256d)": "s", "Large (8L-512d)": "^"}
 
     # -------------------------------------------------------------
     # Panel A: The 32K Three-Way Pareto Frontier (The Core Tradeoff)
@@ -149,11 +147,16 @@ def plot_publication_figure(dataset, pareto_2d, pareto_3d, out_path):
     # Annotate the 3 key points at 32K Large
     for d in sub_32k_large:
         tok_short = d["tokenizer"].split("-")[0]
-        ax1.annotate(f"{tok_short}\nBPB={d['bpb']:.3f}, CE={d['ce']:.3f}",
-                     (d["ce"], d["bpb"]), xytext=(8, -12 if "Boundary" in d["tokenizer"] else 8),
-                     textcoords="offset points", fontsize=9.5, fontweight="bold",
-                     color=tok_colors[d["tokenizer"]],
-                     bbox=dict(boxstyle="round,pad=0.2", fc="#ffffff", ec=tok_colors[d["tokenizer"]], alpha=0.85))
+        ax1.annotate(
+            f"{tok_short}\nBPB={d['bpb']:.3f}, CE={d['ce']:.3f}",
+            (d["ce"], d["bpb"]),
+            xytext=(8, -12 if "Boundary" in d["tokenizer"] else 8),
+            textcoords="offset points",
+            fontsize=9.5,
+            fontweight="bold",
+            color=tok_colors[d["tokenizer"]],
+            bbox=dict(boxstyle="round,pad=0.2", fc="#ffffff", ec=tok_colors[d["tokenizer"]], alpha=0.85),
+        )
 
     ax1.set_xlabel("Per-Token Validation Cross-Entropy Loss (nats) -> min", fontsize=12, fontweight="bold")
     ax1.set_ylabel("True LM BPB -> min", fontsize=12, fontweight="bold")
@@ -168,12 +171,25 @@ def plot_publication_figure(dataset, pareto_2d, pareto_3d, out_path):
 
     for tok in tok_colors:
         sub = [d for d in dataset if d["tokenizer"] == tok]
-        ax2.scatter([d["ce"] for d in sub], [d["bpb"] for d in sub],
-                    color=tok_colors[tok], label=tok.split("-")[0], alpha=0.5, s=70)
+        ax2.scatter(
+            [d["ce"] for d in sub],
+            [d["bpb"] for d in sub],
+            color=tok_colors[tok],
+            label=tok.split("-")[0],
+            alpha=0.5,
+            s=70,
+        )
 
     for d in dataset:
-        ax2.scatter(d["ce"], d["bpb"], color=tok_colors[d["tokenizer"]],
-                    marker=tier_markers[d["tier"]], s=110, edgecolors="black", linewidths=0.7)
+        ax2.scatter(
+            d["ce"],
+            d["bpb"],
+            color=tok_colors[d["tokenizer"]],
+            marker=tier_markers[d["tier"]],
+            s=110,
+            edgecolors="black",
+            linewidths=0.7,
+        )
 
     p2x = [p["ce"] for p in pareto_2d]
     p2y = [p["bpb"] for p in pareto_2d]
@@ -181,9 +197,15 @@ def plot_publication_figure(dataset, pareto_2d, pareto_3d, out_path):
     ax2.scatter(p2x, p2y, color="#e41a1c", marker="*", s=280, edgecolors="black", linewidths=1.2, zorder=5)
 
     for p in pareto_2d:
-        ax2.annotate(f"{p['tokenizer'].split('-')[0]} 64K-L\n(BPB={p['bpb']:.3f}, CE={p['ce']:.3f})",
-                     (p["ce"], p["bpb"]), xytext=(8, 4), textcoords="offset points",
-                     fontsize=9, fontweight="bold", color="#e41a1c")
+        ax2.annotate(
+            f"{p['tokenizer'].split('-')[0]} 64K-L\n(BPB={p['bpb']:.3f}, CE={p['ce']:.3f})",
+            (p["ce"], p["bpb"]),
+            xytext=(8, 4),
+            textcoords="offset points",
+            fontsize=9,
+            fontweight="bold",
+            color="#e41a1c",
+        )
 
     ax2.set_xlabel("Per-Token Validation Cross-Entropy Loss (nats) -> min", fontsize=12, fontweight="bold")
     ax2.set_ylabel("True LM BPB -> min", fontsize=12, fontweight="bold")
@@ -200,15 +222,22 @@ def plot_publication_figure(dataset, pareto_2d, pareto_3d, out_path):
         sub = [d for d in dataset if d["tokenizer"] == tok]
         mem = [d["embed_memory_mb"] for d in sub]
         bpb = [d["bpb"] for d in sub]
-        ax3.scatter(mem, bpb, color=tok_colors[tok], label=tok.split("-")[0],
-                    marker="o", s=100, edgecolors="black", alpha=0.75)
+        ax3.scatter(
+            mem, bpb, color=tok_colors[tok], label=tok.split("-")[0], marker="o", s=100, edgecolors="black", alpha=0.75
+        )
 
     # Annotate embedding scaling at Large
     for d in dataset:
         if d["tier"] == "Large (8L-512d)" and "Caliper" in d["tokenizer"]:
-            ax3.annotate(f"Caliper {d['vocab_label']}-Large\n({d['embed_memory_mb']:.1f} MB, BPB={d['bpb']:.2f})",
-                         (d["embed_memory_mb"], d["bpb"]), xytext=(8, -10), textcoords="offset points",
-                         fontsize=8.5, fontweight="bold", color="#7570b3")
+            ax3.annotate(
+                f"Caliper {d['vocab_label']}-Large\n({d['embed_memory_mb']:.1f} MB, BPB={d['bpb']:.2f})",
+                (d["embed_memory_mb"], d["bpb"]),
+                xytext=(8, -10),
+                textcoords="offset points",
+                fontsize=8.5,
+                fontweight="bold",
+                color="#7570b3",
+            )
 
     ax3.set_xlabel("Embedding Table Memory Footprint (MB) -> min", fontsize=12, fontweight="bold")
     ax3.set_ylabel("True LM BPB -> min", fontsize=12, fontweight="bold")
@@ -241,13 +270,27 @@ def plot_publication_figure(dataset, pareto_2d, pareto_3d, out_path):
     ax4.fill_between([9.0, 11.723], 1.8, 3.8, color="#d95f02", alpha=0.08, label="Boundary-BPE Dominance Zone")
     ax4.fill_between([11.723, 13.0], 1.8, 3.8, color="#2b5c8f", alpha=0.08, label="SentencePiece Dominance Zone")
 
-    ax4.annotate("Boundary-BPE 64K-Large\n(BPB=2.313, CE=9.107)", (10.0, 2.313),
-                 xytext=(-20, 25), textcoords="offset points", fontsize=9.5, fontweight="bold",
-                 color="#d95f02", arrowprops=dict(arrowstyle="->", color="#d95f02"))
+    ax4.annotate(
+        "Boundary-BPE 64K-Large\n(BPB=2.313, CE=9.107)",
+        (10.0, 2.313),
+        xytext=(-20, 25),
+        textcoords="offset points",
+        fontsize=9.5,
+        fontweight="bold",
+        color="#d95f02",
+        arrowprops=dict(arrowstyle="->", color="#d95f02"),
+    )
 
-    ax4.annotate("SentencePiece 64K-Large\n(BPB=1.933, CE=11.723)", (12.0, 1.933),
-                 xytext=(-40, 25), textcoords="offset points", fontsize=9.5, fontweight="bold",
-                 color="#2b5c8f", arrowprops=dict(arrowstyle="->", color="#2b5c8f"))
+    ax4.annotate(
+        "SentencePiece 64K-Large\n(BPB=1.933, CE=11.723)",
+        (12.0, 1.933),
+        xytext=(-40, 25),
+        textcoords="offset points",
+        fontsize=9.5,
+        fontweight="bold",
+        color="#2b5c8f",
+        arrowprops=dict(arrowstyle="->", color="#2b5c8f"),
+    )
 
     ax4.set_xlabel("Cross-Entropy Ceiling Constraint tau_CE (nats)", fontsize=12, fontweight="bold")
     ax4.set_ylabel("Minimum Feasible LM BPB", fontsize=12, fontweight="bold")
@@ -261,11 +304,16 @@ def plot_publication_figure(dataset, pareto_2d, pareto_3d, out_path):
     plt.close()
     print(f"[Plot] Saved final publication figure to {out_path}", flush=True)
 
+
 def main():
-    print("===============================================================================================================================================================================")
+    print(
+        "==============================================================================================================================================================================="
+    )
     print("FINAL PUBLICATION-READY STATISTICAL AUDIT & PARETO SYNTHESIS")
     print("Verifying all 27 Experimental Conditions under Exact Cost Modeling")
-    print("===============================================================================================================================================================================\n")
+    print(
+        "===============================================================================================================================================================================\n"
+    )
 
     dataset, hyp_tests, anova = load_and_audit_dataset()
     print(f"Audit Dataset: {len(dataset)} distinct conditions loaded.")
@@ -277,7 +325,9 @@ def main():
     print("\n1. GLOBAL 2D UNCONSTRAINED PARETO FRONTIER on (True LM BPB, Per-Token CE Loss)")
     print("-" * 120)
     for p in pareto_2d:
-        print(f"  {p['tokenizer']:<28} | Tier: {p['tier']:<16} | Vocab: {p['vocab_label']:<4} | BPB: {p['bpb']:<6.3f} | CE: {p['ce']:<6.3f} nats | B/Tok: {p['bytes_per_token']:<5.2f}")
+        print(
+            f"  {p['tokenizer']:<28} | Tier: {p['tier']:<16} | Vocab: {p['vocab_label']:<4} | BPB: {p['bpb']:<6.3f} | CE: {p['ce']:<6.3f} nats | B/Tok: {p['bytes_per_token']:<5.2f}"
+        )
 
     # 2. 3D Parameter-Constrained Pareto Frontier
     pareto_3d = compute_pareto(dataset, ["total_params", "bpb", "ce"])
@@ -286,7 +336,9 @@ def main():
     print("\n2. GLOBAL 3D CAPACITY-CONSTRAINED PARETO FRONTIER on (Params P, True LM BPB, Per-Token CE Loss)")
     print("-" * 120)
     for p in pareto_3d:
-        print(f"  {p['tokenizer']:<28} | Tier: {p['tier']:<16} | Vocab: {p['vocab_label']:<4} | Params: {p['total_params']/1e6:<5.2f}M | BPB: {p['bpb']:<6.3f} | CE: {p['ce']:<6.3f} nats")
+        print(
+            f"  {p['tokenizer']:<28} | Tier: {p['tier']:<16} | Vocab: {p['vocab_label']:<4} | Params: {p['total_params'] / 1e6:<5.2f}M | BPB: {p['bpb']:<6.3f} | CE: {p['ce']:<6.3f} nats"
+        )
 
     # 3. 3D Memory-Constrained Pareto Frontier
     pareto_mem = compute_pareto(dataset, ["embed_memory_mb", "bpb", "ce"])
@@ -295,7 +347,9 @@ def main():
     print("\n3. GLOBAL 3D MEMORY-CONSTRAINED PARETO FRONTIER on (Embed Mem MB, True LM BPB, Per-Token CE Loss)")
     print("-" * 120)
     for p in pareto_mem:
-        print(f"  {p['tokenizer']:<28} | Tier: {p['tier']:<16} | Vocab: {p['vocab_label']:<4} | EmbedMem: {p['embed_memory_mb']:<5.1f}MB | BPB: {p['bpb']:<6.3f} | CE: {p['ce']:<6.3f} nats")
+        print(
+            f"  {p['tokenizer']:<28} | Tier: {p['tier']:<16} | Vocab: {p['vocab_label']:<4} | EmbedMem: {p['embed_memory_mb']:<5.1f}MB | BPB: {p['bpb']:<6.3f} | CE: {p['ce']:<6.3f} nats"
+        )
 
     # 4. Vocabulary-Scale-Specific Frontiers
     print("\n4. VOCABULARY-SCALE-SPECIFIC PARETO SETS")
@@ -313,7 +367,9 @@ def main():
     print("-" * 120)
     sub_32k_large = [d for d in dataset if d["vocab_label"] == "32K" and "Large" in d["tier"]]
     for d in sub_32k_large:
-        print(f"  {d['tokenizer']:<28} | BPB: {d['bpb']:<6.3f} | CE: {d['ce']:<6.3f} nats | B/Tok: {d['bytes_per_token']:<5.2f}")
+        print(
+            f"  {d['tokenizer']:<28} | BPB: {d['bpb']:<6.3f} | CE: {d['ce']:<6.3f} nats | B/Tok: {d['bytes_per_token']:<5.2f}"
+        )
 
     benchmarks_dir = r"c:\Users\shaik\Research\Tokenizer\benchmarks"
     fig_path = os.path.join(benchmarks_dir, "phase_fifteen_final_paper_figure.png")
@@ -327,12 +383,13 @@ def main():
         "pareto_3d_params": pareto_3d,
         "pareto_3d_memory": pareto_mem,
         "hypothesis_tests": hyp_tests,
-        "repeated_measures_anova": anova
+        "repeated_measures_anova": anova,
     }
 
     with open(json_path, "w", encoding="utf-8") as f:
         json.dump(audit_payload, f, indent=2)
     print(f"\n[Audit Ledger] Saved audited records to {json_path}\n", flush=True)
+
 
 if __name__ == "__main__":
     main()

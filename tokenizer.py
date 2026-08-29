@@ -514,9 +514,7 @@ class CustomTokenizer:
             rt = self._get_rust_tokenizer()
             if rt is not None:
                 try:
-                    sanitized = [
-                        self._prepare_text(t, allowed_special, disallowed_special_action) for t in texts
-                    ]
+                    sanitized = [self._prepare_text(t, allowed_special, disallowed_special_action) for t in texts]
                     return rt.encode_batch(sanitized)
                 except Exception:
                     pass
@@ -565,9 +563,7 @@ class CustomTokenizer:
             rt = self._get_rust_tokenizer()
             if rt is not None:
                 try:
-                    sanitized = [
-                        self._prepare_text(t, allowed_special, disallowed_special_action) for t in texts
-                    ]
+                    sanitized = [self._prepare_text(t, allowed_special, disallowed_special_action) for t in texts]
                     return rt.encode_ids_batch(sanitized)
                 except (ImportError, AttributeError, ValueError, TypeError):
                     pass

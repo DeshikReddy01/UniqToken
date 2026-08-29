@@ -168,8 +168,7 @@ class ResidualVectorQuantizer:
                     raise ValueError(f"malformed audio token {tok!r}") from None
                 if stage_num != q:
                     raise ValueError(
-                        f"audio token {tok!r} declares stage {stage_num}, but stream "
-                        f"position {b + q} expects stage {q}"
+                        f"audio token {tok!r} declares stage {stage_num}, but stream position {b + q} expects stage {q}"
                     )
                 if not 0 <= code_idx < self.codebook_size:
                     raise ValueError(f"audio token {tok!r} has out-of-range code index {code_idx}")

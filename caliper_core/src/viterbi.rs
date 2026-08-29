@@ -50,7 +50,6 @@ pub(crate) fn diagnostic_viterbi_inner(
     use std::time::Instant;
     let n = chars.len();
     let mut t_trie = 0.0;
-    let mut t_dp = 0.0;
     let mut edges = 0usize;
     let mut incoming: Vec<Vec<Edge>> = vec![Vec::new(); n + 1];
     for i in 0..n {
@@ -93,7 +92,7 @@ pub(crate) fn diagnostic_viterbi_inner(
             }
         }
     }
-    t_dp = t.elapsed().as_secs_f64();
+    let t_dp = t.elapsed().as_secs_f64();
     (t_trie, t_dp, edges, n + 1)
 }
 

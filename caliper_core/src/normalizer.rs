@@ -1,6 +1,4 @@
 use pyo3::prelude::*;
-use std::collections::HashMap;
-use std::sync::{Mutex, OnceLock};
 use unicode_normalization::UnicodeNormalization;
 
 const ESCAPE_PREFIX: char = '\u{E000}';
@@ -30,6 +28,7 @@ fn is_unicode_space(c: char) -> bool {
 }
 
 #[pyfunction]
+#[allow(clippy::too_many_arguments)]
 #[pyo3(signature = (text, space_char='\u{2581}', normalize_unicode=true, normalize_unicode_spaces=true, normalize_punctuation=false, lowercase=false, collapse_whitespaces=false, strip_whitespace=false))]
 pub fn rust_normalize(
     text: &str,
@@ -120,6 +119,7 @@ pub fn rust_normalize(
 }
 
 #[pyfunction]
+#[allow(clippy::too_many_arguments)]
 #[pyo3(signature = (text, space_char='\u{2581}', normalize_unicode=true, normalize_unicode_spaces=true, normalize_punctuation=false, lowercase=false, collapse_whitespaces=false, strip_whitespace=false))]
 pub fn rust_normalize_with_alignment(
     text: &str,

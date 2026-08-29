@@ -33,6 +33,7 @@ except ImportError:  # pragma: no cover
 # Mirrors sentencepiece_model.proto enough for our parser.
 # ---------------------------------------------------------------------------
 
+
 def _varint(value: int) -> bytes:
     # A 0 varint is a single zero byte per protobuf spec; an empty encoding
     # would be misread by the parser as a length-delimited field of length 0.
@@ -59,10 +60,11 @@ def _piece_field(piece: str, score: float, ptype: int) -> bytes:
     # Each inner field is emitted individually; _field prepends the length
     # automatically for LEN-wrapped fields.
     return _field(
-        1, 2,                              # outer field 1, LEN
-        _field(1, 2, piece.encode("utf-8"))     # field 1: piece string
+        1,
+        2,  # outer field 1, LEN
+        _field(1, 2, piece.encode("utf-8"))  # field 1: piece string
         + _field(2, 5, struct.pack("<f", score))  # field 2: score (fixed32)
-        + _field(3, 0, _varint(ptype))          # field 3: type (varint)
+        + _field(3, 0, _varint(ptype)),  # field 3: type (varint)
     )
 
 
@@ -71,15 +73,10 @@ def _trainer_spec(model_type: int) -> bytes:
 
 
 def _normalizer_spec(name: str, add_dummy_prefix: bool) -> bytes:
-    return _field(
-        3, 2,
-        _field(1, 2, name.encode("utf-8"))
-        + _field(2, 0, _varint(1 if add_dummy_prefix else 0))
-    )
+    return _field(3, 2, _field(1, 2, name.encode("utf-8")) + _field(2, 0, _varint(1 if add_dummy_prefix else 0)))
 
 
-def _build_synth_model(pieces, model_type=1, normalizer_name="nfkc",
-                       add_dummy_prefix=True) -> bytes:
+def _build_synth_model(pieces, model_type=1, normalizer_name="nfkc", add_dummy_prefix=True) -> bytes:
     """pieces: list of (piece, score, type) tuples."""
     body = b"".join(_piece_field(p, s, t) for p, s, t in pieces)
     body += _trainer_spec(model_type)
@@ -91,8 +88,8 @@ def _build_synth_model(pieces, model_type=1, normalizer_name="nfkc",
 # Unit tests: dependency-free protobuf parser
 # ---------------------------------------------------------------------------
 
-class SynthesizedProtoTests(unittest.TestCase):
 
+class SynthesizedProtoTests(unittest.TestCase):
     def test_pieces_scores_and_types(self):
         pieces = [
             ("<unk>", -10.0, SP_UNKNOWN),
@@ -149,9 +146,11 @@ class SynthesizedProtoTests(unittest.TestCase):
 # Differential tests against the real sentencepiece package
 # ---------------------------------------------------------------------------
 
+
 @unittest.skipUnless(HAS_SPM, "sentencepiece package not installed")
 class RealSentencePieceImportTests(unittest.TestCase):
     """Differential tests: train SPM, import into Caliper, compare encode."""
+
     sp: Any
     cal: Any
     caught: Any
@@ -161,16 +160,19 @@ class RealSentencePieceImportTests(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.corpus = "\n".join([
-            "hello world this is a test",
-            "the quick brown fox jumps over",
-            "hello world hello world hello",
-            "unigram model tokenization byte",
-            "fallback support for unknown chars",
-            "the the the quick quick brown",
-            "abcdefghijklmnopqrstuvwxyz",
-            "0123456789 abc 42 def 3.14",
-        ] * 2)
+        cls.corpus = "\n".join(
+            [
+                "hello world this is a test",
+                "the quick brown fox jumps over",
+                "hello world hello world hello",
+                "unigram model tokenization byte",
+                "fallback support for unknown chars",
+                "the the the quick quick brown",
+                "abcdefghijklmnopqrstuvwxyz",
+                "0123456789 abc 42 def 3.14",
+            ]
+            * 2
+        )
         cls.tmp = tempfile.mkdtemp()
         cpath = os.path.join(cls.tmp, "c.txt")
         prefix = os.path.join(cls.tmp, "sp")
@@ -203,6 +205,7 @@ class RealSentencePieceImportTests(unittest.TestCase):
     @classmethod
     def tearDownClass(cls):
         import shutil
+
         shutil.rmtree(cls.tmp, ignore_errors=True)
 
     def test_vocab_size_matches(self):
@@ -258,15 +261,12 @@ class RealSentencePieceImportTests(unittest.TestCase):
                 if not tail_text:
                     continue
                 tail_ids = self.sp.EncodeAsIds(tail_text)
-                tail_stripped = (
-                    tail_ids[1:] if tail_ids and tail_ids[0] == DUMMY_PREFIX_ID
-                    else tail_ids
-                )
+                tail_stripped = tail_ids[1:] if tail_ids and tail_ids[0] == DUMMY_PREFIX_ID else tail_ids
                 cal_tail = self.cal.encode_to_ids(tail_text)
                 self.assertEqual(
-                    cal_tail, tail_stripped,
-                    f"mid-text parity mismatch on {tail_text!r}: "
-                    f"sp={tail_stripped} cal={cal_tail}",
+                    cal_tail,
+                    tail_stripped,
+                    f"mid-text parity mismatch on {tail_text!r}: sp={tail_stripped} cal={cal_tail}",
                 )
 
     def test_warns_on_dummy_prefix(self):
@@ -285,7 +285,8 @@ class RealSentencePieceImportTests(unittest.TestCase):
             sp_decoded = self.sp.DecodeIds(trimmed)
             cal_decoded = self.cal.decode(trimmed)
             self.assertEqual(
-                sp_decoded.strip(), cal_decoded.strip(),
+                sp_decoded.strip(),
+                cal_decoded.strip(),
                 f"round-trip mismatch on {text!r}",
             )
 
@@ -300,4 +301,3 @@ class RealSentencePieceImportTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
-

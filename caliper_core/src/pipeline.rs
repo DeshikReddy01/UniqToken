@@ -2,14 +2,11 @@
 
 use crate::trie::RustPrefixTrie;
 use crate::viterbi::rust_viterbi_decode;
-use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use rayon::prelude::*;
 use regex::Regex;
 use std::sync::OnceLock;
 use unicode_normalization::UnicodeNormalization;
-
-const DEFAULT_BYTE_LOG_P: f64 = -10.0;
 
 static PRETOK_REGEX: OnceLock<Regex> = OnceLock::new();
 static PRETOK_FULL_REGEX: OnceLock<Regex> = OnceLock::new();

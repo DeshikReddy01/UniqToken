@@ -30,6 +30,7 @@ from typing import Any, Callable, Dict, List, Tuple
 warnings.filterwarnings("ignore")
 
 import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
@@ -57,16 +58,45 @@ def generate_high_entropy_corpus(num_docs: int = 1000, seed: int = 42) -> Tuple[
         "English": (
             "abcdefghijklmnopqrstuvwxyz",
             [
-                "tion", "ing", "ness", "able", "ment", "ship", "hood", "ism",
-                "ize", "ate", "ous", "ive", "al", "ity", "ward", "wise",
-                "less", "ful", "ance", "ence",
+                "tion",
+                "ing",
+                "ness",
+                "able",
+                "ment",
+                "ship",
+                "hood",
+                "ism",
+                "ize",
+                "ate",
+                "ous",
+                "ive",
+                "al",
+                "ity",
+                "ward",
+                "wise",
+                "less",
+                "ful",
+                "ance",
+                "ence",
             ],
         ),
         "Hindi": (
             "अआइईउऊऋएऐओऔकखगघङचछजझञटठडढणतथदधनपफबभमयरलवशषसह",
             [
-                "कारी", "वादी", "करण", "शीलता", "पूर्वक", "त्मक", "त्व", "मय",
-                "वान", "अनुसार", "प्रणाली", "योजना", "विज्ञान", "संस्थान",
+                "कारी",
+                "वादी",
+                "करण",
+                "शीलता",
+                "पूर्वक",
+                "त्मक",
+                "त्व",
+                "मय",
+                "वान",
+                "अनुसार",
+                "प्रणाली",
+                "योजना",
+                "विज्ञान",
+                "संस्थान",
             ],
         ),
         "Telugu": (
@@ -123,6 +153,7 @@ def generate_high_entropy_corpus(num_docs: int = 1000, seed: int = 42) -> Tuple[
         val_by_lang[lang] = "\n".join(docs_lang[split:])
 
     return train_docs, val_by_lang
+
 
 TARGET_TRAINING_FLOPS = 5.0e12
 
@@ -203,14 +234,14 @@ def calculate_analytical_flops_per_step(
     d_ff = cfg.d_ff
     b_sz = cfg.batch_size
 
-    params_per_layer = 4 * (d_m ** 2) + 2 * d_m * d_ff + 4 * d_m
+    params_per_layer = 4 * (d_m**2) + 2 * d_m * d_ff + 4 * d_m
     p_non_embed = l_cnt * params_per_layer + 2 * d_m
     p_embed = v_sz * d_m
     p_head = v_sz * d_m
     p_total = p_non_embed + p_embed + p_head
 
     flops_transformer = 6.0 * p_non_embed * b_sz * seq_len
-    flops_attention_quad = 12.0 * l_cnt * d_m * (seq_len ** 2) * b_sz
+    flops_attention_quad = 12.0 * l_cnt * d_m * (seq_len**2) * b_sz
     flops_embed_and_head = 6.0 * (p_embed + p_head) * b_sz * seq_len
     flops_per_step = flops_transformer + flops_attention_quad + flops_embed_and_head
 
@@ -237,7 +268,7 @@ class CausalMiniTransformer(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         b, t = x.size()
-        causal_mask = torch.triu(torch.full((t, t), float('-inf'), device=x.device), diagonal=1)
+        causal_mask = torch.triu(torch.full((t, t), float("-inf"), device=x.device), diagonal=1)
         h = self.embed(x) + self.pos[:, :t, :]
         h = self.encoder(h, mask=causal_mask, is_causal=True)
         h = self.ln_f(h)
@@ -344,11 +375,11 @@ def compute_repeated_measures_anova_2way(data_matrix: np.ndarray) -> Dict[str, A
     grand_mean = np.mean(data_matrix)
 
     mean_subj = np.mean(data_matrix, axis=(1, 2))  # shape (s,)
-    mean_a = np.mean(data_matrix, axis=(0, 2))     # shape (a,)
-    mean_b = np.mean(data_matrix, axis=(0, 1))     # shape (b,)
-    mean_ab = np.mean(data_matrix, axis=0)         # shape (a, b)
-    mean_as = np.mean(data_matrix, axis=2)         # shape (s, a)
-    mean_bs = np.mean(data_matrix, axis=1)         # shape (s, b)
+    mean_a = np.mean(data_matrix, axis=(0, 2))  # shape (a,)
+    mean_b = np.mean(data_matrix, axis=(0, 1))  # shape (b,)
+    mean_ab = np.mean(data_matrix, axis=0)  # shape (a, b)
+    mean_as = np.mean(data_matrix, axis=2)  # shape (s, a)
+    mean_bs = np.mean(data_matrix, axis=1)  # shape (s, b)
 
     SS_total = np.sum((data_matrix - grand_mean) ** 2)
     SS_subj = a * b * np.sum((mean_subj - grand_mean) ** 2)
@@ -364,9 +395,17 @@ def compute_repeated_measures_anova_2way(data_matrix: np.ndarray) -> Dict[str, A
     for k in range(s):
         for i in range(a):
             for j in range(b):
-                dev = (data_matrix[k, i, j] - mean_ab[i, j] - mean_as[k, i] - mean_bs[k, j]
-                       + mean_a[i] + mean_b[j] + mean_subj[k] - grand_mean)
-                SS_ABs += dev ** 2
+                dev = (
+                    data_matrix[k, i, j]
+                    - mean_ab[i, j]
+                    - mean_as[k, i]
+                    - mean_bs[k, j]
+                    + mean_a[i]
+                    + mean_b[j]
+                    + mean_subj[k]
+                    - grand_mean
+                )
+                SS_ABs += dev**2
 
     df_A = a - 1
     df_As = (a - 1) * (s - 1)
@@ -412,7 +451,9 @@ def run_phase_fourteen_confirmatory(
     print("PHASE FOURTEEN B: FIVE-SEED CONFIRMATORY FACTORIAL BENCHMARK & INTERACTION TESTING")
     print(f"Vocab Scales: {vocab_scales} | LM Tiers: {lm_tiers}")
     print(f"Seeds: {seeds} (N = {len(seeds)} paired) | Matched Training FLOPs: {TARGET_TRAINING_FLOPS:.3e} on CUDA")
-    print(f"Factorial Design: 2 Vocab x 3 LM x 3 Tokenizers x {len(seeds)} Seeds = {len(vocab_scales)*len(lm_tiers)*3*len(seeds)} Total LM Runs")
+    print(
+        f"Factorial Design: 2 Vocab x 3 LM x 3 Tokenizers x {len(seeds)} Seeds = {len(vocab_scales) * len(lm_tiers) * 3 * len(seeds)} Total LM Runs"
+    )
     print("=" * 175)
 
     all_records: List[ConfirmatoryRecord] = []
@@ -492,10 +533,14 @@ def run_phase_fourteen_confirmatory(
                 min_frequency=1,
                 verbose=False,
             )
-            pretok_chunks = [tok for d in train_docs for tok in tok_base.pre_tokenizer.pre_tokenize(tok_base.normalizer.normalize(d))]
+            pretok_chunks = [
+                tok for d in train_docs for tok in tok_base.pre_tokenizer.pre_tokenize(tok_base.normalizer.normalize(d))
+            ]
             cem = CrossEntropyMerging(max_merges=actual_merges, cross_word=True, verbose=False)
             sbp_model = cem.optimize(tok_base.model, chunks=pretok_chunks)
-            cal_tok = CustomTokenizer(normalizer=tok_base.normalizer, pre_tokenizer=tok_base.pre_tokenizer, model=sbp_model)
+            cal_tok = CustomTokenizer(
+                normalizer=tok_base.normalizer, pre_tokenizer=tok_base.pre_tokenizer, model=sbp_model
+            )
             cal_tokens = cal_tok.encode(combined_val)
             cal_actual_v = len(cal_tok.model.vocab)
             cal_counts = Counter(cal_tokens)
@@ -547,15 +592,17 @@ def run_phase_fourteen_confirmatory(
                 all_records.append(rec_sp)
 
                 # Boundary-BPE
-                ce_bpe, bpb_bpe, p_tot_bpe, p_non_bpe, st_bpe, tok_bpe, fl_bpe, wc_bpe = train_and_eval_capacity_transformer(
-                    enc_fn=bpe_enc,
-                    vocab_size=bpe_actual_v,
-                    cfg=cfg,
-                    train_texts=train_docs[:300],
-                    val_text=combined_val,
-                    total_val_bytes=total_val_bytes,
-                    target_flops=TARGET_TRAINING_FLOPS,
-                    seed=seed,
+                ce_bpe, bpb_bpe, p_tot_bpe, p_non_bpe, st_bpe, tok_bpe, fl_bpe, wc_bpe = (
+                    train_and_eval_capacity_transformer(
+                        enc_fn=bpe_enc,
+                        vocab_size=bpe_actual_v,
+                        cfg=cfg,
+                        train_texts=train_docs[:300],
+                        val_text=combined_val,
+                        total_val_bytes=total_val_bytes,
+                        target_flops=TARGET_TRAINING_FLOPS,
+                        seed=seed,
+                    )
                 )
                 rec_bpe = ConfirmatoryRecord(
                     vocab_size=V,
@@ -582,15 +629,17 @@ def run_phase_fourteen_confirmatory(
                 all_records.append(rec_bpe)
 
                 # Caliper Config B
-                ce_cal, bpb_cal, p_tot_cal, p_non_cal, st_cal, tok_cal, fl_cal, wc_cal = train_and_eval_capacity_transformer(
-                    enc_fn=cal_enc,
-                    vocab_size=cal_actual_v,
-                    cfg=cfg,
-                    train_texts=train_docs[:300],
-                    val_text=combined_val,
-                    total_val_bytes=total_val_bytes,
-                    target_flops=TARGET_TRAINING_FLOPS,
-                    seed=seed,
+                ce_cal, bpb_cal, p_tot_cal, p_non_cal, st_cal, tok_cal, fl_cal, wc_cal = (
+                    train_and_eval_capacity_transformer(
+                        enc_fn=cal_enc,
+                        vocab_size=cal_actual_v,
+                        cfg=cfg,
+                        train_texts=train_docs[:300],
+                        val_text=combined_val,
+                        total_val_bytes=total_val_bytes,
+                        target_flops=TARGET_TRAINING_FLOPS,
+                        seed=seed,
+                    )
                 )
                 rec_cal = ConfirmatoryRecord(
                     vocab_size=V,
@@ -618,7 +667,7 @@ def run_phase_fourteen_confirmatory(
 
                 print(
                     f"  [{lm_name:<16}] SP BPB: {bpb_sp:.3f} | BPE BPB: {bpb_bpe:.3f} | CAL BPB: {bpb_cal:.3f} "
-                    f"(Diff Cal-BPE: {bpb_cal-bpb_bpe:+.3f}) | Steps: SP={st_sp} BPE={st_bpe} CAL={st_cal}",
+                    f"(Diff Cal-BPE: {bpb_cal - bpb_bpe:+.3f}) | Steps: SP={st_sp} BPE={st_bpe} CAL={st_cal}",
                     flush=True,
                 )
 
@@ -630,66 +679,110 @@ def run_phase_fourteen_confirmatory(
     raw_tests: List[Dict[str, Any]] = []
 
     # Test 1: H1 (Caliper 64K Medium < Caliper 32K Medium)
-    c64_med = [r.true_lm_bpb for r in all_records if r.model_name == "Caliper-SuperBPE (Config B)" and r.vocab_size == 65536 and r.lm_tier == "Medium (6L-256d)"]
-    c32_med = [r.true_lm_bpb for r in all_records if r.model_name == "Caliper-SuperBPE (Config B)" and r.vocab_size == 32768 and r.lm_tier == "Medium (6L-256d)"]
+    c64_med = [
+        r.true_lm_bpb
+        for r in all_records
+        if r.model_name == "Caliper-SuperBPE (Config B)" and r.vocab_size == 65536 and r.lm_tier == "Medium (6L-256d)"
+    ]
+    c32_med = [
+        r.true_lm_bpb
+        for r in all_records
+        if r.model_name == "Caliper-SuperBPE (Config B)" and r.vocab_size == 32768 and r.lm_tier == "Medium (6L-256d)"
+    ]
     diff_h1 = np.array(c64_med) - np.array(c32_med)
     t_h1, p_h1 = stats.ttest_rel(c64_med, c32_med)
-    raw_tests.append({
-        "name": "H1: BPB(Caliper, 64K, Med) < BPB(Caliper, 32K, Med)",
-        "mean_a": float(np.mean(c64_med)),
-        "mean_b": float(np.mean(c32_med)),
-        "diff": float(np.mean(diff_h1)),
-        "t": float(t_h1),
-        "p": float(p_h1 / 2.0 if t_h1 < 0 else 1.0 - p_h1 / 2.0),
-        "ci": [float(np.mean(diff_h1) - 2.776 * stats.sem(diff_h1)), float(np.mean(diff_h1) + 2.776 * stats.sem(diff_h1))],
-        "cohen_dz": float(np.mean(diff_h1) / max(np.std(diff_h1, ddof=1), 1e-9)),
-    })
+    raw_tests.append(
+        {
+            "name": "H1: BPB(Caliper, 64K, Med) < BPB(Caliper, 32K, Med)",
+            "mean_a": float(np.mean(c64_med)),
+            "mean_b": float(np.mean(c32_med)),
+            "diff": float(np.mean(diff_h1)),
+            "t": float(t_h1),
+            "p": float(p_h1 / 2.0 if t_h1 < 0 else 1.0 - p_h1 / 2.0),
+            "ci": [
+                float(np.mean(diff_h1) - 2.776 * stats.sem(diff_h1)),
+                float(np.mean(diff_h1) + 2.776 * stats.sem(diff_h1)),
+            ],
+            "cohen_dz": float(np.mean(diff_h1) / max(np.std(diff_h1, ddof=1), 1e-9)),
+        }
+    )
 
     # Test 2: H2 (CE(Caliper, 64K, Medium) < CE(Caliper, 64K, Small))
-    ce64_med = [r.token_ce_loss for r in all_records if r.model_name == "Caliper-SuperBPE (Config B)" and r.vocab_size == 65536 and r.lm_tier == "Medium (6L-256d)"]
-    ce64_sml = [r.token_ce_loss for r in all_records if r.model_name == "Caliper-SuperBPE (Config B)" and r.vocab_size == 65536 and r.lm_tier == "Small (4L-128d)"]
+    ce64_med = [
+        r.token_ce_loss
+        for r in all_records
+        if r.model_name == "Caliper-SuperBPE (Config B)" and r.vocab_size == 65536 and r.lm_tier == "Medium (6L-256d)"
+    ]
+    ce64_sml = [
+        r.token_ce_loss
+        for r in all_records
+        if r.model_name == "Caliper-SuperBPE (Config B)" and r.vocab_size == 65536 and r.lm_tier == "Small (4L-128d)"
+    ]
     diff_h2 = np.array(ce64_med) - np.array(ce64_sml)
     t_h2, p_h2 = stats.ttest_rel(ce64_med, ce64_sml)
-    raw_tests.append({
-        "name": "H2: CE(Caliper, 64K, Med) < CE(Caliper, 64K, Small)",
-        "mean_a": float(np.mean(ce64_med)),
-        "mean_b": float(np.mean(ce64_sml)),
-        "diff": float(np.mean(diff_h2)),
-        "t": float(t_h2),
-        "p": float(p_h2 / 2.0 if t_h2 < 0 else 1.0 - p_h2 / 2.0),
-        "ci": [float(np.mean(diff_h2) - 2.776 * stats.sem(diff_h2)), float(np.mean(diff_h2) + 2.776 * stats.sem(diff_h2))],
-        "cohen_dz": float(np.mean(diff_h2) / max(np.std(diff_h2, ddof=1), 1e-9)),
-    })
+    raw_tests.append(
+        {
+            "name": "H2: CE(Caliper, 64K, Med) < CE(Caliper, 64K, Small)",
+            "mean_a": float(np.mean(ce64_med)),
+            "mean_b": float(np.mean(ce64_sml)),
+            "diff": float(np.mean(diff_h2)),
+            "t": float(t_h2),
+            "p": float(p_h2 / 2.0 if t_h2 < 0 else 1.0 - p_h2 / 2.0),
+            "ci": [
+                float(np.mean(diff_h2) - 2.776 * stats.sem(diff_h2)),
+                float(np.mean(diff_h2) + 2.776 * stats.sem(diff_h2)),
+            ],
+            "cohen_dz": float(np.mean(diff_h2) / max(np.std(diff_h2, ddof=1), 1e-9)),
+        }
+    )
 
     # Test 3: H3 (BPB(Caliper, 64K, Medium) < BPB(Caliper, 64K, Small))
-    c64_sml = [r.true_lm_bpb for r in all_records if r.model_name == "Caliper-SuperBPE (Config B)" and r.vocab_size == 65536 and r.lm_tier == "Small (4L-128d)"]
+    c64_sml = [
+        r.true_lm_bpb
+        for r in all_records
+        if r.model_name == "Caliper-SuperBPE (Config B)" and r.vocab_size == 65536 and r.lm_tier == "Small (4L-128d)"
+    ]
     diff_h3 = np.array(c64_med) - np.array(c64_sml)
     t_h3, p_h3 = stats.ttest_rel(c64_med, c64_sml)
-    raw_tests.append({
-        "name": "H3: BPB(Caliper, 64K, Med) < BPB(Caliper, 64K, Small)",
-        "mean_a": float(np.mean(c64_med)),
-        "mean_b": float(np.mean(c64_sml)),
-        "diff": float(np.mean(diff_h3)),
-        "t": float(t_h3),
-        "p": float(p_h3 / 2.0 if t_h3 < 0 else 1.0 - p_h3 / 2.0),
-        "ci": [float(np.mean(diff_h3) - 2.776 * stats.sem(diff_h3)), float(np.mean(diff_h3) + 2.776 * stats.sem(diff_h3))],
-        "cohen_dz": float(np.mean(diff_h3) / max(np.std(diff_h3, ddof=1), 1e-9)),
-    })
+    raw_tests.append(
+        {
+            "name": "H3: BPB(Caliper, 64K, Med) < BPB(Caliper, 64K, Small)",
+            "mean_a": float(np.mean(c64_med)),
+            "mean_b": float(np.mean(c64_sml)),
+            "diff": float(np.mean(diff_h3)),
+            "t": float(t_h3),
+            "p": float(p_h3 / 2.0 if t_h3 < 0 else 1.0 - p_h3 / 2.0),
+            "ci": [
+                float(np.mean(diff_h3) - 2.776 * stats.sem(diff_h3)),
+                float(np.mean(diff_h3) + 2.776 * stats.sem(diff_h3)),
+            ],
+            "cohen_dz": float(np.mean(diff_h3) / max(np.std(diff_h3, ddof=1), 1e-9)),
+        }
+    )
 
     # Test 4: H4 (BPB(Caliper, 64K, Large) vs BPB(Caliper, 64K, Medium) - Testing Diminishing Return)
-    c64_lrg = [r.true_lm_bpb for r in all_records if r.model_name == "Caliper-SuperBPE (Config B)" and r.vocab_size == 65536 and r.lm_tier == "Large (8L-512d)"]
+    c64_lrg = [
+        r.true_lm_bpb
+        for r in all_records
+        if r.model_name == "Caliper-SuperBPE (Config B)" and r.vocab_size == 65536 and r.lm_tier == "Large (8L-512d)"
+    ]
     diff_h4 = np.array(c64_lrg) - np.array(c64_med)
     t_h4, p_h4 = stats.ttest_rel(c64_lrg, c64_med)
-    raw_tests.append({
-        "name": "H4: BPB(Caliper, 64K, Large) < BPB(Caliper, 64K, Med)",
-        "mean_a": float(np.mean(c64_lrg)),
-        "mean_b": float(np.mean(c64_med)),
-        "diff": float(np.mean(diff_h4)),
-        "t": float(t_h4),
-        "p": float(p_h4 / 2.0 if t_h4 < 0 else 1.0 - p_h4 / 2.0),
-        "ci": [float(np.mean(diff_h4) - 2.776 * stats.sem(diff_h4)), float(np.mean(diff_h4) + 2.776 * stats.sem(diff_h4))],
-        "cohen_dz": float(np.mean(diff_h4) / max(np.std(diff_h4, ddof=1), 1e-9)),
-    })
+    raw_tests.append(
+        {
+            "name": "H4: BPB(Caliper, 64K, Large) < BPB(Caliper, 64K, Med)",
+            "mean_a": float(np.mean(c64_lrg)),
+            "mean_b": float(np.mean(c64_med)),
+            "diff": float(np.mean(diff_h4)),
+            "t": float(t_h4),
+            "p": float(p_h4 / 2.0 if t_h4 < 0 else 1.0 - p_h4 / 2.0),
+            "ci": [
+                float(np.mean(diff_h4) - 2.776 * stats.sem(diff_h4)),
+                float(np.mean(diff_h4) + 2.776 * stats.sem(diff_h4)),
+            ],
+            "cohen_dz": float(np.mean(diff_h4) / max(np.std(diff_h4, ddof=1), 1e-9)),
+        }
+    )
 
     # Step-down Holm correction
     sorted_indices = sorted(range(len(raw_tests)), key=lambda i: raw_tests[i]["p"])
@@ -699,11 +792,15 @@ def run_phase_fourteen_confirmatory(
         raw_tests[idx]["p_adj"] = min(raw_tests[idx]["p"] * multiplier, 1.0)
         raw_tests[idx]["verdict"] = "CONFIRMED (p < 0.05)" if raw_tests[idx]["p_adj"] < 0.05 else "NOT SIGNIFICANT"
 
-    print(f"{'Hypothesis':<52} | {'Mean 1':<8} | {'Mean 2':<8} | {'Mean Diff':<10} | {'t(4)':<8} | {'p_adj (Holm)':<14} | {'95% CI':<24} | {'Cohen d_z':<10} | {'Verdict'}")
+    print(
+        f"{'Hypothesis':<52} | {'Mean 1':<8} | {'Mean 2':<8} | {'Mean Diff':<10} | {'t(4)':<8} | {'p_adj (Holm)':<14} | {'95% CI':<24} | {'Cohen d_z':<10} | {'Verdict'}"
+    )
     print("-" * 175)
     for test in raw_tests:
         ci_str = f"[{test['ci'][0]:.3f}, {test['ci'][1]:.3f}]"
-        print(f"{test['name']:<52} | {test['mean_a']:<8.3f} | {test['mean_b']:<8.3f} | {test['diff']:<10.3f} | {test['t']:<8.2f} | {test['p_adj']:<14.4e} | {ci_str:<24} | {test['cohen_dz']:<10.2f} | {test['verdict']}")
+        print(
+            f"{test['name']:<52} | {test['mean_a']:<8.3f} | {test['mean_b']:<8.3f} | {test['diff']:<10.3f} | {test['t']:<8.2f} | {test['p_adj']:<14.4e} | {ci_str:<24} | {test['cohen_dz']:<10.2f} | {test['verdict']}"
+        )
     print("=" * 175)
 
     # 2. Repeated Measures 2-Way ANOVA on Caliper BPB (5 seeds x 2 Vocab x 3 Capacity)
@@ -715,11 +812,20 @@ def run_phase_fourteen_confirmatory(
     for s_idx, seed in enumerate(seeds):
         for v_idx, V in enumerate(vocab_scales):
             for l_idx, lm_name in enumerate(lm_tiers):
-                rec = [r for r in all_records if r.seed == seed and r.vocab_size == V and r.lm_tier == lm_name and r.model_name == "Caliper-SuperBPE (Config B)"][0]
+                rec = [
+                    r
+                    for r in all_records
+                    if r.seed == seed
+                    and r.vocab_size == V
+                    and r.lm_tier == lm_name
+                    and r.model_name == "Caliper-SuperBPE (Config B)"
+                ][0]
                 anova_matrix[s_idx, v_idx, l_idx] = rec.true_lm_bpb
 
     anova_res = compute_repeated_measures_anova_2way(anova_matrix)
-    print(f"{'Source of Variation':<32} | {'Sum of Squares (SS)':<22} | {'df':<6} | {'Mean Square (MS)':<20} | {'F-Statistic':<14} | {'p-value'}")
+    print(
+        f"{'Source of Variation':<32} | {'Sum of Squares (SS)':<22} | {'df':<6} | {'Mean Square (MS)':<20} | {'F-Statistic':<14} | {'p-value'}"
+    )
     print("-" * 175)
     for factor in ["Factor_A (Vocab)", "Error_A", "Factor_B (Capacity)", "Error_B", "Interaction_AxB", "Error_AB"]:
         d = anova_res[factor]
@@ -742,14 +848,18 @@ def run_phase_fourteen_confirmatory(
                     "active_vocab_pct_mean": float(np.mean([r.active_vocab_pct for r in recs])),
                 }
 
-    print(f"{'LM Tier':<18} | {'Scale':<8} | {'Tokenizer':<28} | {'True BPB (Mean +- Std)':<24} | {'Token CE':<10} | {'B/Tok':<8} | {'Active %'}")
+    print(
+        f"{'LM Tier':<18} | {'Scale':<8} | {'Tokenizer':<28} | {'True BPB (Mean +- Std)':<24} | {'Token CE':<10} | {'B/Tok':<8} | {'Active %'}"
+    )
     print("-" * 175)
     for lm_name in lm_tiers:
         for V in vocab_scales:
             for m_name in ["SentencePiece-Unigram", "Boundary-BPE", "Caliper-SuperBPE (Config B)"]:
                 st = summary_grid[lm_name][V][m_name]
                 bpb_str = f"{st['true_lm_bpb_mean']:.3f} +- {st['true_lm_bpb_std']:.3f}"
-                print(f"{lm_name:<18} | V={V:<6} | {m_name:<28} | {bpb_str:<24} | {st['token_ce_loss_mean']:<10.3f} | {st['bytes_per_token_mean']:<8.2f} | {st['active_vocab_pct_mean']:<6.1f}%")
+                print(
+                    f"{lm_name:<18} | V={V:<6} | {m_name:<28} | {bpb_str:<24} | {st['token_ce_loss_mean']:<10.3f} | {st['bytes_per_token_mean']:<8.2f} | {st['active_vocab_pct_mean']:<6.1f}%"
+                )
             print("-" * 175)
 
     # 4-Panel Publication Figure
@@ -764,13 +874,27 @@ def run_phase_fourteen_confirmatory(
         means = [summary_grid[lm_name][V]["Caliper-SuperBPE (Config B)"]["true_lm_bpb_mean"] for V in vocab_scales]
         stds = [summary_grid[lm_name][V]["Caliper-SuperBPE (Config B)"]["true_lm_bpb_std"] for V in vocab_scales]
         cis = [2.776 * (s / np.sqrt(len(seeds))) for s in stds]
-        ax_a.errorbar(vocab_scales, means, yerr=cis, fmt=tier_markers[lm_name], color=tier_colors[lm_name], label=lm_name, capsize=5, linewidth=2.2, markersize=8)
+        ax_a.errorbar(
+            vocab_scales,
+            means,
+            yerr=cis,
+            fmt=tier_markers[lm_name],
+            color=tier_colors[lm_name],
+            label=lm_name,
+            capsize=5,
+            linewidth=2.2,
+            markersize=8,
+        )
         for V, mean in zip(vocab_scales, means):
-            ax_a.annotate(f"{mean:.3f}", (V, mean + 0.015), fontsize=9, color=tier_colors[lm_name], ha="center", fontweight="bold")
+            ax_a.annotate(
+                f"{mean:.3f}", (V, mean + 0.015), fontsize=9, color=tier_colors[lm_name], ha="center", fontweight="bold"
+            )
     ax_a.set_xscale("log", base=2)
     ax_a.set_xticks(vocab_scales)
     ax_a.get_xaxis().set_major_formatter(matplotlib.ticker.ScalarFormatter())
-    ax_a.set_title("Panel A: Caliper BPB Scaling (32K -> 64K) with 95% CIs Across LM Tiers", fontsize=11, fontweight="bold")
+    ax_a.set_title(
+        "Panel A: Caliper BPB Scaling (32K -> 64K) with 95% CIs Across LM Tiers", fontsize=11, fontweight="bold"
+    )
     ax_a.set_xlabel("Vocabulary Size (V)", fontsize=10)
     ax_a.set_ylabel("True LM BPB (lower is better)", fontsize=10)
     ax_a.grid(True, linestyle="--", alpha=0.5)
@@ -788,7 +912,9 @@ def run_phase_fourteen_confirmatory(
     ax_b.set_xticks(x_pos)
     ax_b.set_xticklabels(["Small (4L-128d)", "Medium (6L-256d)", "Large (8L-512d)"], fontsize=10)
     ax_b.set_ylabel("True LM BPB", fontsize=10, color="red")
-    ax_b.set_title("Panel B: Caliper Cross-Tier Performance at V = 64,536 (Saturation Curve)", fontsize=11, fontweight="bold")
+    ax_b.set_title(
+        "Panel B: Caliper Cross-Tier Performance at V = 64,536 (Saturation Curve)", fontsize=11, fontweight="bold"
+    )
     ax_b.grid(True, linestyle="--", alpha=0.5)
 
     ax_b_twin = ax_b.twinx()
@@ -802,10 +928,20 @@ def run_phase_fourteen_confirmatory(
     for lm_name in lm_tiers:
         vals = [summary_grid[lm_name][V]["Caliper-SuperBPE (Config B)"]["true_lm_bpb_mean"] for V in vocab_scales]
         slope = vals[1] - vals[0]
-        ax_c.plot([0, 1], vals, tier_markers[lm_name], color=tier_colors[lm_name], label=f"{lm_name} (Slope: {slope:+.3f})", linewidth=2.2, markersize=8)
+        ax_c.plot(
+            [0, 1],
+            vals,
+            tier_markers[lm_name],
+            color=tier_colors[lm_name],
+            label=f"{lm_name} (Slope: {slope:+.3f})",
+            linewidth=2.2,
+            markersize=8,
+        )
     ax_c.set_xticks([0, 1])
     ax_c.set_xticklabels(["V = 32,768 (32K)", "V = 65,536 (64K)"], fontsize=10)
-    ax_c.set_title("Panel C: 2-Way Interaction Plot (V x LM Capacity: p_interaction < 0.001)", fontsize=11, fontweight="bold")
+    ax_c.set_title(
+        "Panel C: 2-Way Interaction Plot (V x LM Capacity: p_interaction < 0.001)", fontsize=11, fontweight="bold"
+    )
     ax_c.set_ylabel("True LM BPB", fontsize=10)
     ax_c.grid(True, linestyle="--", alpha=0.5)
     ax_c.legend()
@@ -816,12 +952,31 @@ def run_phase_fourteen_confirmatory(
     for m_name in ["SentencePiece-Unigram", "Boundary-BPE", "Caliper-SuperBPE (Config B)"]:
         vals_med = [summary_grid["Medium (6L-256d)"][V][m_name]["true_lm_bpb_mean"] for V in vocab_scales]
         vals_lrg = [summary_grid["Large (8L-512d)"][V][m_name]["true_lm_bpb_mean"] for V in vocab_scales]
-        ax_d.plot(vocab_scales, vals_med, "s-", color=m_colors[m_name], label=f"{m_name} (Medium)", linewidth=2.2, markersize=8)
-        ax_d.plot(vocab_scales, vals_lrg, "^--", color=m_colors[m_name], label=f"{m_name} (Large)", linewidth=1.8, markersize=7, alpha=0.7)
+        ax_d.plot(
+            vocab_scales,
+            vals_med,
+            "s-",
+            color=m_colors[m_name],
+            label=f"{m_name} (Medium)",
+            linewidth=2.2,
+            markersize=8,
+        )
+        ax_d.plot(
+            vocab_scales,
+            vals_lrg,
+            "^--",
+            color=m_colors[m_name],
+            label=f"{m_name} (Large)",
+            linewidth=1.8,
+            markersize=7,
+            alpha=0.7,
+        )
     ax_d.set_xscale("log", base=2)
     ax_d.set_xticks(vocab_scales)
     ax_d.get_xaxis().set_major_formatter(matplotlib.ticker.ScalarFormatter())
-    ax_d.set_title("Panel D: 3-Way Comparison Across High Capacity Tiers (Medium & Large)", fontsize=11, fontweight="bold")
+    ax_d.set_title(
+        "Panel D: 3-Way Comparison Across High Capacity Tiers (Medium & Large)", fontsize=11, fontweight="bold"
+    )
     ax_d.set_xlabel("Vocabulary Size (V)", fontsize=10)
     ax_d.set_ylabel("True LM BPB", fontsize=10)
     ax_d.grid(True, linestyle="--", alpha=0.5)

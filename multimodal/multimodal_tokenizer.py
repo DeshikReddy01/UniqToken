@@ -166,9 +166,7 @@ class MultimodalTokenizer:
 
         for element in elements:
             if isinstance(element, str):
-                text_toks = self.text_tokenizer.encode(
-                    element, allowed_special=set(self.multimodal_specials)
-                )
+                text_toks = self.text_tokenizer.encode(element, allowed_special=set(self.multimodal_specials))
                 for t in text_toks:
                     all_tokens.append(t)
                     is_special = t.startswith("<|") and t.endswith("|>")

@@ -61,7 +61,9 @@ def _env_can_run_race() -> bool:
     try:
         result = subprocess.run(
             [sys.executable, "-c", probe],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
         ok = result.returncode == 0 and "PROBE_OK" in result.stdout
     except (subprocess.TimeoutExpired, OSError):
@@ -90,11 +92,16 @@ class VocabQualityRaceHarnessTests(unittest.TestCase):
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             cls.report = run_vocab_quality_race(
-                budget=cls._TEST_BUDGET, steps=2,
-                include_pretrained=False, include_sentencepiece=False,
+                budget=cls._TEST_BUDGET,
+                steps=2,
+                include_pretrained=False,
+                include_sentencepiece=False,
                 train_kwargs={
-                    "seq_len": 16, "batch_size": 2, "dim": 32,
-                    "heads": 2, "layers": 1,
+                    "seq_len": 16,
+                    "batch_size": 2,
+                    "dim": 32,
+                    "heads": 2,
+                    "layers": 1,
                 },
             )
 
@@ -114,10 +121,7 @@ class VocabQualityRaceHarnessTests(unittest.TestCase):
         for e in self.report.entries:
             if e.evaluated_bytes == 0:
                 continue
-            expected = (
-                e.final_loss * e.evaluated_tokens
-                / (e.evaluated_bytes * math.log(2.0))
-            )
+            expected = e.final_loss * e.evaluated_tokens / (e.evaluated_bytes * math.log(2.0))
             self.assertAlmostEqual(e.bits_per_byte, expected, places=4)
 
     def test_categories_set_correctly(self):
@@ -136,24 +140,44 @@ class RaceEntryConstructionTests(unittest.TestCase):
 
     def test_race_entry_required_fields(self):
         e = RaceEntry(
-            tokenizer="test", category="caliper", target_vocab=500,
-            actual_vocab=500, trained_fresh=True,
-            bytes_per_token=3.0, evaluated_tokens=100, evaluated_bytes=300,
-            final_loss=1.0, bits_per_byte=0.5, tokens_per_sec=1000.0,
-            bytes_per_sec=3000.0, wallclock_sec=1.0,
+            tokenizer="test",
+            category="caliper",
+            target_vocab=500,
+            actual_vocab=500,
+            trained_fresh=True,
+            bytes_per_token=3.0,
+            evaluated_tokens=100,
+            evaluated_bytes=300,
+            final_loss=1.0,
+            bits_per_byte=0.5,
+            tokens_per_sec=1000.0,
+            bytes_per_sec=3000.0,
+            wallclock_sec=1.0,
         )
         for k in (
-            "tokenizer", "category", "target_vocab", "actual_vocab",
-            "trained_fresh", "bytes_per_token", "evaluated_tokens",
-            "evaluated_bytes", "final_loss", "bits_per_byte",
-            "tokens_per_sec", "bytes_per_sec", "wallclock_sec",
+            "tokenizer",
+            "category",
+            "target_vocab",
+            "actual_vocab",
+            "trained_fresh",
+            "bytes_per_token",
+            "evaluated_tokens",
+            "evaluated_bytes",
+            "final_loss",
+            "bits_per_byte",
+            "tokens_per_sec",
+            "bytes_per_sec",
+            "wallclock_sec",
         ):
             self.assertIn(k, e.__dict__)
 
     def test_race_report_to_dict_round_trip(self):
         report = RaceReport(
-            budget=500, corpus_size_documents=10, corpus_size_bytes=1000,
-            steps=4, seed=42,
+            budget=500,
+            corpus_size_documents=10,
+            corpus_size_bytes=1000,
+            steps=4,
+            seed=42,
         )
         d = report.to_dict()
         self.assertEqual(d["budget"], 500)

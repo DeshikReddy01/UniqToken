@@ -58,9 +58,7 @@ class Normalizer:
     UNICODE_SPACES = re.compile(r"[\u00A0\u1680\u2000-\u200A\u202F\u205F\u3000]")
     # ponytail: set lookup O(1) vs regex fullmatch per char; upgrade to table if more spaces
     _UNICODE_SPACE_SET = frozenset(
-        [chr(0x00A0), chr(0x1680)]
-        + [chr(cp) for cp in range(0x2000, 0x200B)]
-        + [chr(0x202F), chr(0x205F), chr(0x3000)]
+        [chr(0x00A0), chr(0x1680)] + [chr(cp) for cp in range(0x2000, 0x200B)] + [chr(0x202F), chr(0x205F), chr(0x3000)]
     )
     _ESCAPE_PREFIX = "\ue000"
     _ESCAPED_METASPACE = "\ue001"
@@ -347,12 +345,14 @@ class RegexPreTokenizer:
         ]
         if hex_number:
             self.patterns.append(hex_number)
-        self.patterns.extend([
-            number,
-            space_marker,
-            whitespace,
-            punctuation,
-        ])
+        self.patterns.extend(
+            [
+                number,
+                space_marker,
+                whitespace,
+                punctuation,
+            ]
+        )
 
         combined_pattern = "|".join(f"(?:{p})" for p in self.patterns)
         self.regex = re.compile(combined_pattern)

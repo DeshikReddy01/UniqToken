@@ -32,11 +32,15 @@ class HFUnigramImportTests(unittest.TestCase):
     def setUpClass(cls):
         # vocab: unk + single chars + metaspace-prefixed words; ids == list index
         chars = list("helowrd")
-        entries = [("<|unk|>", -10.0)] + [(c, -4.0) for c in chars] + [
-            ("\u2581hello", -1.0),
-            ("\u2581world", -1.0),
-            ("lo", -2.0),
-        ]
+        entries = (
+            [("<|unk|>", -10.0)]
+            + [(c, -4.0) for c in chars]
+            + [
+                ("\u2581hello", -1.0),
+                ("\u2581world", -1.0),
+                ("lo", -2.0),
+            ]
+        )
         hf = Tokenizer(HFUnigram(entries, unk_id=0, byte_fallback=False))
         try:
             hf.pre_tokenizer = pre_tokenizers.Metaspace(replacement="\u2581", prepend_scheme="never")
@@ -83,9 +87,23 @@ class HFByteLevelBPEImportTests(unittest.TestCase):
 
         byte_map = _bytes_to_unicode()
         vocab = {
-            "h": 0, "e": 1, "l": 2, "o": 3, "w": 4, "r": 5, "d": 6, "\u0120": 7,
-            "ll": 8, "he": 9, "llo": 10, "or": 11, "ld": 12, "orld": 13,
-            "hello": 14, "\u0120w": 15, "\u0120world": 16,
+            "h": 0,
+            "e": 1,
+            "l": 2,
+            "o": 3,
+            "w": 4,
+            "r": 5,
+            "d": 6,
+            "\u0120": 7,
+            "ll": 8,
+            "he": 9,
+            "llo": 10,
+            "or": 11,
+            "ld": 12,
+            "orld": 13,
+            "hello": 14,
+            "\u0120w": 15,
+            "\u0120world": 16,
         }
         next_id = max(vocab.values()) + 1
         for b in range(256):
@@ -94,8 +112,15 @@ class HFByteLevelBPEImportTests(unittest.TestCase):
                 vocab[ch] = next_id
                 next_id += 1
         merges = [
-            ("h", "e"), ("l", "l"), ("ll", "o"), ("o", "r"), ("l", "d"),
-            ("or", "ld"), ("he", "llo"), ("\u0120", "w"), ("\u0120w", "orld"),
+            ("h", "e"),
+            ("l", "l"),
+            ("ll", "o"),
+            ("o", "r"),
+            ("l", "d"),
+            ("or", "ld"),
+            ("he", "llo"),
+            ("\u0120", "w"),
+            ("\u0120w", "orld"),
         ]
         hf = Tokenizer(HFBPE(vocab=vocab, merges=merges))
         hf.pre_tokenizer = pre_tokenizers.ByteLevel(add_prefix_space=False, use_regex=True)

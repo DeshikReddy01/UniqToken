@@ -155,9 +155,7 @@ if HAS_TORCH:
             elif indices.dim() == 2 and indices.shape[0] == grid_h * grid_w:
                 b = 1  # single flat image
             else:
-                raise ValueError(
-                    f"indices shape {tuple(indices.shape)} is not compatible with grid {grid_h}x{grid_w}"
-                )
+                raise ValueError(f"indices shape {tuple(indices.shape)} is not compatible with grid {grid_h}x{grid_w}")
             if indices.device != device:
                 indices = indices.to(device)
             flat_indices = indices.view(-1)

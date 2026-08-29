@@ -3,7 +3,9 @@ from typing import Dict, List, Optional, Sequence, Set, Tuple
 class RustPrefixTrie:
     def __init__(self, items: Optional[List[Tuple[str, Optional[int], float]]] = None) -> None: ...
     def insert(self, token: str, score: float, token_id: Optional[int] = None) -> None: ...
-    def common_prefix_search_chars(self, chars: Sequence[str], start_idx: int = 0) -> List[Tuple[str, Optional[int], float, int]]: ...
+    def common_prefix_search_chars(
+        self, chars: Sequence[str], start_idx: int = 0
+    ) -> List[Tuple[str, Optional[int], float, int]]: ...
     def exact_metadata(self, token: str) -> Optional[Tuple[Optional[int], float]]: ...
     def __len__(self) -> int: ...
 
@@ -32,41 +34,35 @@ def rust_viterbi_decode(
     byte_fallback: bool = True,
     max_edges_per_node: Optional[int] = None,
 ) -> List[ViterbiSpan]: ...
-
 def rust_viterbi_decode_batch(
     texts: Sequence[str],
     trie: RustPrefixTrie,
     byte_fallback: bool = True,
     max_edges_per_node: Optional[int] = None,
 ) -> List[List[ViterbiSpan]]: ...
-
 def rust_encode_tokens_batch(
     texts: Sequence[str],
     trie: RustPrefixTrie,
     byte_fallback: bool = True,
     max_edges_per_node: Optional[int] = None,
 ) -> List[List[str]]: ...
-
 def rust_encode_ids_batch(
     texts: Sequence[str],
     trie: RustPrefixTrie,
     byte_fallback: bool = True,
     max_edges_per_node: Optional[int] = None,
 ) -> List[List[int]]: ...
-
 def rust_encode_text_batch(
     texts: Sequence[str],
     trie: RustPrefixTrie,
     byte_fallback: bool = True,
     space_char: str = " ",
 ) -> List[List[int]]: ...
-
 def rust_forward_backward_expectations(
     text: str,
     trie: RustPrefixTrie,
     freq: float = 1.0,
 ) -> Tuple[Dict[str, float], float]: ...
-
 def rust_normalize(
     text: str,
     space_char: str = " ",
@@ -77,7 +73,6 @@ def rust_normalize(
     collapse_whitespaces: bool = False,
     strip_whitespace: bool = False,
 ) -> str: ...
-
 def rust_normalize_with_alignment(
     text: str,
     space_char: str = " ",
@@ -88,13 +83,11 @@ def rust_normalize_with_alignment(
     collapse_whitespaces: bool = False,
     strip_whitespace: bool = False,
 ) -> Tuple[str, List[Tuple[int, int]]]: ...
-
 def rust_mine_ngrams(
     chunk_counts: Dict[str, int],
     max_ngram_length: int,
     special_tokens: Optional[Set[str]] = None,
 ) -> Dict[str, int]: ...
-
 def rust_pre_tokenize(
     text: str,
 ) -> List[str]: ...

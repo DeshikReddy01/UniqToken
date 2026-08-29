@@ -125,6 +125,7 @@ class _ExternalWrapper:
 def _train_caliper_unigram(budget: int):
     """Caliper PMI Unigram trained from scratch on the corpus."""
     from tokenizer import CustomTokenizer
+
     return CustomTokenizer.train_from_corpus(
         corpus=PRETRAINING_CORPUS,
         target_vocab_size=budget,
@@ -142,6 +143,7 @@ def _train_caliper_bpe(budget: int, normalizer, pre_tokenizer):
     swap it independently of the legacy harness's hardcoded 500.
     """
     import bpe_trainer
+
     chunks: List[str] = []
     for doc in PRETRAINING_CORPUS:
         norm = normalizer.normalize(doc)
@@ -152,7 +154,9 @@ def _train_caliper_bpe(budget: int, normalizer, pre_tokenizer):
     )
     model = trainer.train(chunks, verbose=False)
     return BPETokenizerAdapter(
-        model, normalizer=normalizer, pre_tokenizer=pre_tokenizer,
+        model,
+        normalizer=normalizer,
+        pre_tokenizer=pre_tokenizer,
     )
 
 
@@ -160,6 +164,7 @@ def _train_caliper_superbpe(budget: int):
     """Caliper Unigram + CEM cross-word merging (SuperBPE)."""
     from cem_merger import CrossEntropyMerging
     from tokenizer import CustomTokenizer
+
     base = CustomTokenizer.train_from_corpus(
         corpus=PRETRAINING_CORPUS,
         target_vocab_size=budget,
@@ -206,9 +211,12 @@ def _train_sentencepiece(budget: int):
                     character_coverage=0.9999,
                     byte_fallback=True,
                     normalization_rule_name="nfkc",
-                    pad_id=0, unk_id=1,
-                    bos_id=-1, eos_id=-1,
-                    pad_piece="<pad>", unk_piece="<unk>",
+                    pad_id=0,
+                    unk_id=1,
+                    bos_id=-1,
+                    eos_id=-1,
+                    pad_piece="<pad>",
+                    unk_piece="<unk>",
                 )
                 break
             except RuntimeError as exc:
@@ -216,10 +224,7 @@ def _train_sentencepiece(budget: int):
                     raise
                 target = max(64, target - 25)
         else:
-            raise RuntimeError(
-                "SentencePiece could not fit a Unigram at any budget "
-                f"(started at {budget})"
-            )
+            raise RuntimeError(f"SentencePiece could not fit a Unigram at any budget (started at {budget})")
         sp = spm.SentencePieceProcessor()
         sp.Load(prefix + ".model")
         actual_size = sp.GetPieceSize()
@@ -232,6 +237,7 @@ def _train_sentencepiece(budget: int):
 
 def _load_tiktoken(name: str = "cl100k_base") -> _ExternalWrapper:
     import tiktoken
+
     enc = tiktoken.get_encoding(name)
     return _ExternalWrapper(
         name=f"tiktoken ({name})",
@@ -242,6 +248,7 @@ def _load_tiktoken(name: str = "cl100k_base") -> _ExternalWrapper:
 
 def _load_hf_gpt2() -> _ExternalWrapper:
     from transformers import AutoTokenizer
+
     hf = AutoTokenizer.from_pretrained("gpt2", local_files_only=True)
     return _ExternalWrapper(
         name="HuggingFace (GPT-2)",
@@ -303,41 +310,30 @@ def run_vocab_quality_race(
     )
 
     unigram_tok = _train_caliper_unigram(budget)
-    report.entries.append(
-        _race_entry(
-            "Caliper (Unigram)", "caliper", budget, unigram_tok, steps, **train_kwargs
-        )
-    )
+    report.entries.append(_race_entry("Caliper (Unigram)", "caliper", budget, unigram_tok, steps, **train_kwargs))
     unigram_norm = unigram_tok.normalizer
     unigram_pretok = unigram_tok.pre_tokenizer
 
     bpe_tok = _train_caliper_bpe(budget, unigram_norm, unigram_pretok)
-    report.entries.append(
-        _race_entry(
-            "Caliper (BPE)", "caliper", budget, bpe_tok, steps, **train_kwargs
-        )
-    )
+    report.entries.append(_race_entry("Caliper (BPE)", "caliper", budget, bpe_tok, steps, **train_kwargs))
 
     sbp_tok = _train_caliper_superbpe(budget)
-    report.entries.append(
-        _race_entry(
-            "Caliper (SuperBPE)", "caliper", budget, sbp_tok, steps, **train_kwargs
-        )
-    )
+    report.entries.append(_race_entry("Caliper (SuperBPE)", "caliper", budget, sbp_tok, steps, **train_kwargs))
 
     if include_sentencepiece:
         try:
             spm_tok = _train_sentencepiece(budget)
             actual = getattr(spm_tok, "_spm_actual_vocab", len(spm_tok.model.vocab))
             entry = _race_entry(
-                "SentencePiece (Unigram)", "external_trainable",
-                budget, spm_tok, steps, **train_kwargs,
+                "SentencePiece (Unigram)",
+                "external_trainable",
+                budget,
+                spm_tok,
+                steps,
+                **train_kwargs,
             )
             entry.actual_vocab = actual
-            entry.notes = (
-                f"SPM trained vocab capped at {actual} due to observed piece count"
-                if actual < budget else ""
-            )
+            entry.notes = f"SPM trained vocab capped at {actual} due to observed piece count" if actual < budget else ""
             report.entries.append(entry)
         except Exception as exc:
             warnings.warn(f"SentencePiece baseline unavailable ({exc}); skipping")
@@ -348,7 +344,12 @@ def run_vocab_quality_race(
             try:
                 tt = _load_tiktoken()
                 entry = _race_entry(
-                    tt.name, "external_pretrained", budget, tt, steps, **train_kwargs,
+                    tt.name,
+                    "external_pretrained",
+                    budget,
+                    tt,
+                    steps,
+                    **train_kwargs,
                 )
                 entry.notes = "pretrained; vocab not matched to budget"
                 report.entries.append(entry)
@@ -359,7 +360,12 @@ def run_vocab_quality_race(
             try:
                 gpt2 = _load_hf_gpt2()
                 entry = _race_entry(
-                    gpt2.name, "external_pretrained", budget, gpt2, steps, **train_kwargs,
+                    gpt2.name,
+                    "external_pretrained",
+                    budget,
+                    gpt2,
+                    steps,
+                    **train_kwargs,
                 )
                 entry.notes = "pretrained; vocab not matched to budget"
                 report.entries.append(entry)
@@ -406,6 +412,7 @@ def _race_entry(
 def print_report(report: RaceReport, device: str = "auto") -> None:
     try:
         import torch
+
         actual = "cuda" if torch.cuda.is_available() else "cpu"
     except ImportError:
         actual = "cpu (no torch)"
@@ -443,36 +450,34 @@ def write_json_report(report: RaceReport, path: str) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    parser.add_argument("--budget", type=int, default=500,
-                        help="Matched vocab budget (default: 500)")
-    parser.add_argument("--steps", type=int, default=8,
-                        help="Training steps for the mini-transformer (default: 8)")
-    parser.add_argument("--seed", type=int, default=42,
-                        help="Seed passed to the training loop (default: 42)")
-    parser.add_argument("--no-pretrained", action="store_true",
-                        help="Skip tiktoken and HF GPT-2 baselines")
-    parser.add_argument("--no-tiktoken", action="store_true",
-                        help="Skip tiktoken baseline (when using --no-pretrained overrides this)")
-    parser.add_argument("--no-hf", action="store_true",
-                        help="Skip HuggingFace GPT-2 baseline (some Windows builds crash on import)")
-    parser.add_argument("--no-sentencepiece", action="store_true",
-                        help="Skip the SentencePiece Unigram baseline")
-    parser.add_argument("--export-json", type=str, default=None,
-                        help="Path to write the JSON report")
+    parser.add_argument("--budget", type=int, default=500, help="Matched vocab budget (default: 500)")
+    parser.add_argument("--steps", type=int, default=8, help="Training steps for the mini-transformer (default: 8)")
+    parser.add_argument("--seed", type=int, default=42, help="Seed passed to the training loop (default: 42)")
+    parser.add_argument("--no-pretrained", action="store_true", help="Skip tiktoken and HF GPT-2 baselines")
+    parser.add_argument(
+        "--no-tiktoken", action="store_true", help="Skip tiktoken baseline (when using --no-pretrained overrides this)"
+    )
+    parser.add_argument(
+        "--no-hf", action="store_true", help="Skip HuggingFace GPT-2 baseline (some Windows builds crash on import)"
+    )
+    parser.add_argument("--no-sentencepiece", action="store_true", help="Skip the SentencePiece Unigram baseline")
+    parser.add_argument("--export-json", type=str, default=None, help="Path to write the JSON report")
     parser.add_argument("--seq-len", type=int, default=48)
     parser.add_argument("--batch-size", type=int, default=4)
     parser.add_argument("--dim", type=int, default=64)
     parser.add_argument("--heads", type=int, default=4)
     parser.add_argument("--layers", type=int, default=2)
-    parser.add_argument("--device", type=str, default="auto",
-                        choices=("auto", "cpu", "cuda"),
-                        help="Compute device for the mini-transformer (default: auto)")
+    parser.add_argument(
+        "--device",
+        type=str,
+        default="auto",
+        choices=("auto", "cpu", "cuda"),
+        help="Compute device for the mini-transformer (default: auto)",
+    )
     args = parser.parse_args()
 
     if args.budget < 64:
-        parser.error(
-            "--budget must be at least 64 (Caliper floor ~401 with byte_fallback)"
-        )
+        parser.error("--budget must be at least 64 (Caliper floor ~401 with byte_fallback)")
     if args.steps < 1:
         parser.error("--steps must be positive")
 

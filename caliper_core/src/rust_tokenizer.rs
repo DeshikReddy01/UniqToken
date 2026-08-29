@@ -25,6 +25,7 @@ impl RustTokenizer {
         Self { trie, space_char, byte_fallback }
     }
 
+    #[allow(clippy::wrong_self_convention)]
     fn from_vocab(&mut self, vocab: Vec<(String, f64, u32)>) -> PyResult<()> {
         self.trie = RustPrefixTrie::new();
         for (tok, logp, id) in vocab {
@@ -42,7 +43,7 @@ impl RustTokenizer {
             let chunk = m.as_str();
             let chars: Vec<char> = chunk.chars().collect();
             let spans = crate::viterbi::viterbi_decode_chars(&chars, &self.trie, self.byte_fallback, None)
-                .map_err(|e| pyo3::exceptions::PyValueError::new_err(e))?;
+                .map_err(pyo3::exceptions::PyValueError::new_err)?;
             for s in spans {
                 out.push(s.token);
             }
@@ -60,7 +61,7 @@ impl RustTokenizer {
                     let chunk = m.as_str();
                     let chars: Vec<char> = chunk.chars().collect();
                     let spans = crate::viterbi::viterbi_decode_chars(&chars, &self.trie, self.byte_fallback, None)
-                        .map_err(|e| pyo3::exceptions::PyValueError::new_err(e))?;
+                        .map_err(pyo3::exceptions::PyValueError::new_err)?;
                     for s in spans {
                         out.push(s.token);
                     }
@@ -78,7 +79,7 @@ impl RustTokenizer {
             let chunk = m.as_str();
             let chars: Vec<char> = chunk.chars().collect();
             let spans = crate::viterbi::viterbi_decode_chars(&chars, &self.trie, self.byte_fallback, None)
-                .map_err(|e| pyo3::exceptions::PyValueError::new_err(e))?;
+                .map_err(pyo3::exceptions::PyValueError::new_err)?;
             for s in spans {
                 if let Some(id) = s.token_id {
                     out.push(id);
@@ -98,7 +99,7 @@ impl RustTokenizer {
                     let chunk = m.as_str();
                     let chars: Vec<char> = chunk.chars().collect();
                     let spans = crate::viterbi::viterbi_decode_chars(&chars, &self.trie, self.byte_fallback, None)
-                        .map_err(|e| pyo3::exceptions::PyValueError::new_err(e))?;
+                        .map_err(pyo3::exceptions::PyValueError::new_err)?;
                     for s in spans {
                         if let Some(id) = s.token_id {
                             out.push(id);
@@ -109,37 +110,6 @@ impl RustTokenizer {
             }).collect()
         })
     }
-}
-
-fn rust_encode_tokens_batch_inner(
-    chunks: &[String],
-    trie: &RustPrefixTrie,
-    byte_fallback: bool,
-) -> PyResult<Vec<Vec<String>>> {
-    use crate::viterbi::viterbi_decode_chars;
-    let mut out = Vec::with_capacity(chunks.len());
-    for chunk in chunks {
-        let chars: Vec<char> = chunk.chars().collect();
-        let spans = viterbi_decode_chars(&chars, trie, byte_fallback, None).map_err(|e| pyo3::exceptions::PyValueError::new_err(e))?;
-        out.push(spans.into_iter().map(|s| s.token).collect());
-    }
-    Ok(out)
-}
-
-fn rust_encode_ids_batch_inner(
-    chunks: &[String],
-    trie: &RustPrefixTrie,
-    byte_fallback: bool,
-) -> PyResult<Vec<Vec<u32>>> {
-    use crate::viterbi::viterbi_decode_chars;
-    let mut out = Vec::with_capacity(chunks.len());
-    for chunk in chunks {
-        let chars: Vec<char> = chunk.chars().collect();
-        let spans = viterbi_decode_chars(&chars, trie, byte_fallback, None).map_err(|e| pyo3::exceptions::PyValueError::new_err(e))?;
-        let ids: Vec<u32> = spans.into_iter().filter_map(|s| s.token_id).collect();
-        out.push(ids);
-    }
-    Ok(out)
 }
 
 #[pyfunction]

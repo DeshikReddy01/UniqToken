@@ -333,6 +333,5 @@ def import_hf_tokenizer(source: Union[str, Path, Dict[str, Any]]) -> Union[Custo
     if mtype == "BPE":
         return import_hf_bpe(data)
     raise NotImplementedError(
-        f"HF model type {mtype!r} is not supported (Caliper has no WordPiece engine); "
-        "supported types: Unigram, BPE"
+        f"HF model type {mtype!r} is not supported (Caliper has no WordPiece engine); supported types: Unigram, BPE"
     )

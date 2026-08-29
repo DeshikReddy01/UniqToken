@@ -94,9 +94,7 @@ class BatchCollator:
                     # normalize, so the native batch path cannot emit unauthorized
                     # special-token IDs the Python path would have escaped.
                     shield = self.tokenizer.security
-                    norm_texts = [
-                        self.tokenizer.normalizer.normalize(shield.sanitize(t)) for t in texts
-                    ]
+                    norm_texts = [self.tokenizer.normalizer.normalize(shield.sanitize(t)) for t in texts]
                     raw_spans_batch = caliper_core.rust_viterbi_decode_batch(
                         norm_texts,
                         rust_trie,

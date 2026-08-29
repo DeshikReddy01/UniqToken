@@ -7,7 +7,8 @@ name = "caliper-tokenizer"
 version = "1.0.0"
 description = "Zero-dependency, high-precision Byte-Fallback Unigram and Multimodal Tokenizer with dual-offset tracking and subword regularization."
 readme = "README.md"
-license = { file = "LICENSE" }
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [
     { name = "Caliper Authors" }
 ]

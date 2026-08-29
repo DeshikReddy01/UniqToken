@@ -207,7 +207,6 @@ def import_sentencepiece(source: Union[str, Path, bytes]) -> CustomTokenizer:
 
 def _warn_unsupported(component: str, detail: str) -> None:
     warnings.warn(
-        f"SentencePiece importer: {component} ({detail}); imported tokenizer may "
-        "tokenize differently than the source.",
+        f"SentencePiece importer: {component} ({detail}); imported tokenizer may tokenize differently than the source.",
         stacklevel=3,
     )

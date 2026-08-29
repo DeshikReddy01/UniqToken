@@ -421,8 +421,7 @@ class BPETests(unittest.TestCase):
             self.assertEqual(
                 heap_result,
                 naive_result,
-                f"heap vs naive disagreement on {word!r}: "
-                f"heap={heap_result!r} naive={naive_result!r}",
+                f"heap vs naive disagreement on {word!r}: heap={heap_result!r} naive={naive_result!r}",
             )
 
     def test_bpe_heap_encode_handles_unknown_words(self):
@@ -434,9 +433,7 @@ class BPETests(unittest.TestCase):
         bpe_model = trainer.train(["hello", "world"])
         result = bpe_model._encode_word("completely_unknown_word")
         self.assertTrue(len(result) > 0)
-        joined = bpe_model.decode(
-            [bpe_model.token_to_id.get(t, 0) for t in result]
-        )
+        joined = bpe_model.decode([bpe_model.token_to_id.get(t, 0) for t in result])
         self.assertEqual(joined, "completely_unknown_word")
 
     def test_bpe_heap_encode_unicode_word(self):
@@ -446,9 +443,7 @@ class BPETests(unittest.TestCase):
         bpe_model = trainer.train(["café", "naïve", "résumé", "hello café"] * 4)
         result = bpe_model._encode_word("café")
         self.assertTrue(len(result) > 0)
-        joined = bpe_model.decode(
-            [bpe_model.token_to_id.get(t, 0) for t in result]
-        )
+        joined = bpe_model.decode([bpe_model.token_to_id.get(t, 0) for t in result])
         self.assertEqual(joined, "café")
 
 
@@ -476,7 +471,8 @@ class DecodeBatchTests(unittest.TestCase):
         self.assertEqual(len(decoded), len(texts))
         for original, decoded_text in zip(texts, decoded):
             self.assertEqual(
-                original, decoded_text,
+                original,
+                decoded_text,
                 f"roundtrip mismatch: {original!r} -> {decoded_text!r}",
             )
 

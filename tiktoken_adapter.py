@@ -76,8 +76,7 @@ class TiktokenEncoding:
     ):
         if _re is None:
             raise ImportError(
-                "the 'regex' package is required for tiktoken pattern compatibility; "
-                "install it with: pip install regex"
+                "the 'regex' package is required for tiktoken pattern compatibility; install it with: pip install regex"
             )
         self.name = name
         self.ranks = dict(ranks)
@@ -88,9 +87,10 @@ class TiktokenEncoding:
         self._rank_to_bytes = {r: b for b, r in self.ranks.items()}
         if len(self._rank_to_bytes) != len(self.ranks):
             raise ValueError("duplicate ranks in vocabulary")
-        self.n_vocab = explicit_n_vocab or max(
-            max(self.ranks.values(), default=-1), max(self.special_tokens.values(), default=-1)
-        ) + 1
+        self.n_vocab = (
+            explicit_n_vocab
+            or max(max(self.ranks.values(), default=-1), max(self.special_tokens.values(), default=-1)) + 1
+        )
 
     @classmethod
     def from_file(

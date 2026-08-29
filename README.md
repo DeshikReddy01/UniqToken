@@ -458,7 +458,7 @@ enc = TiktokenEncoding.from_file(
     pattern="cl100k_base",
     special_tokens={"<|endoftext|>": 100257, "<|fim_prefix|>": 100258},
 )
-ids = enc.encode("Hello, world!")            # identical to tiktoken.encode()
+ids = enc.encode("Hello, world!")  # identical to tiktoken.encode()
 text = enc.decode(ids)
 ```
 
@@ -475,9 +475,9 @@ text = enc.decode(ids)
 ```python
 from hf_importer import import_hf_tokenizer
 
-cal = import_hf_tokenizer("path/to/tokenizer.json")   # Unigram -> CustomTokenizer
-gpt2 = import_hf_tokenizer("gpt2/tokenizer.json")     # BPE -> HFByteLevelBPE
-ids = gpt2.encode("Hello, world!")                    # same IDs as HF
+cal = import_hf_tokenizer("path/to/tokenizer.json")  # Unigram -> CustomTokenizer
+gpt2 = import_hf_tokenizer("gpt2/tokenizer.json")  # BPE -> HFByteLevelBPE
+ids = gpt2.encode("Hello, world!")  # same IDs as HF
 ```
 
 #### Loading a SentencePiece `.model` (Unigram)
@@ -487,8 +487,8 @@ Caliper can read SentencePiece Unigram models with **zero `protobuf` dependency*
 ```python
 from sentencepiece_importer import import_sentencepiece
 
-tok = import_sentencepiece("sp.model")      # Unigram -> CustomTokenizer
-ids = tok.encode_to_ids("hello world")      # IDs preserved; leading-word may differ
+tok = import_sentencepiece("sp.model")  # Unigram -> CustomTokenizer
+ids = tok.encode_to_ids("hello world")  # IDs preserved; leading-word may differ
 ```
 
 ---
