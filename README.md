@@ -1,4 +1,8 @@
 <p align="center">
+  <img src="assets/banner.png" alt="UniqToken Banner" width="100%">
+</p>
+
+<p align="center">
   <h1 align="center">UniqToken</h1>
   <p align="center">
     <strong>Script-Aware, Entropy-Guided Multilingual Subword Tokenizer</strong>
