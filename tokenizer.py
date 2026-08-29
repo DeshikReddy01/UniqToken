@@ -346,15 +346,6 @@ class CustomTokenizer:
             disallowed_special_action=disallowed_special_action,
         )
 
-        # v17: one FFI RustTokenizer (norm+pre_tok+viterbi) for standard config
-        if self._is_rust_fast_path_eligible(allowed_special, disallowed_special_action):
-            rt = self._get_rust_tokenizer()
-            if rt is not None:
-                try:
-                    return rt.encode(sanitized_text)
-                except Exception:
-                    pass
-
         norm = self.normalizer.normalize(sanitized_text)
         chunks = self.pre_tokenizer.pre_tokenize(norm)
 
@@ -418,15 +409,6 @@ class CustomTokenizer:
         allowed_special: Union[str, Set[str], List[str]] = "none",
         disallowed_special_action: str = "escape",
     ) -> List[int]:
-        # v18 token-only Vec<u32> path — no String per token
-        if self._is_rust_fast_path_eligible(allowed_special, disallowed_special_action):
-            rt = self._get_rust_tokenizer()
-            if rt is not None:
-                try:
-                    sanitized = self._prepare_text(text, allowed_special, disallowed_special_action)
-                    return rt.encode_ids(sanitized)
-                except Exception:
-                    pass
         tokens = self.encode(
             text,
             allowed_special=allowed_special,
@@ -505,19 +487,6 @@ class CustomTokenizer:
             return []
         if num_workers is not None and num_workers < 1:
             raise ValueError(f"num_workers must be >= 1 (or None), got {num_workers}")
-        # v17 single FFI batch — must use _prepare_text (sanitize+indent) not just sanitize
-        if (
-            num_workers is None
-            and not self._indent_compression_enabled
-            and self._is_rust_fast_path_eligible(allowed_special, disallowed_special_action)
-        ):
-            rt = self._get_rust_tokenizer()
-            if rt is not None:
-                try:
-                    sanitized = [self._prepare_text(t, allowed_special, disallowed_special_action) for t in texts]
-                    return rt.encode_batch(sanitized)
-                except Exception:
-                    pass
         if len(texts) <= 64 or num_workers == 1:
             return [
                 self.encode(
@@ -553,26 +522,6 @@ class CustomTokenizer:
             return []
         if num_workers is not None and num_workers < 1:
             raise ValueError(f"num_workers must be >= 1 (or None), got {num_workers}")
-
-        # v18 Vec<u32> zero-copy — must use _prepare_text (sanitize+indent) not just sanitize
-        if (
-            num_workers is None
-            and not self._indent_compression_enabled
-            and self._is_rust_fast_path_eligible(allowed_special, disallowed_special_action)
-        ):
-            rt = self._get_rust_tokenizer()
-            if rt is not None:
-                try:
-                    sanitized = [self._prepare_text(t, allowed_special, disallowed_special_action) for t in texts]
-                    return rt.encode_ids_batch(sanitized)
-                except (ImportError, AttributeError, ValueError, TypeError):
-                    pass
-        # ponytail: the former rust_encode_text_batch fast path was removed: it
-        # bypassed SecurityShield (raw texts could emit unauthorized special-token
-        # IDs that single encode() escapes) and its native normalizer mapped ALL
-        # whitespace to the metaspace, diverging from the Python path on
-        # tabs/newlines. Batch fast-pathing goes through RustTokenizer below,
-        # which shares shield output and parity-tested semantics.
 
         if len(texts) <= 64 or num_workers == 1:
             return [
