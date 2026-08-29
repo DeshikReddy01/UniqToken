@@ -179,10 +179,10 @@ class UnigramModel:
                 batch_spans = caliper_core.rust_viterbi_decode_batch(chunks, rust_trie, self.byte_fallback)
                 res: List[List[str]] = []
                 cache = self._get_seg_cache()
-                for chunk, spans in zip(chunks, batch_spans):
-                    lst = [s.token for s in spans]
+                for chunk, rust_span_list in zip(chunks, batch_spans):
+                    lst = [s.token for s in rust_span_list]
                     if len(chunk) <= 64 and len(cache) < self._MAX_CACHE_SIZE and chunk not in cache:
-                        cache[chunk] = [(s.token, s.start, s.end) for s in spans]
+                        cache[chunk] = [(s.token, s.start, s.end) for s in rust_span_list]
                     res.append(lst)
                 return res
             except (ImportError, AttributeError, ValueError):
@@ -200,17 +200,18 @@ class UnigramModel:
                 out.append([t for t, _, _ in cached])
                 continue
             fast = self._encode_fast(chunk)
+            chunk_spans: List[Tuple[str, int, int]]
             if fast is not None:
-                spans = fast
+                chunk_spans = fast
             else:
                 lattice = UnigramLattice(
                     chunk, self.vocab, max_subword_len=self.max_subword_len, byte_fallback=self.byte_fallback, trie=trie
                 )
                 edges, _ = lattice.viterbi_edges()
-                spans = [(token, edge.start, edge.end) for edge in edges for token in edge.tokens]
+                chunk_spans = [(token, edge.start, edge.end) for edge in edges for token in edge.tokens]
             if len(chunk) <= 64 and len(cache) < self._MAX_CACHE_SIZE:
-                cache[chunk] = spans
-            out.append([t for t, _, _ in spans])
+                cache[chunk] = chunk_spans
+            out.append([t for t, _, _ in chunk_spans])
         return out
 
     def encode_with_spans(self, text: str) -> List[Tuple[str, int, int]]:
@@ -396,7 +397,7 @@ class UnigramTrainer:
                             expected_counts[chunk] = expected_counts.get(chunk, 0.0) + count
                             continue
                         chunk_exp, chunk_log_lik = caliper_core.rust_forward_backward_expectations(
-                            chunk, rust_trie, self.byte_fallback
+                            chunk, rust_trie, 1.0
                         )
                         total_corpus_log_lik += chunk_log_lik * count
                         for tok, exp_val in chunk_exp.items():

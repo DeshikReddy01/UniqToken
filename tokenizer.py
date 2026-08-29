@@ -5,7 +5,7 @@ import os
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional, Sequence, Set, Tuple, Union
+from typing import Any, List, Optional, Sequence, Set, Tuple, Union
 
 from bpe_model import BPEModel
 from byte_codec import ByteFallbackEngine
@@ -71,8 +71,8 @@ class CustomTokenizer:
         self.security = SecurityShield(special_tokens=self.model.special_tokens)
         self._cross_word_set: Optional[frozenset[str]] = None
         self._cross_word_model_id: Optional[int] = id(self.model)
-        self._rust_tokenizer = None
-        self._rust_vocab_sig = None
+        self._rust_tokenizer: Any = None
+        self._rust_vocab_sig: Optional[Tuple[int, int, str, bool]] = None
 
     def _get_rust_tokenizer(self):
         if not _HAS_RUST_TOKENIZER:
@@ -83,7 +83,8 @@ class CustomTokenizer:
             return self._rust_tokenizer
         try:
             vocab_list = [(t, lp, self.model.token_to_id[t]) for t, lp in self.model.vocab.items()]
-            rt = _rust_core.RustTokenizer(vocab_list, self.normalizer.space_char, self.model.byte_fallback)  # type: ignore
+            assert _rust_core is not None
+            rt = _rust_core.RustTokenizer(vocab_list, self.normalizer.space_char, self.model.byte_fallback)
             self._rust_tokenizer = rt
             self._rust_vocab_sig = sig
             return rt
@@ -423,7 +424,7 @@ class CustomTokenizer:
             if rt is not None:
                 try:
                     sanitized = self._prepare_text(text, allowed_special, disallowed_special_action)
-                    return rt.encode_ids(sanitized)  # type: ignore
+                    return rt.encode_ids(sanitized)
                 except Exception:
                     pass
         tokens = self.encode(
@@ -516,7 +517,7 @@ class CustomTokenizer:
                     sanitized = [
                         self._prepare_text(t, allowed_special, disallowed_special_action) for t in texts
                     ]
-                    return rt.encode_batch(sanitized)  # type: ignore
+                    return rt.encode_batch(sanitized)
                 except Exception:
                     pass
         if len(texts) <= 64 or num_workers == 1:
@@ -567,7 +568,7 @@ class CustomTokenizer:
                     sanitized = [
                         self._prepare_text(t, allowed_special, disallowed_special_action) for t in texts
                     ]
-                    return rt.encode_ids_batch(sanitized)  # type: ignore
+                    return rt.encode_ids_batch(sanitized)
                 except (ImportError, AttributeError, ValueError, TypeError):
                     pass
         # ponytail: the former rust_encode_text_batch fast path was removed: it

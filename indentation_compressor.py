@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import List, Optional, Sequence, Set, Tuple, Union
+from typing import Any, List, Mapping, Optional, Sequence, Set, Tuple, Union
 
 
 RawSpan = Tuple[int, int]
@@ -30,7 +30,9 @@ class IndentationCompressor:
     ]
 
     @classmethod
-    def compress_indents(cls, text: str, vocab: Optional[Union[Set[str], Sequence[str]]] = None) -> str:
+    def compress_indents(
+        cls, text: str, vocab: Optional[Union[Set[str], Sequence[str], Mapping[str, Any]]] = None
+    ) -> str:
         """
         Replaces structured indentation whitespace with deterministic tokens.
         """
@@ -39,7 +41,7 @@ class IndentationCompressor:
 
     @classmethod
     def compress_indents_with_alignment(
-        cls, text: str, vocab: Optional[Union[Set[str], Sequence[str]]] = None
+        cls, text: str, vocab: Optional[Union[Set[str], Sequence[str], Mapping[str, Any]]] = None
     ) -> Tuple[str, List[RawSpan]]:
         """Compress whitespace while retaining the span of every emitted character."""
         if not isinstance(text, str):

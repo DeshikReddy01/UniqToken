@@ -9,8 +9,12 @@ import base64
 import os
 import tempfile
 import unittest
+from typing import Any
 
-from tiktoken_adapter import TiktokenEncoding, load_tiktoken_ranks
+from tiktoken_adapter import (
+    TiktokenEncoding,
+    load_tiktoken_ranks,
+)
 
 
 def _write_synthetic_ranks() -> str:
@@ -31,6 +35,9 @@ SYNTHETIC_SPECIALS = {"<|endoftext|>": 1000, "<|fim|>": 1001}
 
 
 class SyntheticRanksTests(unittest.TestCase):
+    ranks_path: str
+    enc: Any
+
     @classmethod
     def setUpClass(cls):
         cls.ranks_path = _write_synthetic_ranks()
@@ -101,6 +108,10 @@ class RealTiktokenParityTests(unittest.TestCase):
     Skipped automatically when tiktoken isn't installed, the ranks aren't
     cached locally, or the download fails (offline CI).
     """
+
+    ref: Any
+    ranks_path: str
+    specials: Any
 
     @classmethod
     def setUpClass(cls):

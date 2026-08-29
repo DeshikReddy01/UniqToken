@@ -1,8 +1,8 @@
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import Dict, List, Optional, Sequence, Set, Tuple
 
 class RustPrefixTrie:
     def __init__(self, items: Optional[List[Tuple[str, Optional[int], float]]] = None) -> None: ...
-    def insert(self, token: str, token_id: Optional[int], score: float) -> None: ...
+    def insert(self, token: str, score: float, token_id: Optional[int] = None) -> None: ...
     def common_prefix_search_chars(self, chars: Sequence[str], start_idx: int = 0) -> List[Tuple[str, Optional[int], float, int]]: ...
     def exact_metadata(self, token: str) -> Optional[Tuple[Optional[int], float]]: ...
     def __len__(self) -> int: ...
@@ -62,12 +62,10 @@ def rust_encode_text_batch(
 ) -> List[List[int]]: ...
 
 def rust_forward_backward_expectations(
+    text: str,
     trie: RustPrefixTrie,
-    texts: Sequence[str],
-    frequencies: Sequence[int],
-    vocab_size: int,
-    byte_fallback: bool = True,
-) -> Tuple[List[float], float]: ...
+    freq: float = 1.0,
+) -> Tuple[Dict[str, float], float]: ...
 
 def rust_normalize(
     text: str,
@@ -92,10 +90,9 @@ def rust_normalize_with_alignment(
 ) -> Tuple[str, List[Tuple[int, int]]]: ...
 
 def rust_mine_ngrams(
-    texts: Sequence[str],
-    min_len: int = 1,
-    max_len: int = 16,
-    min_freq: int = 2,
+    chunk_counts: Dict[str, int],
+    max_ngram_length: int,
+    special_tokens: Optional[Set[str]] = None,
 ) -> Dict[str, int]: ...
 
 def rust_pre_tokenize(

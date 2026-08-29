@@ -48,6 +48,7 @@ def _iter_fields(buf: bytes):
     while pos < end:
         key, pos = _read_varint(buf, pos)
         field_number, wire_type = key >> 3, key & 0x07
+        value: Union[int, bytes]
         if wire_type == 0:
             value, pos = _read_varint(buf, pos)
         elif wire_type == 1:

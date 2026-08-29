@@ -244,14 +244,15 @@ def train_toy_transformer(
                 out = self.norm(out)
                 return self.head(out)
 
+        target_device: torch.device
         if device == "auto":
-            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+            target_device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         else:
             if device == "cuda" and not torch.cuda.is_available():
                 raise RuntimeError("device='cuda' requested but torch.cuda.is_available() is False")
-            device = torch.device(device)
+            target_device = torch.device(device)
         torch.manual_seed(42)
-        model = MiniCausalLM(vs=vocab_size, d=dim, h=heads, n_l=layers, max_s=seq_len).to(device)
+        model = MiniCausalLM(vs=vocab_size, d=dim, h=heads, n_l=layers, max_s=seq_len).to(target_device)
         optimizer = torch.optim.AdamW(model.parameters(), lr=3e-3, weight_decay=1e-2)
         loss_fn = nn.CrossEntropyLoss()
 
@@ -271,8 +272,8 @@ def train_toy_transformer(
                 batch_inputs.append(chunk[:-1])
                 batch_targets.append(chunk[1:])
 
-            inputs = torch.stack(batch_inputs).to(device)
-            targets = torch.stack(batch_targets).to(device)
+            inputs = torch.stack(batch_inputs).to(target_device)
+            targets = torch.stack(batch_targets).to(target_device)
 
             logits = model(inputs)
             loss = loss_fn(logits.view(-1, vocab_size), targets.view(-1))
@@ -289,7 +290,7 @@ def train_toy_transformer(
             weighted_validation_loss = 0.0
             with torch.no_grad():
                 for start in range(0, len(val_flat) - 1, seq_len):
-                    chunk = val_tensor[start : start + seq_len + 1].to(device)
+                    chunk = val_tensor[start : start + seq_len + 1].to(target_device)
                     prediction_count = len(chunk) - 1
                     if prediction_count == 0:
                         continue

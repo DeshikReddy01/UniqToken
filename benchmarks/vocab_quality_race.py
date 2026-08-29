@@ -226,7 +226,7 @@ def _train_sentencepiece(budget: int):
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             cal = import_sentencepiece(prefix + ".model")
-    cal._spm_actual_vocab = actual_size
+    setattr(cal, "_spm_actual_vocab", actual_size)
     return cal
 
 

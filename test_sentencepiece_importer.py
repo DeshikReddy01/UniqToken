@@ -9,6 +9,7 @@ import struct
 import tempfile
 import unittest
 import warnings
+from typing import Any
 
 from sentencepiece_importer import (
     SP_BYTE,
@@ -151,6 +152,12 @@ class SynthesizedProtoTests(unittest.TestCase):
 @unittest.skipUnless(HAS_SPM, "sentencepiece package not installed")
 class RealSentencePieceImportTests(unittest.TestCase):
     """Differential tests: train SPM, import into Caliper, compare encode."""
+    sp: Any
+    cal: Any
+    caught: Any
+    tmp: str
+    mpath: str
+    corpus: str
 
     @classmethod
     def setUpClass(cls):

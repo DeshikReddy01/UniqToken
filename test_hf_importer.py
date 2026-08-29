@@ -7,6 +7,7 @@ tokenizer.json, imports into Caliper, and compares vocab/IDs/encodes.
 import json
 import unittest
 import warnings
+from typing import Any
 
 from hf_importer import import_hf_tokenizer
 
@@ -22,6 +23,11 @@ except ImportError:  # pragma: no cover
 
 @unittest.skipUnless(HAS_TOKENIZERS, "tokenizers package not installed")
 class HFUnigramImportTests(unittest.TestCase):
+    hf_json: Any
+    hf: Any
+    caught: Any
+    cal: Any
+
     @classmethod
     def setUpClass(cls):
         # vocab: unk + single chars + metaspace-prefixed words; ids == list index
@@ -65,6 +71,10 @@ class HFUnigramImportTests(unittest.TestCase):
 
 @unittest.skipUnless(HAS_TOKENIZERS, "tokenizers package not installed")
 class HFByteLevelBPEImportTests(unittest.TestCase):
+    hf_json: Any
+    hf: Any
+    cal: Any
+
     @classmethod
     def setUpClass(cls):
         # GPT-2-style byte-level vocab: fixed merges over b"hello world" PLUS

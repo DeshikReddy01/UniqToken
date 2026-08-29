@@ -61,6 +61,7 @@ class RustPythonParityTests(unittest.TestCase):
             # 1. Native Rust decode
             rust_trie = model._get_rust_trie()
             self.assertIsNotNone(rust_trie)
+            assert rust_trie is not None
             rust_spans = caliper_core.rust_viterbi_decode(sent, rust_trie, model.byte_fallback)
             rust_tuples = [(s.token, s.start, s.end) for s in rust_spans]
 

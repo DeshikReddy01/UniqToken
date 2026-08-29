@@ -18,6 +18,7 @@ import json
 import math
 import unittest
 import warnings
+from typing import Any
 
 from benchmarks.vocab_quality_race import (
     RaceEntry,
@@ -39,26 +40,23 @@ def _env_can_run_race() -> bool:
 
     Result is memoized; the probe is only run once per process.
     """
-    import subprocess
-    import sys
-    import textwrap
-
     cached = getattr(_env_can_run_race, "_result", None)
     if cached is not None:
-        return cached
+        return bool(cached)
 
-    probe = textwrap.dedent(
-        """
-        try:
-            import transformers  # noqa: F401
-            import sklearn  # noqa: F401
-            import pandas  # noqa: F401
-            import pyarrow  # noqa: F401
-        except Exception as exc:
-            print(f"PROBE_FAIL: {type(exc).__name__}: {exc}")
-            raise SystemExit(1)
-        print("PROBE_OK")
-        """
+    import subprocess
+    import sys
+
+    probe = (
+        "import sys\n"
+        "try:\n"
+        "    import transformers\n"
+        "    import sklearn\n"
+        "    import pandas\n"
+        "    import pyarrow\n"
+        "    print('PROBE_OK')\n"
+        "except Exception as e:\n"
+        "    sys.exit(1)\n"
     )
     try:
         result = subprocess.run(
@@ -69,7 +67,7 @@ def _env_can_run_race() -> bool:
     except (subprocess.TimeoutExpired, OSError):
         ok = False
 
-    _env_can_run_race._result = ok
+    setattr(_env_can_run_race, "_result", ok)
     return ok
 
 
@@ -81,6 +79,7 @@ class VocabQualityRaceHarnessTests(unittest.TestCase):
     """Run a single small race per class and assert structural invariants."""
 
     _TEST_BUDGET = 500
+    report: Any
 
     @classmethod
     def setUpClass(cls):

@@ -98,8 +98,9 @@ class Normalizer:
 
         # ponytail: Rust normalizer with exact parity; Python fallback if mismatch
         if _HAS_RUST_NORM:
+            assert _caliper_core is not None
             try:
-                res = _caliper_core.rust_normalize_with_alignment(  # type: ignore
+                res = _caliper_core.rust_normalize_with_alignment(
                     text,
                     self.space_char,
                     self.normalize_unicode,
@@ -110,7 +111,7 @@ class Normalizer:
                     self.strip_whitespace,
                 )
                 # ponytail: no per-element tuple() — Rust already returns List[Tuple]
-                return res[0], res[1]  # type: ignore
+                return res[0], res[1]
             except (ValueError, AttributeError, ImportError, TypeError):
                 pass
 
@@ -217,8 +218,9 @@ class Normalizer:
         if not isinstance(text, str):
             raise TypeError(f"text must be a string, got {type(text).__name__}")
         if _HAS_RUST_NORM:
+            assert _caliper_core is not None
             try:
-                return _caliper_core.rust_normalize(  # type: ignore
+                return _caliper_core.rust_normalize(
                     text,
                     self.space_char,
                     self.normalize_unicode,
@@ -397,8 +399,9 @@ class RegexPreTokenizer:
             and self.keep_special_tokens
             and self.special_token_pattern == r"<\|[^\s|]+\|>"
         ):
+            assert _caliper_core is not None
             try:
-                return _caliper_core.rust_pre_tokenize(text)  # type: ignore
+                return _caliper_core.rust_pre_tokenize(text)
             except (ImportError, AttributeError, ValueError):
                 pass
         return [m.group(0) for m in self.regex.finditer(text)]

@@ -385,7 +385,7 @@ if HAS_TORCH:
             b, t_prime, n_q = indices.shape
             if n_q != self.num_quantizers:
                 raise ValueError(f"expected {self.num_quantizers} quantizer stages in indices, got {n_q}")
-            device = self.quantizers[0].weight.device
+            device = next(self.parameters()).device
             if indices.device != device:
                 indices = indices.to(device)
             z_q_total = torch.zeros(b * t_prime, self.latent_dim, device=device)

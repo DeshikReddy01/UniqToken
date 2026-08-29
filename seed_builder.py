@@ -194,7 +194,7 @@ class SeedVocabularyBuilder:
             return counts
         # ponytail: Rust &str slice + AHashMap if available; Python fallback exact
         try:
-            import caliper_core  # type: ignore
+            import caliper_core
 
             if hasattr(caliper_core, "rust_mine_ngrams"):
                 rust_res = caliper_core.rust_mine_ngrams(
