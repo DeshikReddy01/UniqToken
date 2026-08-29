@@ -1,4 +1,4 @@
-name: Caliper Tokenizer CI
+name: UniqToken Tokenizer CI
 
 on:
   push:
@@ -20,10 +20,10 @@ jobs:
           components: clippy
 
       - name: Check Rust core
-        run: cargo check --manifest-path crates/caliper_core/Cargo.toml --all-targets
+        run: cargo check --manifest-path crates/uniqtoken_core/Cargo.toml --all-targets
 
       - name: Lint Rust core
-        run: cargo clippy --manifest-path crates/caliper_core/Cargo.toml --all-targets -- -D warnings
+        run: cargo clippy --manifest-path crates/uniqtoken_core/Cargo.toml --all-targets -- -D warnings
 
   test:
     name: Test (Python ${{ matrix.python-version }} on ${{ matrix.os }})
@@ -54,10 +54,10 @@ jobs:
       - name: Build & Install Native Extension (fresh from source)
         run: |
           python -c "import shutil; shutil.rmtree('dist', ignore_errors=True)"
-          python -m maturin build --release --manifest-path crates/caliper_core/Cargo.toml -o dist
-          python -c "import glob, subprocess, sys; wheels = glob.glob('dist/caliper_core*.whl') + glob.glob('dist/caliper-core*.whl') + glob.glob('dist/*.whl'); print('Installing:', wheels[0]); subprocess.check_call([sys.executable, '-m', 'pip', 'install', '--force-reinstall', '--no-deps', wheels[0]])"
+          python -m maturin build --release --manifest-path crates/uniqtoken_core/Cargo.toml -o dist
+          python -c "import glob, subprocess, sys; wheels = glob.glob('dist/uniqtoken_core*.whl') + glob.glob('dist/uniqtoken-core*.whl') + glob.glob('dist/*.whl'); print('Installing:', wheels[0]); subprocess.check_call([sys.executable, '-m', 'pip', 'install', '--force-reinstall', '--no-deps', wheels[0]])"
 
-      - name: Install Caliper Tokenizer (Editable)
+      - name: Install UniqToken Tokenizer (Editable)
         run: |
           python -m pip install -e .
 
@@ -99,19 +99,19 @@ jobs:
       - name: Build sdist + wheels for all supported Pythons
         uses: PyO3/maturin-action@v1
         with:
-          working-directory: crates/caliper_core
+          working-directory: crates/uniqtoken_core
           command: build
           args: --release --out dist --find-interpreter
 
       - name: Upload wheel artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: caliper-core-wheels-${{ matrix.os }}
-          path: crates/caliper_core/dist/*.whl
+          name: uniqtoken-core-wheels-${{ matrix.os }}
+          path: crates/uniqtoken_core/dist/*.whl
           if-no-files-found: error
 
   pypi-release:
-    name: Publish caliper-core wheels to PyPI
+    name: Publish uniqtoken-core wheels to PyPI
     needs: [native-wheels, test]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest

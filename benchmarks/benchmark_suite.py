@@ -359,22 +359,27 @@ class TokenizerBenchmarkSuite:
         text = self.BENCHMARK_CORPORA["English_Prose"]
         results: Dict[str, Any] = {}
 
-        # 1. Caliper (Rust C-Extension or Python fallback)
+        # 1. UniqToken (Rust C-Extension or Python fallback)
         try:
-            import caliper_core
+            import uniqtoken_core
 
-            caliper_label = "Caliper (Rust Core)"
+            uniqtoken_label = "UniqToken (Rust Core)"
         except ImportError:
-            caliper_label = "Caliper (Pure Python)"
+            try:
+                import caliper_core
+
+                uniqtoken_label = "UniqToken (Rust Core)"
+            except ImportError:
+                uniqtoken_label = "UniqToken (Pure Python)"
 
         t0 = time.perf_counter()
         for _ in range(5):
-            caliper_tokens = self.tokenizer.encode_to_ids(text)
-        t_caliper = (time.perf_counter() - t0) / 5.0
-        results[caliper_label] = {
-            "tokens": len(caliper_tokens),
-            "time_sec": round(t_caliper, 4),
-            "tokens_sec": round(len(caliper_tokens) / max(t_caliper, 1e-6), 1),
+            uniqtoken_tokens = self.tokenizer.encode_to_ids(text)
+        t_uniqtoken = (time.perf_counter() - t0) / 5.0
+        results[uniqtoken_label] = {
+            "tokens": len(uniqtoken_tokens),
+            "time_sec": round(t_uniqtoken, 4),
+            "tokens_sec": round(len(uniqtoken_tokens) / max(t_uniqtoken, 1e-6), 1),
         }
 
         # 2. HuggingFace Tokenizers (Rust C-FFI) via our HF Exporter.
@@ -464,7 +469,7 @@ class TokenizerBenchmarkSuite:
 
     def print_summary_report(self, include_large_payloads: bool = False) -> None:
         print("=" * 115)
-        print("CALIPER TOKENIZER EMPIRICAL BENCHMARK REPORT")
+        print("UNIQTOKEN TOKENIZER EMPIRICAL BENCHMARK REPORT")
         print("=" * 115)
 
         results = self.run_all_benchmarks()

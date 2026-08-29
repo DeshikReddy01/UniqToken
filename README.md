@@ -1,5 +1,5 @@
 <p align="center">
-  <h1 align="center">Caliper</h1>
+  <h1 align="center">UniqToken</h1>
   <p align="center">
     <strong>Script-Aware, Entropy-Guided Multilingual Subword Tokenizer</strong>
   </p>
@@ -20,13 +20,13 @@
 
 ## Overview
 
-Most production tokenizers lean on a compiled C++ or Rust backend (SentencePiece, HuggingFace `tokenizers`) and treat character-offset alignment, control-token injection defense, and vocabulary extension as afterthoughts. **Caliper** is a single, dependency-free Python package that treats all three as first-class design constraints, while implementing the same core algorithms — Unigram Language Model segmentation, Byte-Pair Encoding, and post-training vocabulary merging — that back today's production LLM tokenizers.
+Most production tokenizers lean on a compiled C++ or Rust backend (SentencePiece, HuggingFace `tokenizers`) and treat character-offset alignment, control-token injection defense, and vocabulary extension as afterthoughts. **UniqToken** is a single, dependency-free Python package that treats all three as first-class design constraints, while implementing the same core algorithms — Unigram Language Model segmentation, Byte-Pair Encoding, and post-training vocabulary merging — that back today's production LLM tokenizers.
 
-What distinguishes Caliper from standard subword tokenizers is its **script-aware candidate generation** and **entropy-guided vocabulary construction**, which produce higher byte efficiency than Boundary-BPE while retaining lower token-level cross-entropy than SentencePiece under controlled compute and capacity regimes.
+What distinguishes UniqToken from standard subword tokenizers is its **script-aware candidate generation** and **entropy-guided vocabulary construction**, which produce higher byte efficiency than Boundary-BPE while retaining lower token-level cross-entropy than SentencePiece under controlled compute and capacity regimes.
 
 ### Design Goals
 
-| # | Production Failure Mode | Caliper's Response |
+| # | Production Failure Mode | UniqToken's Response |
 |:-:|:---|:---|
 | 1 | **Out-of-vocabulary catastrophe** — rare Unicode, emoji, or foreign scripts silently collapse to `<unk>`, destroying information. | Strict **byte fallback**: any character outside the vocabulary decomposes into its raw UTF-8 bytes (`<0x00>`–`<0xFF>`), guaranteeing a **0% OOV rate** and exact, lossless roundtrip decoding. |
 | 2 | **Span drift** — normalization (NFKC, case folding) changes string length, breaking the character offsets that NER, extractive QA, and citation systems depend on. | **Dual-offset tracking**: sanitization, indentation compression, normalization, and pre-tokenization each produce their own alignment, composed end-to-end by `_compose_alignment()`, so `encode_with_offsets()` returns a `Token.raw_span` pointing to the exact byte range in the original raw text. |
@@ -38,9 +38,9 @@ What distinguishes Caliper from standard subword tokenizers is its **script-awar
 
 ## Research Results
 
-Caliper has been evaluated through a controlled **3 × 3 × 3 factorial experiment** spanning 27 conditions across 3 vocabulary scales (16K, 32K, 64K), 3 Transformer LM capacity tiers (4L-128d, 6L-256d, 8L-512d), and 5 paired random seeds (N=171 total runs) under matched analytical compute (5.0 × 10¹² FLOPs).
+UniqToken has been evaluated through a controlled **3 × 3 × 3 factorial experiment** spanning 27 conditions across 3 vocabulary scales (16K, 32K, 64K), 3 Transformer LM capacity tiers (4L-128d, 6L-256d, 8L-512d), and 5 paired random seeds (N=171 total runs) under matched analytical compute (5.0 × 10¹² FLOPs).
 
-> **Core Finding:** Caliper is not a universal replacement for SentencePiece or BPE. It occupies a distinct middle regime in which script-aware candidate generation and entropy-guided merging produce higher byte efficiency than Boundary-BPE while retaining lower token-level cross-entropy than SentencePiece under the tested compute and capacity regimes.
+> **Core Finding:** UniqToken is not a universal replacement for SentencePiece or BPE. It occupies a distinct middle regime in which script-aware candidate generation and entropy-guided merging produce higher byte efficiency than Boundary-BPE while retaining lower token-level cross-entropy than SentencePiece under the tested compute and capacity regimes.
 
 ### The 32K Three-Way Pareto Compromise
 
@@ -49,12 +49,12 @@ At the 32K × Large (8L-512d) configuration, the three tokenizers form a strict,
 | Tokenizer | True LM BPB ↓ | Per-Token CE (nats) ↓ | Bytes / Token ↑ | Active Vocab % |
 |:---|:---:|:---:|:---:|:---:|
 | **SentencePiece-Unigram** | **2.631** | 11.957 | **6.56** | 68.0% |
-| **Caliper-SuperBPE** | 2.772 | 11.540 | 6.01 | **75.6%** |
+| **UniqToken-SuperBPE** | 2.772 | 11.540 | 6.01 | **75.6%** |
 | **Boundary-BPE** | 2.840 | **9.914** | 5.04 | 63.1% |
 
 - SentencePiece achieves the best text compression (lowest BPB) but produces the hardest-to-predict tokens (highest CE).
 - Boundary-BPE produces the most predictable tokens (lowest CE) but compresses the least (highest BPB).
-- **Caliper sits between both endpoints on both objectives**, with the highest active vocabulary utilization (75.6%).
+- **UniqToken sits between both endpoints on both objectives**, with the highest active vocabulary utilization (75.6%).
 
 <p align="center">
   <img src="benchmarks/phase_fifteen_final_paper_figure.png" alt="Phase 15 — Multi-Objective Pareto Synthesis (4-Panel)" width="900">
@@ -84,15 +84,15 @@ Key findings from pre-registered hypothesis tests (N=5 seeds, Holm-Bonferroni co
 
 ### Memory-Budget Scaling
 
-Embedding memory scales linearly with vocabulary size. Caliper's low-capacity efficiency makes it competitive at constrained budgets:
+Embedding memory scales linearly with vocabulary size. UniqToken's low-capacity efficiency makes it competitive at constrained budgets:
 
-| Vocab | Embed Memory | Caliper BPB (Small) | Caliper B/Tok | Active Vocab % |
+| Vocab | Embed Memory | UniqToken BPB (Small) | UniqToken B/Tok | Active Vocab % |
 |:---:|:---:|:---:|:---:|:---:|
 | 16K | 16 MB | 3.093 | 5.41 | 87.6% |
 | 32K | 32 MB | 2.952 | 6.01 | 75.6% |
 | 64K | 64 MB | 2.703 | 6.46 | 58.7% |
 
-> Caliper achieves the lowest BPB among all evaluated 16K configurations (3.093 BPB at 5.0M parameters).
+> UniqToken achieves the lowest BPB among all evaluated 16K configurations (3.093 BPB at 5.0M parameters).
 
 For full details, see [`PAPER_DRAFT.md`](PAPER_DRAFT.md) and the frozen dataset in [`benchmarks/phase_fifteen_final_paper_records.json`](benchmarks/phase_fifteen_final_paper_records.json).
 
@@ -273,26 +273,26 @@ assert tok2.encode_to_ids("test") == tok.encode_to_ids("test")
 
 ## Command-Line Interface (CLI)
 
-Caliper ships with a production CLI executable (`caliper`) for training, encoding, decoding, and evaluation:
+UniqToken ships with a production CLI executable (`caliper`) for training, encoding, decoding, and evaluation:
 
 ```bash
 # 1. Train a tokenizer with PMI ranking and SuperBPE optimization
-caliper train --corpus dataset.txt --vocab-size 8000 --ranking-strategy pmi --superbpe-merges 100 --out ./model
+uniqtoken train --corpus dataset.txt --vocab-size 8000 --ranking-strategy pmi --superbpe-merges 100 --out ./model
 
 # 2. Tokenize text with exact character spans and compression telemetry
-caliper encode --model ./model --input "def forward(x): return self.attn(x)" --with-metrics
+uniqtoken encode --model ./model --input "def forward(x): return self.attn(x)" --with-metrics
 
 # 3. Encode to integer IDs as JSON
-caliper encode --model ./model --input "the quick brown fox" --to-ids --json
+uniqtoken encode --model ./model --input "the quick brown fox" --to-ids --json
 
 # 4. Decode integer IDs losslessly
-caliper decode --model ./model --input "[12, 450, 89, 230]"
+uniqtoken decode --model ./model --input "[12, 450, 89, 230]"
 
 # 5. Run the empirical multilingual benchmark suite with Markdown/LaTeX export
-caliper benchmark --export-markdown benchmark_report.md --export-latex table.tex
+uniqtoken benchmark --export-markdown benchmark_report.md --export-latex table.tex
 
 # 6. Evaluate downstream LLM context efficiency and information density
-caliper eval-downstream --vocab-size 1000
+uniqtoken eval-downstream --vocab-size 1000
 ```
 
 ---
@@ -328,7 +328,7 @@ caliper/
 ├── byte_codec.py              # ByteFallbackEngine — UTF-8 ↔ <0xHH> codec
 ├── trie.py                    # PrefixTrie — slots-optimized O(L) prefix matching
 │
-├── caliper_core/              # Native Rust acceleration crate (PyO3 C-extension)
+├── uniqtoken_core/              # Native Rust acceleration crate (PyO3 C-extension)
 │   ├── Cargo.toml             # Rust package manifest (pyo3, rayon, ahash)
 │   ├── src/trie.rs            # Native Double-Array / PrefixTrie matching
 │   ├── src/viterbi.rs         # Native dynamic programming Viterbi & EM expectations
@@ -366,7 +366,7 @@ caliper/
 │   ├── run_phase_fourteen_confirmatory.py  # Phase 14B 5-seed factorial ANOVA
 │   └── phase_fifteen_final_paper_records.json  # Frozen audited dataset (27 conditions)
 │
-├── caliper_core.pyi           # Static typing stub for PyO3 C-extension
+├── uniqtoken_core.pyi           # Static typing stub for PyO3 C-extension
 ├── PAPER_DRAFT.md             # Research manuscript draft
 │
 ├── test_tokenizer.py          # 68 unit tests across 19 test classes
@@ -400,7 +400,7 @@ graph TD
     UT --> TR["trie.py<br/>PrefixTrie"]
     UL --> BC
     UL --> TR
-    TR -.-> RC["caliper_core<br/>Rust Native Extension"]
+    TR -.-> RC["uniqtoken_core<br/>Rust Native Extension"]
     UL -.-> RC
 
     CEM["cem_merger.py<br/>CrossEntropyMerging"] --> UT
@@ -417,7 +417,7 @@ graph TD
 
 ## Algorithms & Base Papers
 
-Caliper is an independent, from-scratch implementation. It does not wrap any paper's reference code. The algorithms are drawn from:
+UniqToken is an independent, from-scratch implementation. It does not wrap any paper's reference code. The algorithms are drawn from:
 
 | Algorithm | Module(s) | Reference |
 |:----------|:----------|:----------|
@@ -448,7 +448,7 @@ The `allowed_special` parameter accepts `"all"`, `"none"`, or a specific `set` o
 
 ### tiktoken ranks importer
 
-Caliper loads any tiktoken `.tiktoken` rank file (e.g. `cl100k_base.tiktoken`, `o200k_base.tiktoken`, `gpt2` via tiktoken's file dump) and produces **exactly the same integer IDs** as tiktoken — no tiktoken package required, only the lightweight `regex` module for pattern fidelity:
+UniqToken loads any tiktoken `.tiktoken` rank file (e.g. `cl100k_base.tiktoken`, `o200k_base.tiktoken`, `gpt2` via tiktoken's file dump) and produces **exactly the same integer IDs** as tiktoken — no tiktoken package required, only the lightweight `regex` module for pattern fidelity:
 
 ```python
 from tiktoken_adapter import TiktokenEncoding
@@ -462,15 +462,15 @@ ids = enc.encode("Hello, world!")  # identical to tiktoken.encode()
 text = enc.decode(ids)
 ```
 
-`to_caliper_bpe_model()` additionally converts the ranks into Caliper's native `BPEModel` (IDs preserved) for reuse in training/analysis. CI runs token-for-token differential tests against the real `tiktoken` package on multilingual, emoji/ZWJ, and code inputs.
+`to_caliper_bpe_model()` additionally converts the ranks into UniqToken's native `BPEModel` (IDs preserved) for reuse in training/analysis. CI runs token-for-token differential tests against the real `tiktoken` package on multilingual, emoji/ZWJ, and code inputs.
 
 ### HuggingFace tokenizer.json importer
 
 `import_hf_tokenizer()` reads an HF `tokenizer.json` (path, directory, or parsed dict) and dispatches on model type:
 
-- **Unigram** → a native Caliper `CustomTokenizer` with scores and token IDs preserved exactly (normalizer/pre-tokenizer mapped best-effort with explicit warnings for unrepresentable components).
+- **Unigram** → a native UniqToken `CustomTokenizer` with scores and token IDs preserved exactly (normalizer/pre-tokenizer mapped best-effort with explicit warnings for unrepresentable components).
 - **BPE** → GPT-2-style **ByteLevel** vocabs return a fully functional `HFByteLevelBPE` with exact-ID encode/decode (verified differentially against the real `tokenizers` package); non-byte-level BPE returns vocab/merges/IDs as a `BPEModel` for data reuse.
-- WordPiece is rejected with a clear error (Caliper has no WordPiece engine).
+- WordPiece is rejected with a clear error (UniqToken has no WordPiece engine).
 
 ```python
 from hf_importer import import_hf_tokenizer
@@ -482,7 +482,7 @@ ids = gpt2.encode("Hello, world!")  # same IDs as HF
 
 #### Loading a SentencePiece `.model` (Unigram)
 
-Caliper can read SentencePiece Unigram models with **zero `protobuf` dependency** (raw wire-format parser) and **byte-for-byte vocab/ID preservation** vs the real `sentencepiece` package. The first word of every encode is subject to a known SPM/Caliper divergence (SPM's `add_dummy_prefix=True` prepends a metaspace that Caliper does not); the importer emits a `UserWarning` for it, and the rest of the encode is byte-for-byte identical:
+UniqToken can read SentencePiece Unigram models with **zero `protobuf` dependency** (raw wire-format parser) and **byte-for-byte vocab/ID preservation** vs the real `sentencepiece` package. The first word of every encode is subject to a known SPM/UniqToken divergence (SPM's `add_dummy_prefix=True` prepends a metaspace that UniqToken does not); the importer emits a `UserWarning` for it, and the rest of the encode is byte-for-byte identical:
 
 ```python
 from sentencepiece_importer import import_sentencepiece
@@ -551,7 +551,7 @@ python benchmarks/downstream_eval.py            # downstream LLM eval
 
 ## Multimodal
 
-The `multimodal/` package extends Caliper to handle text, image, and audio inputs through a unified `MultimodalTokenizer`:
+The `multimodal/` package extends UniqToken to handle text, image, and audio inputs through a unified `MultimodalTokenizer`:
 
 | Module | Purpose |
 |:-------|:--------|

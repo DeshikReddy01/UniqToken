@@ -95,7 +95,7 @@ def create_tokenizers(target_vocab: int = 500) -> Dict[str, Any]:
     """Builds and returns calibrated tokenizers for downstream comparison."""
     tokenizers: Dict[str, Any] = {}
 
-    # 1. Caliper Unigram
+    # 1. UniqToken Unigram
     unigram_tok = CustomTokenizer.train_from_corpus(
         corpus=PRETRAINING_CORPUS,
         target_vocab_size=target_vocab,
@@ -103,16 +103,16 @@ def create_tokenizers(target_vocab: int = 500) -> Dict[str, Any]:
         min_frequency=1,
         verbose=False,
     )
-    tokenizers["Caliper (Unigram)"] = unigram_tok
+    tokenizers["UniqToken (Unigram)"] = unigram_tok
 
-    # 2. Caliper SuperBPE
+    # 2. UniqToken SuperBPE
     pretok_chunks: List[str] = []
     for doc in PRETRAINING_CORPUS:
         norm = unigram_tok.normalizer.normalize(doc)
         pretok_chunks.extend(unigram_tok.pre_tokenizer.pre_tokenize(norm))
     cem = CrossEntropyMerging(max_merges=30, cross_word=True, verbose=False)
     sbp_model = cem.optimize(unigram_tok.model, chunks=pretok_chunks)
-    tokenizers["Caliper (SuperBPE)"] = CustomTokenizer(
+    tokenizers["UniqToken (SuperBPE)"] = CustomTokenizer(
         normalizer=unigram_tok.normalizer,
         pre_tokenizer=unigram_tok.pre_tokenizer,
         model=sbp_model,

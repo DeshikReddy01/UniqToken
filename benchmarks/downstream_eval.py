@@ -114,8 +114,8 @@ class DownstreamEvaluator:
         )
 
         return {
-            "Caliper (Unigram)": base_tok,
-            "Caliper (SuperBPE)": sbp_tok,
+            "UniqToken (Unigram)": base_tok,
+            "UniqToken (SuperBPE)": sbp_tok,
         }
 
     def evaluate_tokenizer(self, name: str, encode_fn, vocab_size: int) -> DownstreamMetrics:

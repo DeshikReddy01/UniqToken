@@ -1,13 +1,13 @@
 [package]
-name = "caliper-core"
+name = "uniqtoken-core"
 version = "1.0.0"
 edition = "2021"
-authors = ["Caliper Authors"]
-description = "High-performance native Rust core acceleration engine for Caliper Tokenizer"
+authors = ["UniqToken Authors"]
+description = "High-performance native Rust core acceleration engine for UniqToken"
 license = "MIT"
 
 [lib]
-name = "caliper_core"
+name = "uniqtoken_core"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]

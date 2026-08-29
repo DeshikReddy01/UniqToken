@@ -310,15 +310,15 @@ def run_vocab_quality_race(
     )
 
     unigram_tok = _train_caliper_unigram(budget)
-    report.entries.append(_race_entry("Caliper (Unigram)", "caliper", budget, unigram_tok, steps, **train_kwargs))
+    report.entries.append(_race_entry("UniqToken (Unigram)", "uniqtoken", budget, unigram_tok, steps, **train_kwargs))
     unigram_norm = unigram_tok.normalizer
     unigram_pretok = unigram_tok.pre_tokenizer
 
     bpe_tok = _train_caliper_bpe(budget, unigram_norm, unigram_pretok)
-    report.entries.append(_race_entry("Caliper (BPE)", "caliper", budget, bpe_tok, steps, **train_kwargs))
+    report.entries.append(_race_entry("UniqToken (BPE)", "uniqtoken", budget, bpe_tok, steps, **train_kwargs))
 
     sbp_tok = _train_caliper_superbpe(budget)
-    report.entries.append(_race_entry("Caliper (SuperBPE)", "caliper", budget, sbp_tok, steps, **train_kwargs))
+    report.entries.append(_race_entry("UniqToken (SuperBPE)", "uniqtoken", budget, sbp_tok, steps, **train_kwargs))
 
     if include_sentencepiece:
         try:

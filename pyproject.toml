@@ -3,14 +3,14 @@ requires = ["setuptools>=61.0.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "caliper-tokenizer"
+name = "uniqtoken"
 version = "1.0.0"
 description = "Zero-dependency, high-precision Byte-Fallback Unigram and Multimodal Tokenizer with dual-offset tracking and subword regularization."
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
 authors = [
-    { name = "Caliper Authors" }
+    { name = "UniqToken Authors" }
 ]
 keywords = [
     "tokenizer",
@@ -75,10 +75,11 @@ all = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/umran666/caliper"
-Repository = "https://github.com/umran666/caliper"
+Homepage = "https://github.com/umran666/uniqtoken"
+Repository = "https://github.com/umran666/uniqtoken"
 
 [project.scripts]
+uniqtoken = "cli:main"
 caliper = "cli:main"
 
 [tool.setuptools]
@@ -114,7 +115,8 @@ exclude = [
     ".mypy_cache",
     ".ruff_cache",
     "caliper_tokenizer.egg-info",
-    "caliper_core",
+    "uniqtoken.egg-info",
+    "crates",
 ]
 
 [tool.ruff.lint]

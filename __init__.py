@@ -1,5 +1,5 @@
 """
-Caliper: Zero-dependency, high-precision Byte-Fallback Unigram and Multimodal Tokenizer.
+UniqToken: Zero-dependency, high-precision Byte-Fallback Unigram and Multimodal Tokenizer.
 """
 
 from __future__ import annotations

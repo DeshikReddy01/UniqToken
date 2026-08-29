@@ -17,12 +17,17 @@ from streaming_decoder import StreamingDecoder
 from unigram_trainer import UnigramModel, UnigramTrainer
 
 try:
-    import caliper_core as _rust_core
+    import uniqtoken_core as _rust_core
 
     _HAS_RUST_TOKENIZER = hasattr(_rust_core, "RustTokenizer")
 except ImportError:
-    _rust_core = None  # type: ignore
-    _HAS_RUST_TOKENIZER = False
+    try:
+        import caliper_core as _rust_core  # type: ignore[no-redef]
+
+        _HAS_RUST_TOKENIZER = hasattr(_rust_core, "RustTokenizer")
+    except ImportError:
+        _rust_core = None  # type: ignore[assignment]
+        _HAS_RUST_TOKENIZER = False
 
 
 @dataclass(frozen=True)

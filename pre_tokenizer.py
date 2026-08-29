@@ -6,12 +6,17 @@ from dataclasses import dataclass
 from typing import Iterator, List, Optional, Sequence, Tuple, Union
 
 try:
-    import caliper_core as _caliper_core
+    import uniqtoken_core as _caliper_core
 
     _HAS_RUST_NORM = hasattr(_caliper_core, "rust_normalize_with_alignment")
 except ImportError:
-    _caliper_core = None  # type: ignore
-    _HAS_RUST_NORM = False
+    try:
+        import caliper_core as _caliper_core  # type: ignore[no-redef]
+
+        _HAS_RUST_NORM = hasattr(_caliper_core, "rust_normalize_with_alignment")
+    except ImportError:
+        _caliper_core = None  # type: ignore[assignment]
+        _HAS_RUST_NORM = False
 
 
 @dataclass(frozen=True)

@@ -1,5 +1,5 @@
 """
-Unit and Integration Tests for Caliper CLI.
+Unit and Integration Tests for UniqToken CLI.
 """
 
 from __future__ import annotations

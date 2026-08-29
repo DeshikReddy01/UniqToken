@@ -17,16 +17,16 @@ from benchmarks.train_toy_transformer import (
 class DownstreamTransformerTests(unittest.TestCase):
     def test_downstream_tokenizers_creation(self):
         tokenizers = create_tokenizers(target_vocab=500)
-        self.assertIn("Caliper (Unigram)", tokenizers)
-        self.assertIn("Caliper (SuperBPE)", tokenizers)
+        self.assertIn("UniqToken (Unigram)", tokenizers)
+        self.assertIn("UniqToken (SuperBPE)", tokenizers)
         self.assertIn("Standard BPE", tokenizers)
 
     def test_downstream_pretraining_step_and_bpb(self):
         tokenizers = create_tokenizers(target_vocab=500)
-        tok = tokenizers["Caliper (SuperBPE)"]
+        tok = tokenizers["UniqToken (SuperBPE)"]
         metrics = train_toy_transformer(
             tok,
-            "Caliper (SuperBPE)",
+            "UniqToken (SuperBPE)",
             PRETRAINING_CORPUS[:4],
             steps=5,
             seq_len=24,
@@ -53,7 +53,7 @@ class DownstreamTransformerTests(unittest.TestCase):
 
     def test_rejects_invalid_benchmark_inputs(self):
         tokenizers = create_tokenizers(target_vocab=500)
-        tok = tokenizers["Caliper (Unigram)"]
+        tok = tokenizers["UniqToken (Unigram)"]
         with self.assertRaises(ValueError):
             train_toy_transformer(tok, "test", [], steps=1)
         with self.assertRaises(ValueError):

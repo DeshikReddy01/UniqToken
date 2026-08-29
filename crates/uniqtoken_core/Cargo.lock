@@ -37,18 +37,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b588b76d00fde79687d7646a9b5bdf3cc0f655e0bbd080335a95d7e96f3587da"
 
 [[package]]
-name = "caliper-core"
-version = "1.0.0"
-dependencies = [
- "ahash",
- "pyo3",
- "rayon",
- "regex",
- "unicode-general-category",
- "unicode-normalization",
-]
-
-[[package]]
 name = "cfg-if"
 version = "1.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -398,6 +386,18 @@ name = "unindent"
 version = "0.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7264e107f553ccae879d21fbea1d6724ac785e8c3bfc762137959b5802826ef3"
+
+[[package]]
+name = "uniqtoken-core"
+version = "1.0.0"
+dependencies = [
+ "ahash",
+ "pyo3",
+ "rayon",
+ "regex",
+ "unicode-general-category",
+ "unicode-normalization",
+]
 
 [[package]]
 name = "version_check"

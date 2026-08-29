@@ -11,11 +11,17 @@ from unigram_lattice import UnigramLattice
 from byte_codec import ByteFallbackEngine
 
 try:
-    import caliper_core
+    import uniqtoken_core as caliper_core
 
     _HAS_CALIPER_CORE = hasattr(caliper_core, "RustPrefixTrie")
 except ImportError:
-    _HAS_CALIPER_CORE = False
+    try:
+        import caliper_core  # type: ignore[no-redef]
+
+        _HAS_CALIPER_CORE = hasattr(caliper_core, "RustPrefixTrie")
+    except ImportError:
+        caliper_core = None  # type: ignore[assignment]
+        _HAS_CALIPER_CORE = False
 
 
 @dataclass

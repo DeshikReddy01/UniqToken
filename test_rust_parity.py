@@ -11,11 +11,17 @@ from tokenizer import CustomTokenizer
 from unigram_trainer import UnigramModel, UnigramTrainer
 
 try:
-    import caliper_core
+    import uniqtoken_core as caliper_core
 
     HAS_RUST = True
 except ImportError:
-    HAS_RUST = False
+    try:
+        import caliper_core  # type: ignore[no-redef]
+
+        HAS_RUST = True
+    except ImportError:
+        caliper_core = None  # type: ignore[assignment]
+        HAS_RUST = False
 
 
 class RustPythonParityTests(unittest.TestCase):
@@ -36,7 +42,7 @@ class RustPythonParityTests(unittest.TestCase):
         )
 
     def test_rust_core_is_detected_and_imported(self):
-        self.assertTrue(HAS_RUST, "caliper_core must be compiled and importable")
+        self.assertTrue(HAS_RUST, "uniqtoken_core must be compiled and importable")
         self.assertTrue(hasattr(caliper_core, "RustPrefixTrie"))
         self.assertTrue(hasattr(caliper_core, "rust_viterbi_decode"))
 

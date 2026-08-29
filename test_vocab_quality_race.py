@@ -107,9 +107,9 @@ class VocabQualityRaceHarnessTests(unittest.TestCase):
 
     def test_report_shape(self):
         names = [e.tokenizer for e in self.report.entries]
-        self.assertIn("Caliper (Unigram)", names)
-        self.assertIn("Caliper (BPE)", names)
-        self.assertIn("Caliper (SuperBPE)", names)
+        self.assertIn("UniqToken (Unigram)", names)
+        self.assertIn("UniqToken (BPE)", names)
+        self.assertIn("UniqToken (SuperBPE)", names)
         for e in self.report.entries:
             self.assertGreater(e.actual_vocab, 0)
             self.assertGreater(e.evaluated_bytes, 0)
@@ -126,10 +126,10 @@ class VocabQualityRaceHarnessTests(unittest.TestCase):
 
     def test_categories_set_correctly(self):
         cats = {e.category for e in self.report.entries}
-        self.assertIn("caliper", cats)
+        self.assertIn("uniqtoken", cats)
         for e in self.report.entries:
             self.assertTrue(e.trained_fresh)
-            self.assertEqual(e.category, "caliper")
+            self.assertEqual(e.category, "uniqtoken")
 
     def test_to_dict_is_json_serializable(self):
         json.dumps(self.report.to_dict())

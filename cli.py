@@ -1,12 +1,12 @@
 """
-Caliper Production Command-Line Interface (CLI).
+UniqToken Production Command-Line Interface (CLI).
 
 Provides unified command-line entry points:
-- caliper train: Train Unigram / SuperBPE models from corpus files.
-- caliper encode: Tokenize text inputs to subword tokens or integer IDs with metrics.
-- caliper decode: Reconstruct original text losslessly from token IDs.
-- caliper benchmark: Run the multilingual empirical benchmark suite.
-- caliper eval-downstream: Run downstream LLM context efficiency evaluations.
+- uniqtoken train: Train Unigram / SuperBPE models from corpus files.
+- uniqtoken encode: Tokenize text inputs to subword tokens or integer IDs with metrics.
+- uniqtoken decode: Reconstruct original text losslessly from token IDs.
+- uniqtoken benchmark: Run the multilingual empirical benchmark suite.
+- uniqtoken eval-downstream: Run downstream LLM context efficiency evaluations.
 """
 
 from __future__ import annotations
@@ -243,8 +243,8 @@ def downstream_command(args: argparse.Namespace) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="caliper",
-        description="Caliper: Production-Grade Byte-Fallback Unigram Tokenizer Engine",
+        prog="uniqtoken",
+        description="UniqToken: Production-Grade Byte-Fallback Unigram Tokenizer Engine",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
