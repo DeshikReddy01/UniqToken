@@ -52,10 +52,8 @@ jobs:
           python -m pip install ruff mypy pytest coverage maturin regex tokenizers transformers sentencepiece
 
       - name: Build & Install Native Extension (fresh from source)
-        shell: pwsh
         run: |
-          python -m maturin build --release --manifest-path caliper_core/Cargo.toml -o dist
-          python -m pip install --force-reinstall (Get-Item dist/caliper_core-*.whl).FullName
+          maturin develop --release --manifest-path caliper_core/Cargo.toml
 
       - name: Install Caliper Tokenizer (Editable)
         run: |

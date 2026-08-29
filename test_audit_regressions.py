@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """Regression tests for external-audit findings.
 
 Covers: BPE inter-word space corruption, batch special-token sanitization

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """Tests for the tiktoken ranks adapter (Phase 2 compatibility).
 
 Includes a real parity test against tiktoken's cl100k_base when the package

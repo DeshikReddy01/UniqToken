@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """Differential tests for the SentencePiece .model importer.
 
 Includes a dependency-free hand-built protobuf test plus real differential

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import unittest
 from pre_tokenizer import Normalizer
 from tokenizer import CustomTokenizer

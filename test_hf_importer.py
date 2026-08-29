@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """Differential tests for the HF tokenizer.json importer.
 
 Builds synthetic tokenizers with the real `tokenizers` package, serializes to
