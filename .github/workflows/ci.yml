@@ -53,8 +53,9 @@ jobs:
 
       - name: Build & Install Native Extension (fresh from source)
         run: |
+          python -c "import shutil; shutil.rmtree('dist', ignore_errors=True)"
           python -m maturin build --release --manifest-path caliper_core/Cargo.toml -o dist
-          python -m pip install --find-links=dist --no-index caliper-core --force-reinstall
+          python -c "import glob, subprocess, sys; wheels = glob.glob('dist/caliper_core*.whl') + glob.glob('dist/caliper-core*.whl') + glob.glob('dist/*.whl'); print('Installing:', wheels[0]); subprocess.check_call([sys.executable, '-m', 'pip', 'install', '--force-reinstall', '--no-deps', wheels[0]])"
 
       - name: Install Caliper Tokenizer (Editable)
         run: |
