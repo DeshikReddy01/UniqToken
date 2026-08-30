@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import math
 import re
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Union
@@ -82,6 +83,7 @@ class MultimodalTokenizer:
         # Unified ID space: text -> multimodal specials -> visual tokens -> audio tokens
         self._token_to_id: Dict[str, int] = dict(text_tokenizer.model.token_to_id)
         self._next_id = max(self._token_to_id.values(), default=-1) + 1
+        self._id_lock = threading.Lock()
         for tok in self.multimodal_specials:
             if tok not in self._token_to_id:
                 self._token_to_id[tok] = self._next_id
@@ -108,14 +110,15 @@ class MultimodalTokenizer:
 
     def _assign_id(self, token: str) -> int:
         """Returns the ID for a token, registering metadata tokens or enforcing frozen vocabulary."""
-        tid = self._token_to_id.get(token)
-        if tid is None:
-            if self._frozen:
-                raise KeyError(f"Cannot register new token '{token}' on a frozen MultimodalTokenizer vocabulary.")
-            tid = self._next_id
-            self._token_to_id[token] = tid
-            self._next_id += 1
-        return tid
+        with self._id_lock:
+            tid = self._token_to_id.get(token)
+            if tid is None:
+                if self._frozen:
+                    raise KeyError(f"Cannot register new token '{token}' on a frozen MultimodalTokenizer vocabulary.")
+                tid = self._next_id
+                self._token_to_id[token] = tid
+                self._next_id += 1
+            return tid
 
     def encode_image(
         self,
@@ -223,11 +226,17 @@ class MultimodalTokenizer:
 
         for tok in token_strings:
             if tok == "<|image_start|>":
+                if in_image:
+                    raise ValueError("nested image_start marker in multimodal token stream")
                 in_image = True
                 current_image_tokens.clear()
                 pending_size = None
                 pending_grid = None
             elif tok == "<|image_end|>":
+                if not in_image:
+                    raise ValueError("image_end marker without a matching image_start")
+                if not current_image_tokens:
+                    raise ValueError("image stream contains no visual tokens")
                 in_image = False
                 # Reconstruct image from visual tokens
                 if current_image_tokens:
@@ -247,9 +256,16 @@ class MultimodalTokenizer:
                 if grid_match:
                     pending_grid = (int(grid_match.group(1)), int(grid_match.group(2)))
                     continue
+                if not tok.startswith("<|vis_") or not tok.endswith("|>"):
+                    raise ValueError(f"invalid token inside image stream: {tok!r}")
                 current_image_tokens.append(tok)
             else:
+                if tok.startswith("<|vis_") or tok.startswith("<|grid_") or tok.startswith("<|img_"):
+                    raise ValueError(f"visual token outside image stream: {tok!r}")
                 text_segments.append(tok)
+
+        if in_image:
+            raise ValueError("unterminated image stream: missing image_end marker")
 
         # Filter out visual and audio tokens that might have leaked into text
         filtered_text = [
@@ -294,9 +310,12 @@ class MultimodalTokenizer:
             grid_h = grid_w = math.ceil(math.sqrt(len(visual_tokens)))
 
         reconstructed_patches: List[ImagePatch] = []
-        valid_tokens = [token for token in visual_tokens if token.startswith("<|vis_") and token.endswith("|>")]
-        if len(valid_tokens) > grid_h * grid_w:
-            raise ValueError("image contains more visual tokens than its declared grid can hold")
+        if img_h <= 0 or img_w <= 0:
+            if original_size is not None:
+                raise ValueError("image dimensions must be positive")
+        if len(visual_tokens) != grid_h * grid_w:
+            raise ValueError("image visual token count does not match its declared grid")
+        valid_tokens = visual_tokens
         for idx, v_tok in enumerate(valid_tokens):
             pixels = self.codebook.dequantize_token(v_tok)
             row = idx // grid_w

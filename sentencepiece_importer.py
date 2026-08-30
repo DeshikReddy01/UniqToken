@@ -30,15 +30,18 @@ SP_MODEL_TYPE_NAMES = {1: "unigram", 2: "bpe", 3: "word", 4: "char"}
 def _read_varint(buf: bytes, pos: int) -> Tuple[int, int]:
     result = 0
     shift = 0
-    while True:
+    for index in range(10):
         if pos >= len(buf):
             raise ValueError("truncated varint in SentencePiece model")
         byte = buf[pos]
         pos += 1
+        if index == 9 and byte > 1:
+            raise ValueError("varint exceeds the 64-bit protobuf limit")
         result |= (byte & 0x7F) << shift
         if not byte & 0x80:
             return result, pos
         shift += 7
+    raise ValueError("varint exceeds the 64-bit protobuf limit")
 
 
 def _iter_fields(buf: bytes):
@@ -48,15 +51,23 @@ def _iter_fields(buf: bytes):
     while pos < end:
         key, pos = _read_varint(buf, pos)
         field_number, wire_type = key >> 3, key & 0x07
+        if field_number == 0:
+            raise ValueError("protobuf field number must be positive")
         value: Union[int, bytes]
         if wire_type == 0:
             value, pos = _read_varint(buf, pos)
         elif wire_type == 1:
+            if pos + 8 > end:
+                raise ValueError("truncated fixed64 field in SentencePiece model")
             value, pos = buf[pos : pos + 8], pos + 8
         elif wire_type == 2:
             length, pos = _read_varint(buf, pos)
+            if length > end - pos:
+                raise ValueError("truncated length-delimited field in SentencePiece model")
             value, pos = buf[pos : pos + length], pos + length
         elif wire_type == 5:
+            if pos + 4 > end:
+                raise ValueError("truncated fixed32 field in SentencePiece model")
             value, pos = buf[pos : pos + 4], pos + 4
         else:
             raise ValueError(f"unsupported protobuf wire type {wire_type} in SentencePiece model")
@@ -183,16 +194,18 @@ def import_sentencepiece(source: Union[str, Path, bytes]) -> CustomTokenizer:
             "prepends a metaspace token, so leading-word tokenization may differ",
         )
     normalize_unicode = not proto.normalizer_name.startswith("identity")
+    casefold = proto.normalizer_name == "nfkc_cf"
     if normalize_unicode and proto.normalizer_name not in ("nfkc", "nmt_nfkc", "nfkc_cf", ""):
         _warn_unsupported("normalizer", f"normalization rule {proto.normalizer_name!r}")
 
-    if not has_byte_fallback and unk_token != "<|unk|>":
-        _warn_unsupported(
-            "OOV fallback",
-            f"byte_fallback absent and unk token {unk_token!r} is not '<|unk|>'",
-        )
+    if not has_byte_fallback and unk_token is None:
+        raise ValueError("SentencePiece import requires byte fallback or an UNKNOWN piece; the model contains neither")
 
-    normalizer = Normalizer(space_char="\u2581", normalize_unicode=normalize_unicode)
+    normalizer = Normalizer(
+        space_char="\u2581",
+        normalize_unicode=normalize_unicode,
+        casefold=casefold,
+    )
     pre_tokenizer = RegexPreTokenizer(space_char="\u2581")
     unigram = UnigramModel(
         vocab=vocab,
@@ -201,6 +214,7 @@ def import_sentencepiece(source: Union[str, Path, bytes]) -> CustomTokenizer:
         special_tokens=special_tokens,
         max_subword_len=max(max(len(t) for t in vocab), 1),
         byte_fallback=has_byte_fallback,
+        unk_token=unk_token or "<|unk|>",
     )
     return CustomTokenizer(normalizer=normalizer, pre_tokenizer=pre_tokenizer, model=unigram)
 

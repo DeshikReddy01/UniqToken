@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
+import difflib
 from dataclasses import dataclass
 from typing import Iterator, List, Optional, Sequence, Tuple, Union
 
@@ -79,6 +80,7 @@ class Normalizer:
         normalize_unicode_spaces: bool = True,
         collapse_whitespaces: bool = False,
         strip_whitespace: bool = False,
+        casefold: bool = False,
     ):
         if not isinstance(space_char, str) or len(space_char) != 1:
             raise ValueError("space_char must be exactly one character")
@@ -86,6 +88,7 @@ class Normalizer:
             raise ValueError("space_char conflicts with reserved metaspace escape characters")
         self.space_char = space_char
         self.lowercase = lowercase
+        self.casefold = casefold
         self.normalize_unicode = normalize_unicode
         self.normalize_punctuation = normalize_punctuation
         self.normalize_unicode_spaces = normalize_unicode_spaces
@@ -96,13 +99,33 @@ class Normalizer:
     def _expand(value: str, span: Tuple[int, int]) -> List[Tuple[str, Tuple[int, int]]]:
         return [(char, span) for char in value]
 
+    @staticmethod
+    def _nfkc_units(text: str) -> List[Tuple[str, Tuple[int, int]]]:
+        """Normalize the complete string and conservatively retain source spans."""
+        normalized = unicodedata.normalize("NFKC", text)
+        if normalized == text:
+            return [(char, (i, i + 1)) for i, char in enumerate(text)]
+
+        units: List[Tuple[str, Tuple[int, int]]] = []
+        matcher = difflib.SequenceMatcher(a=text, b=normalized, autojunk=False)
+        for tag, source_start, source_end, output_start, output_end in matcher.get_opcodes():
+            if tag == "equal":
+                units.extend(
+                    (normalized[i], (source_start + i - output_start, source_start + i - output_start + 1))
+                    for i in range(output_start, output_end)
+                )
+                continue
+            source_span = (source_start, source_end)
+            units.extend((normalized[i], source_span) for i in range(output_start, output_end))
+        return units
+
     def normalize_with_alignment(self, text: str) -> Tuple[str, List[Tuple[int, int]]]:
         """Normalizes text and maps every output character to its raw source span."""
         if not isinstance(text, str):
             raise TypeError(f"text must be a string, got {type(text).__name__}")
 
         # ponytail: Rust normalizer with exact parity; Python fallback if mismatch
-        if _HAS_RUST_NORM:
+        if _HAS_RUST_NORM and not self.casefold:
             assert _caliper_core is not None
             try:
                 res = _caliper_core.rust_normalize_with_alignment(
@@ -120,25 +143,8 @@ class Normalizer:
             except (ValueError, AttributeError, ImportError, TypeError):
                 pass
 
-        # ponytail: single-pass list accumulation + set lookup vs regex; Rust with SIMD if stays top
-        n = len(text)
         if self.normalize_unicode:
-            # avoid building initial units then discarding; handle combining clusters directly
-            units: List[Tuple[str, Tuple[int, int]]] = []
-            # local bind for speed
-            _comb = unicodedata.combining
-            _norm = unicodedata.normalize
-            i = 0
-            while i < n:
-                end = i + 1
-                while end < n and _comb(text[end]):
-                    end += 1
-                val = _norm("NFKC", text[i:end])
-                span = (i, end)
-                # inline _expand to avoid per-char list alloc
-                for ch in val:
-                    units.append((ch, span))
-                i = end
+            units = self._nfkc_units(text)
         else:
             units = [(char, (i, i + 1)) for i, char in enumerate(text)]
 
@@ -159,10 +165,10 @@ class Normalizer:
                         translated.append((c, span))
             units = translated
 
-        if self.lowercase:
+        if self.lowercase or self.casefold:
             lowered: List[Tuple[str, Tuple[int, int]]] = []
             for char, span in units:
-                lo = char.lower()
+                lo = char.casefold() if self.casefold else char.lower()
                 if len(lo) == 1:
                     lowered.append((lo, span))
                 elif lo:
@@ -222,7 +228,7 @@ class Normalizer:
     def normalize(self, text: str) -> str:
         if not isinstance(text, str):
             raise TypeError(f"text must be a string, got {type(text).__name__}")
-        if _HAS_RUST_NORM:
+        if _HAS_RUST_NORM and not self.casefold:
             assert _caliper_core is not None
             try:
                 return _caliper_core.rust_normalize(

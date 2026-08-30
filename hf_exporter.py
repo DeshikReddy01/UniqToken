@@ -42,15 +42,20 @@ class HuggingFaceExporter:
                     }
                 )
 
-        # 2. Build Unigram vocabulary list [[token, score], ...] sorted by ID
+        # HF Unigram IDs are array positions. Reject sparse or duplicate IDs
+        # instead of emitting a tokenizer whose IDs decode to different tokens.
         sorted_tokens = sorted(model.token_to_id.items(), key=lambda item: item[1])
+        ids = [token_id for _, token_id in sorted_tokens]
+        if ids != list(range(len(ids))):
+            raise ValueError("HuggingFace Unigram export requires contiguous token IDs starting at 0")
         vocab_list = [[tok, model.vocab.get(tok, -10.0)] for tok, _ in sorted_tokens]
 
-        unk_id = model.token_to_id.get("<|unk|>")
+        unk_id = model.token_to_id.get(model.unk_token)
         if unk_id is None:
-            # HF Unigram requires a valid unk_id even when byte_fallback handles
-            # OOV recovery; without an <|unk|> token we can only point at id 0.
-            unk_id = 0
+            raise ValueError(
+                "HuggingFace Unigram export requires the configured unknown token "
+                f"{model.unk_token!r} in the vocabulary"
+            )
 
         # Build a normalizer Sequence mirroring Normalizer.normalize's order:
         # NFKC -> unicode-space map -> punctuation map -> lowercase ->
@@ -108,6 +113,8 @@ class HuggingFaceExporter:
             unrepresentable.append("preset")
         if not pre.keep_special_tokens:
             unrepresentable.append("keep_special_tokens=False")
+        if normalizer.casefold:
+            unrepresentable.append("casefold")
         if unrepresentable:
             warnings.warn(
                 "HuggingFace export cannot fully represent this Caliper pre-tokenizer "
@@ -161,7 +168,7 @@ class HuggingFaceExporter:
         config_json = {
             "tokenizer_class": "PreTrainedTokenizerFast",
             "model_type": "unigram",
-            "unk_token": "<|unk|>",
+            "unk_token": tokenizer.model.unk_token,
             "bos_token": "<|bos|>" if "<|bos|>" in tokenizer.model.token_to_id else None,
             "eos_token": "<|eos|>" if "<|eos|>" in tokenizer.model.token_to_id else None,
             "pad_token": "<|pad|>" if "<|pad|>" in tokenizer.model.token_to_id else None,

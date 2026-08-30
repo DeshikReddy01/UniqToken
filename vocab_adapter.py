@@ -110,6 +110,7 @@ class VocabularyAdapter:
             special_tokens=list(old_model.special_tokens),
             max_subword_len=max(old_model.max_subword_len, max(map(len, new_tokens_to_add))),
             byte_fallback=old_model.byte_fallback,
+            unk_token=old_model.unk_token,
         )
 
         return CustomTokenizer(

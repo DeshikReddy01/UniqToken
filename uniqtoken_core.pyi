@@ -1,13 +1,11 @@
 from typing import Dict, List, Optional, Sequence, Set, Tuple
 
 class RustPrefixTrie:
-    def __init__(self, items: Optional[List[Tuple[str, Optional[int], float]]] = None) -> None: ...
-    def insert(self, token: str, score: float, token_id: Optional[int] = None) -> None: ...
+    def __init__(self) -> None: ...
+    def insert(self, token: str, log_p: float, token_id: Optional[int] = None) -> None: ...
     def common_prefix_search_chars(
         self, chars: Sequence[str], start_idx: int = 0
     ) -> List[Tuple[str, Optional[int], float, int]]: ...
-    def exact_metadata(self, token: str) -> Optional[Tuple[Optional[int], float]]: ...
-    def __len__(self) -> int: ...
 
 class RustTokenizer:
     def __init__(
@@ -56,7 +54,7 @@ def rust_encode_text_batch(
     texts: Sequence[str],
     trie: RustPrefixTrie,
     byte_fallback: bool = True,
-    space_char: str = " ",
+    space_char: str = "\u2581",
 ) -> List[List[int]]: ...
 def rust_forward_backward_expectations(
     text: str,
@@ -65,7 +63,7 @@ def rust_forward_backward_expectations(
 ) -> Tuple[Dict[str, float], float]: ...
 def rust_normalize(
     text: str,
-    space_char: str = " ",
+    space_char: str = "\u2581",
     normalize_unicode: bool = True,
     normalize_unicode_spaces: bool = True,
     normalize_punctuation: bool = False,
@@ -75,7 +73,7 @@ def rust_normalize(
 ) -> str: ...
 def rust_normalize_with_alignment(
     text: str,
-    space_char: str = " ",
+    space_char: str = "\u2581",
     normalize_unicode: bool = True,
     normalize_unicode_spaces: bool = True,
     normalize_punctuation: bool = False,

@@ -39,17 +39,20 @@ def load_tiktoken_ranks(path: Union[str, Path]) -> Dict[bytes, int]:
                 continue
             try:
                 token_b64, rank_str = line.split()
-                token_bytes = base64.b64decode(token_b64)
+                token_bytes = base64.b64decode(token_b64, validate=True)
                 rank = int(rank_str)
             except ValueError as exc:
                 raise ValueError(f"malformed tiktoken ranks line: {line[:80]!r}") from exc
+            if rank < 0:
+                raise ValueError(f"tiktoken rank must be non-negative, got {rank}")
             if token_bytes in ranks:
                 raise ValueError(f"duplicate rank entry for {token_bytes!r}")
             ranks[token_bytes] = rank
-    if len(ranks) < 256:
+    single_bytes = {token[0] for token in ranks if len(token) == 1}
+    if single_bytes != set(range(256)):
         raise ValueError(
-            f"tiktoken ranks file has {len(ranks)} entries; byte-level encoding requires "
-            "at least the 256 single-byte tokens"
+            "tiktoken ranks file must contain exactly one rank entry for every "
+            f"single byte 0x00-0xFF (found {len(single_bytes)}/256)"
         )
     return ranks
 
@@ -221,13 +224,12 @@ class TiktokenEncoding:
             vocab.add(special)
 
         merges: Dict[Tuple[str, str], int] = {}
+        lower_ranks: Dict[bytes, int] = {}
         for token_bytes, rank in sorted(self.ranks.items(), key=lambda kv: kv[1]):
             if len(token_bytes) < 2:
+                lower_ranks[token_bytes] = rank
                 continue
-            # ponytail: sub-rank re-segmentation is O(V * n^2) once at load;
-            # shipping merge-pair provenance with the ranks would remove it.
-            sub_ranks = {b: r for b, r in self.ranks.items() if r < rank}
-            seg = self._merge_piece_with_ranks(token_bytes, sub_ranks)
+            seg = self._merge_piece_with_ranks(token_bytes, lower_ranks)
             if len(seg) == 2:
                 merges[(seg[0].decode("latin-1"), seg[1].decode("latin-1"))] = rank
             else:
@@ -243,6 +245,7 @@ class TiktokenEncoding:
                             best = (score, left, right)
                 if best is not None:
                     merges[(best[1].decode("latin-1"), best[2].decode("latin-1"))] = rank
+            lower_ranks[token_bytes] = rank
 
         return BPEModel(
             vocab=vocab,

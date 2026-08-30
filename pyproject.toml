@@ -7,8 +7,7 @@ name = "uniqtoken"
 version = "1.0.0"
 description = "Zero-dependency, high-precision Byte-Fallback Unigram and Multimodal Tokenizer with dual-offset tracking and subword regularization."
 readme = "README.md"
-license = "MIT"
-license-files = ["LICENSE"]
+license = { file = "LICENSE" }
 authors = [
     { name = "UniqToken Authors" }
 ]
@@ -58,6 +57,10 @@ tiktoken = [
     "regex>=2023.0.0"
 ]
 bench = [
+    "numpy>=1.23",
+    "scipy>=1.9",
+    "matplotlib>=3.6",
+    "torch>=2.0.0",
     "sentencepiece>=0.1.99",
     "tokenizers>=0.13.0",
     "transformers>=4.30.0",
@@ -104,7 +107,7 @@ py-modules = [
     "unigram_trainer",
     "vocab_adapter",
 ]
-packages = ["multimodal", "benchmarks"]
+packages = ["uniqtoken", "multimodal", "benchmarks"]
 
 [tool.ruff]
 line-length = 120
@@ -136,4 +139,3 @@ ignore = [
 pythonpath = ["."]
 testpaths = ["."]
 python_files = ["test_*.py"]
-

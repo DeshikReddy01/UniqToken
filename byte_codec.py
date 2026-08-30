@@ -43,7 +43,15 @@ class ByteFallbackEngine:
         ``errors='surrogateescape'`` (common for POSIX file reads) maps its lone
         surrogate chars (U+DC80..DCFF) to the exact original bytes.
         """
-        raw_bytes = char_or_str.encode("utf-8", errors="surrogateescape")
+        if not isinstance(char_or_str, str):
+            raise TypeError(f"char_or_str must be a string, got {type(char_or_str).__name__}")
+        try:
+            # Preserve POSIX surrogateescape bytes, while rejecting all other
+            # unpaired surrogates deterministically instead of leaking an
+            # implementation-dependent UnicodeEncodeError message.
+            raw_bytes = char_or_str.encode("utf-8", errors="surrogateescape")
+        except UnicodeEncodeError as exc:
+            raise ValueError("input contains an unpaired surrogate outside the surrogateescape byte range") from exc
         return [cls.byte_to_token(b) for b in raw_bytes]
 
     @classmethod

@@ -25,7 +25,9 @@ from collections import Counter, defaultdict
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import Any, Callable, Dict, List, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
+
+EXPERIMENT_VERSION = "post-tokenizer-fixes-2026-08-30"
 
 warnings.filterwarnings("ignore")
 
@@ -133,7 +135,7 @@ def generate_high_entropy_corpus(num_docs: int = 1000, seed: int = 42) -> Tuple[
         if affixes:
             extra = [w + aff for w in raw_words[:6000] for aff in rng.sample(affixes, k=min(len(affixes), 3))]
             raw_words.extend(extra)
-        vocab_pool = list(set(raw_words))
+        vocab_pool = list(dict.fromkeys(raw_words))
         n_pool = len(vocab_pool)
 
         docs_lang = []
@@ -298,7 +300,7 @@ def train_and_eval_capacity_transformer(
     class SeqDS(Dataset):
         def __init__(self, ids: List[int], b_sz: int):
             self.chunks = []
-            for i in range(0, len(ids) - b_sz, b_sz):
+            for i in range(0, max(len(ids) - b_sz + 1, 0), b_sz):
                 self.chunks.append((ids[i : i + b_sz], ids[i + 1 : i + b_sz + 1]))
 
         def __len__(self):
@@ -344,23 +346,23 @@ def train_and_eval_capacity_transformer(
                 break
 
     model.eval()
+    total_loss = 0.0
+    n_tokens = 0
+    if len(val_ids) < 2:
+        raise ValueError("validation text must produce at least two token IDs")
     with torch.no_grad():
-        v_ds = SeqDS(val_ids, block_size)
-        v_loader = DataLoader(v_ds, batch_size=cfg.batch_size, shuffle=False)
-        total_loss = 0.0
-        n_tokens = 0
-        for vx, vy in v_loader:
-            if vx.size(0) == 0:
+        for start in range(0, len(val_ids) - 1, block_size):
+            chunk = torch.tensor(val_ids[start : start + block_size + 1], dtype=torch.long, device=device)
+            prediction_count = len(chunk) - 1
+            if prediction_count == 0:
                 continue
-            vx, vy = vx.to(device, non_blocking=True), vy.to(device, non_blocking=True)
-            logits = model(vx)
-            loss = crit(logits.view(-1, logits.size(-1)), vy.view(-1))
-            total_loss += loss.item() * vy.numel()
-            n_tokens += vy.numel()
+            logits = model(chunk[:-1].unsqueeze(0))
+            loss = crit(logits.view(-1, logits.size(-1)), chunk[1:])
+            total_loss += float(loss.item()) * prediction_count
+            n_tokens += prediction_count
 
     val_ce_loss = total_loss / max(n_tokens, 1)
-    val_tok_count = len(val_ids)
-    lm_bpb = (val_ce_loss * val_tok_count) / (total_val_bytes * math.log(2))
+    lm_bpb = (val_ce_loss * n_tokens) / (total_val_bytes * math.log(2))
     wall_clock = time.perf_counter() - t_start
 
     return val_ce_loss, lm_bpb, p_total, p_non_embed, steps, tokens_processed, actual_flops, wall_clock
@@ -440,12 +442,16 @@ def compute_repeated_measures_anova_2way(data_matrix: np.ndarray) -> Dict[str, A
 
 
 def run_phase_fourteen_confirmatory(
-    vocab_scales: List[int] = [32768, 65536],
-    lm_tiers: List[str] = ["Small (4L-128d)", "Medium (6L-256d)", "Large (8L-512d)"],
-    seeds: List[int] = [101, 202, 303, 404, 505],
+    vocab_scales: Optional[List[int]] = None,
+    lm_tiers: Optional[List[str]] = None,
+    seeds: Optional[List[int]] = None,
     num_docs: int = 1000,
 ) -> Dict[str, Any]:
     import sentencepiece as spm
+
+    vocab_scales = list(vocab_scales or [32768, 65536])
+    lm_tiers = list(lm_tiers or ["Small (4L-128d)", "Medium (6L-256d)", "Large (8L-512d)"])
+    seeds = list(seeds or [101, 202, 303, 404, 505])
 
     print("=" * 175)
     print("PHASE FOURTEEN B: FIVE-SEED CONFIRMATORY FACTORIAL BENCHMARK & INTERACTION TESTING")
@@ -561,7 +567,7 @@ def run_phase_fourteen_confirmatory(
                     enc_fn=sp_enc,
                     vocab_size=sp_actual_v,
                     cfg=cfg,
-                    train_texts=train_docs[:300],
+                    train_texts=train_docs,
                     val_text=combined_val,
                     total_val_bytes=total_val_bytes,
                     target_flops=TARGET_TRAINING_FLOPS,
@@ -597,7 +603,7 @@ def run_phase_fourteen_confirmatory(
                         enc_fn=bpe_enc,
                         vocab_size=bpe_actual_v,
                         cfg=cfg,
-                        train_texts=train_docs[:300],
+                        train_texts=train_docs,
                         val_text=combined_val,
                         total_val_bytes=total_val_bytes,
                         target_flops=TARGET_TRAINING_FLOPS,
@@ -634,7 +640,7 @@ def run_phase_fourteen_confirmatory(
                         enc_fn=cal_enc,
                         vocab_size=cal_actual_v,
                         cfg=cfg,
-                        train_texts=train_docs[:300],
+                        train_texts=train_docs,
                         val_text=combined_val,
                         total_val_bytes=total_val_bytes,
                         target_flops=TARGET_TRAINING_FLOPS,
@@ -787,9 +793,12 @@ def run_phase_fourteen_confirmatory(
     # Step-down Holm correction
     sorted_indices = sorted(range(len(raw_tests)), key=lambda i: raw_tests[i]["p"])
     m_hyp = len(raw_tests)
+    running_adjusted = 0.0
     for rank, idx in enumerate(sorted_indices):
         multiplier = m_hyp - rank
-        raw_tests[idx]["p_adj"] = min(raw_tests[idx]["p"] * multiplier, 1.0)
+        adjusted = min(raw_tests[idx]["p"] * multiplier, 1.0)
+        running_adjusted = max(running_adjusted, adjusted)
+        raw_tests[idx]["p_adj"] = running_adjusted
         raw_tests[idx]["verdict"] = "CONFIRMED (p < 0.05)" if raw_tests[idx]["p_adj"] < 0.05 else "NOT SIGNIFICANT"
 
     print(
@@ -913,7 +922,7 @@ def run_phase_fourteen_confirmatory(
     ax_b.set_xticklabels(["Small (4L-128d)", "Medium (6L-256d)", "Large (8L-512d)"], fontsize=10)
     ax_b.set_ylabel("True LM BPB", fontsize=10, color="red")
     ax_b.set_title(
-        "Panel B: Caliper Cross-Tier Performance at V = 64,536 (Saturation Curve)", fontsize=11, fontweight="bold"
+        "Panel B: Caliper Cross-Tier Performance at V = 65,536 (Saturation Curve)", fontsize=11, fontweight="bold"
     )
     ax_b.grid(True, linestyle="--", alpha=0.5)
 
@@ -940,7 +949,9 @@ def run_phase_fourteen_confirmatory(
     ax_c.set_xticks([0, 1])
     ax_c.set_xticklabels(["V = 32,768 (32K)", "V = 65,536 (64K)"], fontsize=10)
     ax_c.set_title(
-        "Panel C: 2-Way Interaction Plot (V x LM Capacity: p_interaction < 0.001)", fontsize=11, fontweight="bold"
+        f"Panel C: 2-Way Interaction Plot (V x LM Capacity: p={anova_res['Interaction_AxB']['p']:.3g})",
+        fontsize=11,
+        fontweight="bold",
     )
     ax_c.set_ylabel("True LM BPB", fontsize=10)
     ax_c.grid(True, linestyle="--", alpha=0.5)
@@ -990,6 +1001,7 @@ def run_phase_fourteen_confirmatory(
 
     # Persist JSON
     output_data = {
+        "experiment_version": EXPERIMENT_VERSION,
         "summary_grid": summary_grid,
         "hypothesis_tests": raw_tests,
         "repeated_measures_anova": anova_res,

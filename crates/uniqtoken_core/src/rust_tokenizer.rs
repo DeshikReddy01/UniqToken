@@ -15,14 +15,14 @@ pub struct RustTokenizer {
 impl RustTokenizer {
     #[new]
     #[pyo3(signature = (vocab=None, space_char='\u{2581}', byte_fallback=true))]
-    fn new(vocab: Option<Vec<(String, f64, u32)>>, space_char: char, byte_fallback: bool) -> Self {
+    fn new(vocab: Option<Vec<(String, f64, u32)>>, space_char: char, byte_fallback: bool) -> PyResult<Self> {
         let mut trie = RustPrefixTrie::new();
         if let Some(v) = vocab {
             for (tok, logp, id) in v {
-                let _ = trie.insert(&tok, logp, Some(id));
+                trie.insert(&tok, logp, Some(id))?;
             }
         }
-        Self { trie, space_char, byte_fallback }
+        Ok(Self { trie, space_char, byte_fallback })
     }
 
     #[allow(clippy::wrong_self_convention)]
@@ -54,7 +54,7 @@ impl RustTokenizer {
     fn encode_batch(&self, py: Python<'_>, texts: Vec<String>) -> PyResult<Vec<Vec<String>>> {
         py.allow_threads(|| {
             texts.par_iter().map(|text| {
-                let norm = rust_normalize(text, self.space_char, true, true, false, false, false, false).unwrap();
+                let norm = rust_normalize(text, self.space_char, true, true, false, false, false, false)?;
                 let re = crate::pipeline::get_full_pretok_regex();
                 let mut out = Vec::new();
                 for m in re.find_iter(&norm) {
@@ -81,9 +81,9 @@ impl RustTokenizer {
             let spans = crate::viterbi::viterbi_decode_chars(&chars, &self.trie, self.byte_fallback, None)
                 .map_err(pyo3::exceptions::PyValueError::new_err)?;
             for s in spans {
-                if let Some(id) = s.token_id {
-                    out.push(id);
-                }
+                out.push(s.token_id.ok_or_else(|| pyo3::exceptions::PyValueError::new_err(
+                    format!("decoded token {:?} has no integer ID", s.token)
+                ))?);
             }
         }
         Ok(out)
@@ -92,7 +92,7 @@ impl RustTokenizer {
     fn encode_ids_batch(&self, py: Python<'_>, texts: Vec<String>) -> PyResult<Vec<Vec<u32>>> {
         py.allow_threads(|| {
             texts.par_iter().map(|text| {
-                let norm = rust_normalize(text, self.space_char, true, true, false, false, false, false).unwrap();
+                let norm = rust_normalize(text, self.space_char, true, true, false, false, false, false)?;
                 let re = crate::pipeline::get_full_pretok_regex();
                 let mut out = Vec::new();
                 for m in re.find_iter(&norm) {
@@ -101,9 +101,9 @@ impl RustTokenizer {
                     let spans = crate::viterbi::viterbi_decode_chars(&chars, &self.trie, self.byte_fallback, None)
                         .map_err(pyo3::exceptions::PyValueError::new_err)?;
                     for s in spans {
-                        if let Some(id) = s.token_id {
-                            out.push(id);
-                        }
+                        out.push(s.token_id.ok_or_else(|| pyo3::exceptions::PyValueError::new_err(
+                            format!("decoded token {:?} has no integer ID", s.token)
+                        ))?);
                     }
                 }
                 Ok(out)
@@ -130,11 +130,11 @@ pub fn rust_diagnostic_batch(
     let mut total_tokens = 0usize;
     let mut total_edges = 0usize;
     let mut total_states = 0usize;
-    py.allow_threads(|| {
+    let diagnostic_result: PyResult<()> = py.allow_threads(|| {
         let re = crate::pipeline::get_full_pretok_regex();
         for text in &texts {
             let t0 = Instant::now();
-            let norm = crate::normalizer::rust_normalize(text, '\u{2581}', true, true, false, false, false, false).unwrap();
+            let norm = crate::normalizer::rust_normalize(text, '\u{2581}', true, true, false, false, false, false)?;
             t_norm += t0.elapsed().as_secs_f64();
             let t0 = Instant::now();
             let chunks: Vec<&str> = re.find_iter(&norm).map(|m| m.as_str()).collect();
@@ -143,7 +143,8 @@ pub fn rust_diagnostic_batch(
             for chunk in chunks {
                 let chars: Vec<char> = chunk.chars().collect();
                 let t0 = Instant::now();
-                let spans = crate::viterbi::viterbi_decode_chars(&chars, trie, byte_fallback, None).unwrap();
+                let spans = crate::viterbi::viterbi_decode_chars(&chars, trie, byte_fallback, None)
+                    .map_err(pyo3::exceptions::PyValueError::new_err)?;
                 t_viterbi += t0.elapsed().as_secs_f64();
                 total_tokens += spans.len();
                 // edges/states approx: states = chars.len()+1, edges = spans.len() + fallback
@@ -154,7 +155,9 @@ pub fn rust_diagnostic_batch(
                 t_alloc += t0.elapsed().as_secs_f64();
             }
         }
+        Ok(())
     });
+    diagnostic_result?;
     let total = start_total.elapsed().as_secs_f64();
     let mut out = HashMap::new();
     out.insert("total".to_string(), total);

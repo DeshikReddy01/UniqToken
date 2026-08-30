@@ -103,15 +103,16 @@ class StreamingDecoder:
             try:
                 raw = self._utf8_decoder.decode(byte, final=False)
             except UnicodeDecodeError:
-                # The new byte may be valid by itself (for example ASCII after
-                # a truncated multibyte prefix), so replace the pending invalid
-                # sequence and retry the current byte instead of dropping it.
+                # Replace the malformed pending sequence once, then process the
+                # current byte from a clean decoder. A lone invalid byte must
+                # therefore yield exactly one U+FFFD, not two.
+                pending, _ = self._utf8_decoder.getstate()
                 self._utf8_decoder.reset()
                 try:
-                    raw = "�" + self._utf8_decoder.decode(byte, final=False)
+                    raw = ("\ufffd" if pending else "") + self._utf8_decoder.decode(byte, final=False)
                 except UnicodeDecodeError:
                     self._utf8_decoder.reset()
-                    raw = "��"
+                    raw = ("\ufffd" if pending else "") + "\ufffd"
             return self._emit_text(raw) if raw else ""
 
         flushed_bytes = self._force_flush_buffer()
@@ -123,7 +124,7 @@ class StreamingDecoder:
         try:
             raw = self._utf8_decoder.decode(b"", final=True)
         except UnicodeDecodeError:
-            raw = "�"
+            raw = "\ufffd"
         # Re-arm the incremental decoder so subsequent tokens can keep streaming.
         self._utf8_decoder = codecs.getincrementaldecoder("utf-8")(errors="strict")
         return self._emit_text(raw)

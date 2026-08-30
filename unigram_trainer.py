@@ -36,10 +36,13 @@ class UnigramModel:
     special_tokens: List[str]
     max_subword_len: int = 16
     byte_fallback: bool = True
+    unk_token: str = "<|unk|>"
 
     @property
     def vocab_size(self) -> int:
-        return len(self.vocab)
+        # IDs may contain holes when importing SentencePiece or HF models;
+        # embedding tables must cover the highest assigned ID.
+        return max(self.token_to_id.values(), default=-1) + 1
 
     def _cache_signature(self) -> Tuple[int, int]:
         # ponytail: assumes vocab dict replaced not mutated in-place; add version counter if external mutation needed
@@ -71,6 +74,8 @@ class UnigramModel:
             rust_trie = caliper_core.RustPrefixTrie()
             for token, log_p in self.vocab.items():
                 tid = self.token_to_id.get(token)
+                if tid is None:
+                    raise ValueError(f"vocabulary token {token!r} has no integer ID")
                 rust_trie.insert(token, log_p, tid)
             self._rust_trie = rust_trie
         return rust_trie
@@ -211,7 +216,12 @@ class UnigramModel:
                 chunk_spans = fast
             else:
                 lattice = UnigramLattice(
-                    chunk, self.vocab, max_subword_len=self.max_subword_len, byte_fallback=self.byte_fallback, trie=trie
+                    chunk,
+                    self.vocab,
+                    max_subword_len=self.max_subword_len,
+                    byte_fallback=self.byte_fallback,
+                    unk_token=self.unk_token,
+                    trie=trie,
                 )
                 edges, _ = lattice.viterbi_edges()
                 chunk_spans = [(token, edge.start, edge.end) for edge in edges for token in edge.tokens]
@@ -256,6 +266,7 @@ class UnigramModel:
                 self.vocab,
                 max_subword_len=self.max_subword_len,
                 byte_fallback=self.byte_fallback,
+                unk_token=self.unk_token,
                 trie=self._get_trie(),
             )
             edges, _ = lattice.viterbi_edges()
@@ -273,24 +284,25 @@ class UnigramModel:
             self.vocab,
             max_subword_len=self.max_subword_len,
             byte_fallback=self.byte_fallback,
+            unk_token=self.unk_token,
             trie=self._get_trie(),
         )
         return lattice.sample(alpha=alpha)
 
     def encode_to_ids(self, text: str) -> List[int]:
         tokens = self.encode(text)
-        unk_id = self.token_to_id.get("<|unk|>", 0)
+        unk_id = self.token_to_id.get(self.unk_token, 0)
         return [self.token_to_id.get(t, unk_id) for t in tokens]
 
     def sample_to_ids(self, text: str, alpha: float = 0.5) -> List[int]:
         tokens = self.sample(text, alpha=alpha)
-        unk_id = self.token_to_id.get("<|unk|>", 0)
+        unk_id = self.token_to_id.get(self.unk_token, 0)
         return [self.token_to_id.get(t, unk_id) for t in tokens]
 
     def decode(self, token_ids: List[int], space_char: str = "\u2581") -> str:
         from byte_codec import ByteFallbackEngine
 
-        tokens = [self.id_to_token.get(i, "<|unk|>") for i in token_ids]
+        tokens = [self.id_to_token.get(i, self.unk_token) for i in token_ids]
         return ByteFallbackEngine.decode_tokens(tokens, space_char=space_char)
 
 

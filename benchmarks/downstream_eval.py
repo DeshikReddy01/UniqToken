@@ -125,6 +125,8 @@ class DownstreamEvaluator:
         t_enc = max(time.perf_counter() - t0, 1e-6)
 
         num_tokens = len(token_ids)
+        if num_tokens == 0:
+            raise ValueError(f"tokenizer {name!r} returned no tokens for a non-empty evaluation corpus")
         bytes_per_tok = self.raw_bytes / max(num_tokens, 1)
         tokens_per_word = num_tokens / self.raw_words
 

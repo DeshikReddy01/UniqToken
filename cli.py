@@ -56,8 +56,12 @@ def train_command(args: argparse.Namespace) -> int:
         if not p.exists():
             print(f"Error: Corpus file not found: {path}", file=sys.stderr)
             return 1
-        with open(p, "r", encoding="utf-8", errors="replace") as f:
-            corpus.extend([line.strip() for line in f if line.strip()])
+        with open(p, "r", encoding="utf-8", errors="replace", newline="") as f:
+            document = f.read()
+        if document:
+            # A corpus file is one document. Preserve indentation, blank lines,
+            # and trailing whitespace because they are meaningful training data.
+            corpus.append(document)
 
     if not corpus:
         print("Error: Corpus is empty.", file=sys.stderr)

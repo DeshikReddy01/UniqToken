@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 import warnings
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
@@ -34,7 +35,13 @@ def _map_normalizer(cfg: Any) -> Normalizer:
     """Maps an HF normalizer config onto Caliper's Normalizer (best effort)."""
     cfg = cfg or {}
     ntype = cfg.get("type")
-    kwargs: Dict[str, Any] = {"space_char": "\u2581"}
+    # An absent/empty HF normalizer is an identity transform. Do not let
+    # Caliper's Normalizer defaults silently add NFKC or Unicode-space mapping.
+    kwargs: Dict[str, Any] = {
+        "space_char": "\u2581",
+        "normalize_unicode": False,
+        "normalize_unicode_spaces": False,
+    }
 
     def walk(node: Any) -> None:
         if not node:
@@ -64,6 +71,11 @@ def _map_pre_tokenizer(cfg: Any, normalizer: Normalizer) -> RegexPreTokenizer:
     space_char = "\u2581"
     if ptype == "Metaspace":
         space_char = cfg.get("replacement", "\u2581") or "\u2581"
+        if not isinstance(space_char, str) or len(space_char) != 1:
+            raise ValueError("HF Metaspace replacement must be exactly one character")
+        if space_char in {Normalizer._ESCAPE_PREFIX, Normalizer._ESCAPED_METASPACE}:
+            raise ValueError("HF Metaspace replacement conflicts with Caliper's reserved escape characters")
+        normalizer.space_char = space_char
         prepend = cfg.get("prepend_scheme") or ("always" if cfg.get("add_prefix_space") else "never")
         if prepend != "never":
             _warn_unsupported("pre_tokenizer", f"Metaspace prepend_scheme={prepend!r} (Caliper never prepends)")
@@ -84,9 +96,8 @@ def import_hf_unigram(data: Dict[str, Any]) -> CustomTokenizer:
 
     Vocab scores and token IDs are preserved exactly. Normalizer/pre-tokenizer
     components are mapped best-effort; anything without an exact Caliper
-    equivalent emits a warning. Requires ``byte_fallback`` or an unk token
-    spelled ``<|unk|>`` for OOV characters (HF's custom unk strings are not
-    wired into Caliper's lattice fallback).
+    equivalent emits a warning. Requires ``byte_fallback`` or an unknown token
+    for OOV characters.
     """
     model = data.get("model", {})
     if model.get("type") != "Unigram":
@@ -100,7 +111,19 @@ def import_hf_unigram(data: Dict[str, Any]) -> CustomTokenizer:
     token_to_id: Dict[str, int] = {}
     id_to_token: Dict[int, str] = {}
     for idx, entry in enumerate(vocab_list):
-        token, score = entry[0], float(entry[1])
+        if not isinstance(entry, (list, tuple)) or len(entry) < 2:
+            raise ValueError(f"malformed HF Unigram vocab entry at index {idx}")
+        token = entry[0]
+        if not isinstance(token, str) or not token:
+            raise ValueError(f"HF Unigram vocab token at index {idx} must be a non-empty string")
+        try:
+            score = float(entry[1])
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"HF Unigram score at index {idx} is not numeric") from exc
+        if not math.isfinite(score):
+            raise ValueError(f"HF Unigram score at index {idx} must be finite")
+        if token in token_to_id:
+            raise ValueError(f"HF Unigram vocab contains duplicate token {token!r}")
         vocab[token] = score
         token_to_id[token] = idx
         id_to_token[idx] = token
@@ -108,18 +131,37 @@ def import_hf_unigram(data: Dict[str, Any]) -> CustomTokenizer:
     special_tokens: List[str] = []
     for added in data.get("added_tokens", []):
         token = added["content"]
-        special_tokens.append(token)
+        raw_id = added["id"]
+        if not isinstance(raw_id, int) or isinstance(raw_id, bool):
+            raise ValueError("HF added token IDs must be integers")
+        added_id = raw_id
+        if not isinstance(token, str) or not token:
+            raise ValueError("HF added token content must be a non-empty string")
+        if added_id < 0:
+            raise ValueError("HF added token IDs must be non-negative")
+        if added.get("special", False):
+            special_tokens.append(token)
         if token not in token_to_id:
-            token_to_id[token] = added["id"]
-            id_to_token[added["id"]] = token
+            if added_id in id_to_token:
+                raise ValueError(
+                    f"HF added token {token!r} reuses ID {added_id} already assigned to {id_to_token[added_id]!r}"
+                )
+            token_to_id[token] = added_id
+            id_to_token[added_id] = token
             vocab.setdefault(token, -10.0)  # HF Unigram needs a score for every id
+        elif token_to_id[token] != added_id:
+            raise ValueError(f"HF added token {token!r} has conflicting IDs {token_to_id[token]} and {added_id}")
 
     byte_fallback = bool(model.get("byte_fallback", False))
     unk_id = model.get("unk_id")
-    if not byte_fallback and (unk_id is None or id_to_token.get(unk_id) != "<|unk|>"):
-        _warn_unsupported(
-            "OOV fallback",
-            f"byte_fallback=False and unk token {id_to_token.get(unk_id, '<none>')!r} is not '<|unk|>'",
+    if unk_id is not None and (
+        not isinstance(unk_id, int) or isinstance(unk_id, bool) or unk_id < 0 or unk_id not in id_to_token
+    ):
+        raise ValueError("HF Unigram unk_id must reference a non-negative integer vocabulary ID")
+    unk_token = id_to_token.get(unk_id) if unk_id is not None else None
+    if not byte_fallback and unk_token is None:
+        raise ValueError(
+            "HF Unigram import requires byte_fallback=true or an UNKNOWN token; the model contains neither"
         )
 
     normalizer = _map_normalizer(data.get("normalizer"))
@@ -132,6 +174,7 @@ def import_hf_unigram(data: Dict[str, Any]) -> CustomTokenizer:
         special_tokens=special_tokens,
         max_subword_len=max(max(len(t) for t in vocab), 1),
         byte_fallback=byte_fallback,
+        unk_token=unk_token or "<|unk|>",
     )
     return CustomTokenizer(normalizer=normalizer, pre_tokenizer=pre_tokenizer, model=unigram)
 
@@ -174,9 +217,39 @@ class HFByteLevelBPE:
             raise ImportError("the 'regex' package is required for ByteLevel BPE import")
         self.name = name
         self.vocab = dict(vocab)
+        if any(not isinstance(token, str) for token in self.vocab):
+            raise ValueError("HF BPE vocab tokens must be strings")
+        if any(
+            not isinstance(token_id, int) or isinstance(token_id, bool) or token_id < 0
+            for token_id in self.vocab.values()
+        ):
+            raise ValueError("HF BPE vocab IDs must be non-negative integers")
+        if len(set(self.vocab.values())) != len(self.vocab):
+            raise ValueError("HF BPE vocab IDs must be unique")
+        if any(
+            not isinstance(pair, tuple) or len(pair) != 2 or not all(isinstance(part, str) for part in pair)
+            for pair in merges
+        ):
+            raise ValueError("HF BPE merge entries must be pairs of strings")
+        if len(set(merges)) != len(merges):
+            raise ValueError("HF BPE merge entries must be unique")
         self.ranks: Dict[Tuple[str, str], int] = {pair: i for i, pair in enumerate(merges)}
         self.special_tokens = dict(special_tokens or {})
+        if any(not isinstance(token, str) for token in self.special_tokens):
+            raise ValueError("HF special-token contents must be strings")
+        if any(
+            not isinstance(token_id, int) or isinstance(token_id, bool) or token_id < 0
+            for token_id in self.special_tokens.values()
+        ):
+            raise ValueError("HF special-token IDs must be non-negative integers")
+        if len(set(self.special_tokens.values())) != len(self.special_tokens):
+            raise ValueError("HF special-token IDs must be unique")
+        for token, token_id in self.special_tokens.items():
+            owner = next((name for name, value in self.vocab.items() if value == token_id), None)
+            if owner is not None and owner != token:
+                raise ValueError(f"HF special token {token!r} reuses ID {token_id} assigned to {owner!r}")
         self._id_to_special = {v: k for k, v in self.special_tokens.items()}
+        self._id_to_token = {i: t for t, i in self.vocab.items()}
         self.byte_encoder = _bytes_to_unicode()
         self.byte_decoder = {c: b for b, c in self.byte_encoder.items()}
         self.add_prefix_space = add_prefix_space
@@ -249,7 +322,7 @@ class HFByteLevelBPE:
             if tid in self._id_to_special:
                 pieces.append(self._id_to_special[tid].encode("utf-8"))
                 continue
-            token = next((t for t, i in self.vocab.items() if i == tid), None)
+            token = self._id_to_token.get(tid)
             if token is None:
                 raise ValueError(f"unknown token id {tid} in {self.name}")
             pieces.append(bytes(self.byte_decoder[c] for c in token))
@@ -271,17 +344,31 @@ def import_hf_bpe(data: Dict[str, Any]) -> Union[HFByteLevelBPE, BPEModel]:
         raise ValueError(f"expected a BPE model, got {model.get('type')!r}")
 
     vocab: Dict[str, int] = dict(model.get("vocab", {}))
+    if not vocab:
+        raise ValueError("HF BPE model has an empty vocab")
     merges: List[Tuple[str, str]] = []
     for entry in model.get("merges", []):
         if isinstance(entry, str):
-            parts = entry.split(" ")
+            parts = entry.split()
             if len(parts) != 2:
                 raise ValueError(f"malformed merge entry: {entry!r}")
             merges.append((parts[0], parts[1]))
-        else:
+        elif isinstance(entry, (list, tuple)) and len(entry) == 2:
             merges.append((entry[0], entry[1]))
+        else:
+            raise ValueError(f"malformed merge entry: {entry!r}")
 
-    special_tokens = {a["content"]: a["id"] for a in data.get("added_tokens", []) if a.get("special")}
+    special_tokens: Dict[str, int] = {}
+    for added in data.get("added_tokens", []):
+        content = added.get("content")
+        if not added.get("special"):
+            raise ValueError(f"HF BPE added token {content!r} is not special and cannot be represented exactly")
+        added_id = added.get("id")
+        if not isinstance(added_id, int) or isinstance(added_id, bool) or added_id < 0:
+            raise ValueError("HF special-token IDs must be non-negative integers")
+        if content in special_tokens and special_tokens[content] != added_id:
+            raise ValueError(f"HF special token {content!r} has conflicting IDs")
+        special_tokens[content] = added_id
     pt = data.get("pre_tokenizer") or {}
     pt_type = pt.get("type")
     byte_cfg: Dict[str, Any] = {}

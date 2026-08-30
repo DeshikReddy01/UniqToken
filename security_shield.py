@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import re
+import difflib
+import unicodedata
 from typing import List, Set, Tuple, Union
 
 
@@ -23,6 +25,26 @@ class SecurityShield:
     ):
         self.special_tokens = set(special_tokens)
         self.pattern = re.compile(special_token_pattern)
+
+    @staticmethod
+    def _canonicalize_with_alignment(text: str) -> Tuple[str, List[RawSpan]]:
+        """Return NFKC text and conservative source spans for every output char."""
+        canonical = unicodedata.normalize("NFKC", text)
+        if canonical == text:
+            return canonical, [(i, i + 1) for i in range(len(text))]
+
+        alignment: List[RawSpan] = []
+        matcher = difflib.SequenceMatcher(a=text, b=canonical, autojunk=False)
+        for tag, source_start, source_end, output_start, output_end in matcher.get_opcodes():
+            if tag == "equal":
+                alignment.extend((i, i + 1) for i in range(source_start, source_end))
+                continue
+            source_span = (source_start, source_end)
+            if source_start == source_end:
+                anchor = min(source_start, len(text))
+                source_span = (anchor, anchor)
+            alignment.extend([source_span] * (output_end - output_start))
+        return canonical, alignment
 
     def sanitize(
         self,
@@ -61,10 +83,14 @@ class SecurityShield:
         else:
             allowed_set = set()
 
+        canonical, canonical_alignment = self._canonicalize_with_alignment(text)
         output: List[str] = []
-        cursor = 0
-        for match in self.pattern.finditer(text):
-            output.append(text[cursor : match.start()])
+        raw_cursor = 0
+        for match in self.pattern.finditer(canonical):
+            source_spans = canonical_alignment[match.start() : match.end()]
+            raw_start = min((span[0] for span in source_spans), default=raw_cursor)
+            raw_end = max((span[1] for span in source_spans), default=raw_start)
+            output.append(text[raw_cursor:raw_start])
             token = match.group(0)
             if token in allowed_set:
                 output.append(token)
@@ -77,8 +103,8 @@ class SecurityShield:
                 output.append(f"<\\|{token[2:-2]}\\|>")
             elif disallowed_special_action == "ignore":
                 pass
-            cursor = match.end()
-        output.append(text[cursor:])
+            raw_cursor = raw_end
+        output.append(text[raw_cursor:])
         return "".join(output)
 
     def sanitize_with_alignment(
@@ -106,20 +132,25 @@ class SecurityShield:
         else:
             allowed_set = set()
 
+        raw_text = text
+        text, canonical_alignment = self._canonicalize_with_alignment(text)
         output: List[str] = []
         alignment: List[RawSpan] = []
-        cursor = 0
+        raw_cursor = 0
 
         def append_literal(start: int, end: int) -> None:
-            output.append(text[start:end])
+            output.append(raw_text[start:end])
             alignment.extend((index, index + 1) for index in range(start, end))
 
         for match in self.pattern.finditer(text):
-            append_literal(cursor, match.start())
+            source_spans = canonical_alignment[match.start() : match.end()]
+            raw_start = min((span[0] for span in source_spans), default=raw_cursor)
+            raw_end = max((span[1] for span in source_spans), default=raw_start)
+            append_literal(raw_cursor, raw_start)
             token = match.group(0)
             if token in allowed_set:
                 output.append(token)
-                alignment.extend((index, index + 1) for index in range(match.start(), match.end()))
+                alignment.extend(canonical_alignment[match.start() : match.end()])
             elif disallowed_special_action == "raise":
                 raise ValueError(
                     f"Security Exception: Input contains unauthorized control token {token!r}. "
@@ -128,10 +159,15 @@ class SecurityShield:
             elif disallowed_special_action == "escape":
                 escaped = f"<\\|{token[2:-2]}\\|>"
                 output.append(escaped)
-                alignment.extend([(match.start(), match.end())] * len(escaped))
+                source_span = canonical_alignment[match.start() : match.end()]
+                if source_span:
+                    raw_span = (min(s[0] for s in source_span), max(s[1] for s in source_span))
+                else:
+                    raw_span = (match.start(), match.end())
+                alignment.extend([raw_span] * len(escaped))
             elif disallowed_special_action == "ignore":
                 pass  # delete token; alignment already excludes it
-            cursor = match.end()
+            raw_cursor = raw_end
 
-        append_literal(cursor, len(text))
+        append_literal(raw_cursor, len(raw_text))
         return "".join(output), alignment

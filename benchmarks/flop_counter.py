@@ -51,6 +51,20 @@ def compute_transformer_flops_per_step(
     - Non-matmul conventions: Softmax = 3TV, Attention Softmax = 3HT^2, Activation = 4Td_ff, LayerNorm = 8Td
     - Backward pass = 2x Forward FLOPs (Total Step = 3x Forward)
     """
+    params = {
+        "vocab_size": vocab_size,
+        "batch_size": batch_size,
+        "seq_len": seq_len,
+        "d_model": d_model,
+        "num_layers": num_layers,
+        "num_heads": num_heads,
+        "d_ff": d_ff,
+    }
+    if any(value <= 0 for value in params.values()):
+        raise ValueError("vocab_size, batch_size, seq_len, d_model, num_layers, num_heads, and d_ff must be positive")
+    if d_model % num_heads != 0:
+        raise ValueError("d_model must be divisible by num_heads")
+
     T = seq_len
     d = d_model
     L = num_layers

@@ -4,13 +4,6 @@ use unicode_normalization::UnicodeNormalization;
 const ESCAPE_PREFIX: char = '\u{E000}';
 const ESCAPED_METASPACE: char = '\u{E001}';
 
-fn is_combining(c: char) -> bool {
-    if (c as u32) < 128 {
-        return false;
-    }
-    unicode_normalization::char::canonical_combining_class(c) != 0
-}
-
 fn punct_map(c: char) -> Option<&'static str> {
     match c {
         '\u{201C}' | '\u{201D}' | '\u{201E}' => Some("\""),
@@ -27,6 +20,15 @@ fn is_unicode_space(c: char) -> bool {
     )
 }
 
+fn validate_space_char(space_char: char) -> PyResult<()> {
+    if space_char == ESCAPE_PREFIX || space_char == ESCAPED_METASPACE {
+        return Err(pyo3::exceptions::PyValueError::new_err(
+            "space_char conflicts with reserved metaspace escape characters",
+        ));
+    }
+    Ok(())
+}
+
 #[pyfunction]
 #[allow(clippy::too_many_arguments)]
 #[pyo3(signature = (text, space_char='\u{2581}', normalize_unicode=true, normalize_unicode_spaces=true, normalize_punctuation=false, lowercase=false, collapse_whitespaces=false, strip_whitespace=false))]
@@ -40,28 +42,10 @@ pub fn rust_normalize(
     collapse_whitespaces: bool,
     strip_whitespace: bool,
 ) -> PyResult<String> {
+    validate_space_char(space_char)?;
     // token-only path — no alignment, ~1.33× faster than with_alignment for ASCII
     let mut s = if normalize_unicode {
-        let chars: Vec<char> = text.chars().collect();
-        let n = chars.len();
-        let mut out = String::with_capacity(n + 8);
-        let mut i = 0usize;
-        while i < n {
-            let mut end = i + 1;
-            while end < n && is_combining(chars[end]) {
-                end += 1;
-            }
-            let slice: String = chars[i..end].iter().collect();
-            let norm: String = if slice.is_ascii() {
-                slice
-            } else {
-                // ponytail: native nfkc — Python parity proven via 2k golden, fallback to py if mismatch (rare)
-                slice.nfkc().collect()
-            };
-            out.push_str(&norm);
-            i = end;
-        }
-        out
+        text.nfkc().collect()
     } else {
         text.to_string()
     };
@@ -131,28 +115,45 @@ pub fn rust_normalize_with_alignment(
     collapse_whitespaces: bool,
     strip_whitespace: bool,
 ) -> PyResult<(String, Vec<(usize, usize)>)> {
+    validate_space_char(space_char)?;
     let chars: Vec<char> = text.chars().collect();
     let n = chars.len();
     let mut units: Vec<(char, (usize, usize))> = Vec::with_capacity(n + 8);
 
     if normalize_unicode {
-        let mut i = 0usize;
-        while i < n {
-            let mut end = i + 1;
-            while end < n && is_combining(chars[end]) {
-                end += 1;
+        let normalized: String = text.nfkc().collect();
+        if normalized == text {
+            units.extend(chars.iter().enumerate().map(|(i, &ch)| (ch, (i, i + 1))));
+        } else {
+            let mut prefix_lengths = Vec::with_capacity(n + 1);
+            prefix_lengths.push(0usize);
+            for i in 0..n {
+                let prefix: String = chars[..=i].iter().collect();
+                prefix_lengths.push(prefix.nfkc().count());
             }
-            let slice: String = chars[i..end].iter().collect();
-            let normalized: String = if slice.is_ascii() {
-                slice
-            } else {
-                slice.nfkc().collect()
-            };
-            let span = (i, end);
-            for ch in normalized.chars() {
-                units.push((ch, span));
+            let normalized_chars: Vec<char> = normalized.chars().collect();
+            let mut spans = vec![(0usize, 0usize); normalized_chars.len()];
+            for i in 0..n {
+                let start = prefix_lengths[i];
+                let end = prefix_lengths[i + 1];
+                if end > start {
+                    for span in spans.iter_mut().take(end).skip(start) {
+                        *span = (i, i + 1);
+                    }
+                } else if start > 0 {
+                    for span in spans.iter_mut().take(start) {
+                        if span.1 == i {
+                            span.1 = i + 1;
+                        }
+                    }
+                }
             }
-            i = end;
+            for span in spans.iter_mut() {
+                if span.0 == span.1 {
+                    *span = if n == 0 { (0, 0) } else { (0, n) };
+                }
+            }
+            units.extend(normalized_chars.into_iter().zip(spans));
         }
     } else {
         for (i, &ch) in chars.iter().enumerate() {

@@ -79,87 +79,37 @@ class BatchCollator:
 
         batch_ids: List[List[int]] = []
         batch_tokens: List[List[str]] = []
-        unk_id = self.tokenizer.model.token_to_id.get("<|unk|>", 0)
+        unk_id = self.tokenizer.model.token_to_id.get(self.tokenizer.model.unk_token, 0)
 
-        # 1. Check if native Rust Rayon batch acceleration is available
-        use_rust_batch = False
-        if not sample and hasattr(self.tokenizer.model, "_get_rust_trie"):
-            try:
-                import caliper_core
+        # Keep this path identical to tokenizer.encode/sample, including
+        # security policy, normalization, pre-tokenization, and cross-word
+        # merges. Native trie decoding has a different contract for these
+        # transformations and can silently produce divergent IDs.
+        for text in texts:
+            tokens = self.tokenizer.sample(text, alpha=alpha) if sample else self.tokenizer.encode(text)
+            ids = [self.tokenizer.model.token_to_id.get(t, unk_id) for t in tokens]
 
-                rust_trie = self.tokenizer.model._get_rust_trie()
-                if rust_trie is not None and len(texts) > 1:
-                    # Preprocess: sanitize with the same defaults as
-                    # tokenizer.encode (allowed_special="none", escape) and then
-                    # normalize, so the native batch path cannot emit unauthorized
-                    # special-token IDs the Python path would have escaped.
-                    shield = self.tokenizer.security
-                    norm_texts = [self.tokenizer.normalizer.normalize(shield.sanitize(t)) for t in texts]
-                    raw_spans_batch = caliper_core.rust_viterbi_decode_batch(
-                        norm_texts,
-                        rust_trie,
-                        self.tokenizer.model.byte_fallback,
-                    )
-                    for spans in raw_spans_batch:
-                        tokens = [s.token for s in spans]
-                        ids = [s.token_id if s.token_id is not None else unk_id for s in spans]
-
-                        # Truncate content FIRST (reserving room for specials), so
-                        # BOS/EOS survive truncation like HF convention.
-                        if truncation and max_length is not None:
-                            budget = max_length
-                            if add_special_tokens:
-                                budget -= (1 if self.bos_id is not None and self.bos_token else 0) + (
-                                    1 if self.eos_id is not None and self.eos_token else 0
-                                )
-                            ids = ids[: max(budget, 0)]
-                            tokens = tokens[: max(budget, 0)]
-
-                        if add_special_tokens:
-                            if self.bos_id is not None and self.bos_token:
-                                ids = [self.bos_id] + ids
-                                tokens = [self.bos_token] + tokens
-                            if self.eos_id is not None and self.eos_token:
-                                ids = ids + [self.eos_id]
-                                tokens = tokens + [self.eos_token]
-
-                        batch_ids.append(ids)
-                        batch_tokens.append(tokens)
-                    use_rust_batch = True
-            except (ImportError, AttributeError, ValueError):
-                use_rust_batch = False
-
-        if not use_rust_batch:
-            for text in texts:
-                if sample:
-                    tokens = self.tokenizer.sample(text, alpha=alpha)
-                else:
-                    tokens = self.tokenizer.encode(text)
-
-                ids = [self.tokenizer.model.token_to_id.get(t, unk_id) for t in tokens]
-
-                # Truncate content FIRST (reserving room for specials), so BOS/EOS
-                # survive truncation like HF convention.
-                if truncation and max_length is not None:
-                    budget = max_length
-                    if add_special_tokens:
-                        budget -= (1 if self.bos_id is not None and self.bos_token else 0) + (
-                            1 if self.eos_id is not None and self.eos_token else 0
-                        )
-                    ids = ids[: max(budget, 0)]
-                    tokens = tokens[: max(budget, 0)]
-
-                # Inject BOS / EOS if requested
+            # Truncate content FIRST (reserving room for specials), so BOS/EOS
+            # survive truncation like HF convention.
+            if truncation and max_length is not None:
+                budget = max_length
                 if add_special_tokens:
-                    if self.bos_id is not None and self.bos_token:
-                        ids = [self.bos_id] + ids
-                        tokens = [self.bos_token] + tokens
-                    if self.eos_id is not None and self.eos_token:
-                        ids = ids + [self.eos_id]
-                        tokens = tokens + [self.eos_token]
+                    budget -= (1 if self.bos_id is not None and self.bos_token else 0) + (
+                        1 if self.eos_id is not None and self.eos_token else 0
+                    )
+                ids = ids[: max(budget, 0)]
+                tokens = tokens[: max(budget, 0)]
 
-                batch_ids.append(ids)
-                batch_tokens.append(tokens)
+            if add_special_tokens:
+                if self.bos_id is not None and self.bos_token:
+                    ids = [self.bos_id] + ids
+                    tokens = [self.bos_token] + tokens
+                if self.eos_id is not None and self.eos_token:
+                    ids = ids + [self.eos_id]
+                    tokens = tokens + [self.eos_token]
+
+            batch_ids.append(ids)
+            batch_tokens.append(tokens)
 
         # Determine target sequence length
         if max_length is not None and padding:
@@ -177,7 +127,11 @@ class BatchCollator:
         padded_tokens: List[List[str]] = []
         attention_masks: List[List[int]] = []
 
-        pad_val = self.pad_id if self.pad_id is not None else self.tokenizer.model.token_to_id.get("<|unk|>", 0)
+        pad_val = (
+            self.pad_id
+            if self.pad_id is not None
+            else self.tokenizer.model.token_to_id.get(self.tokenizer.model.unk_token, 0)
+        )
         for seq, tokens in zip(batch_ids, batch_tokens):
             seq_len = len(seq)
             if target_len is not None and seq_len < target_len:

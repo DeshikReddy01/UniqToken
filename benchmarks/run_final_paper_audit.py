@@ -27,11 +27,14 @@ Evaluates:
 
 import os
 import json
+import warnings
 import numpy as np
 import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+
+EXPERIMENT_VERSION = "post-tokenizer-fixes-2026-08-30"
 
 
 def load_and_audit_dataset():
@@ -42,26 +45,41 @@ def load_and_audit_dataset():
     if os.path.exists(final_records_path):
         with open(final_records_path, "r", encoding="utf-8") as f:
             final_data = json.load(f)
-        dataset = final_data.get("dataset_27_conditions", [])
-        hyp_tests = final_data.get("hypothesis_tests", [])
-        anova = final_data.get("repeated_measures_anova", {})
-        return dataset, hyp_tests, anova
+        if final_data.get("experiment_version") == EXPERIMENT_VERSION:
+            dataset = final_data.get("dataset_27_conditions", final_data.get("dataset_conditions", []))
+            hyp_tests = final_data.get("hypothesis_tests", [])
+            anova = final_data.get("repeated_measures_anova", {})
+            return dataset, hyp_tests, anova
+        warnings.warn(
+            "Ignoring stale phase_fifteen_final_paper_records.json; checking the confirmatory ledger instead.",
+            stacklevel=2,
+        )
 
     with open(confirmatory_path, "r", encoding="utf-8") as f:
         conf_data = json.load(f)
+    if conf_data.get("experiment_version") != EXPERIMENT_VERSION:
+        raise RuntimeError(
+            "phase_fourteen_confirmatory_records.json predates the tokenizer fixes and is stale. "
+            "Regenerate the confirmatory records before running this audit."
+        )
 
     dataset = []
-    tiers = [("Small (4L-128d)", 4, 128), ("Medium (6L-256d)", 6, 256), ("Large (8L-512d)", 8, 512)]
+    tiers = [
+        ("Small (4L-128d)", 4, 128, 512),
+        ("Medium (6L-256d)", 6, 256, 1024),
+        ("Large (8L-512d)", 8, 512, 2048),
+    ]
     tokenizers = ["SentencePiece-Unigram", "Boundary-BPE", "Caliper-SuperBPE (Config B)"]
 
     # 32K and 64K Scales from Phase 14B
-    for tier_name, L, d in tiers:
+    for tier_name, L, d, d_ff in tiers:
         for v_scale, v_label in [("32768", "32K"), ("65536", "64K")]:
             v = int(v_scale)
             for tok in tokenizers:
                 entry = conf_data["summary_grid"][tier_name][v_scale][tok]
-                p_total = 2 * v * d + 4 * d * d * L  # analytical estimate
-                p_non_embed = p_total - (2 * v * d)
+                params_per_layer = 4 * d**2 + 2 * d * d_ff + 4 * d
+                p_non_embed = L * params_per_layer + 2 * d
+                p_total = p_non_embed + 2 * v * d
                 m_embed_mb = (2 * v * d * 4) / (1024 * 1024)
                 bpt = float(entry["bytes_per_token_mean"])
                 flops_per_byte = (2 * p_total) / bpt
@@ -312,7 +330,7 @@ def main():
         "==============================================================================================================================================================================="
     )
     print("FINAL PUBLICATION-READY STATISTICAL AUDIT & PARETO SYNTHESIS")
-    print("Verifying all 27 Experimental Conditions under Exact Cost Modeling")
+    print("Verifying the available experimental conditions under Exact Cost Modeling")
     print(
         "===============================================================================================================================================================================\n"
     )
@@ -373,14 +391,16 @@ def main():
             f"  {d['tokenizer']:<28} | BPB: {d['bpb']:<6.3f} | CE: {d['ce']:<6.3f} nats | B/Tok: {d['bytes_per_token']:<5.2f}"
         )
 
-    benchmarks_dir = r"c:\Users\shaik\Research\Tokenizer\benchmarks"
+    benchmarks_dir = os.path.dirname(os.path.abspath(__file__))
     fig_path = os.path.join(benchmarks_dir, "phase_fifteen_final_paper_figure.png")
     json_path = os.path.join(benchmarks_dir, "phase_fifteen_final_paper_records.json")
 
     plot_publication_figure(dataset, pareto_2d, pareto_3d, fig_path)
 
     audit_payload = {
-        "dataset_27_conditions": dataset,
+        "experiment_version": EXPERIMENT_VERSION,
+        "dataset_27_conditions": dataset if len(dataset) == 27 else [],
+        "dataset_conditions": dataset,
         "pareto_2d_unconstrained": pareto_2d,
         "pareto_3d_params": pareto_3d,
         "pareto_3d_memory": pareto_mem,

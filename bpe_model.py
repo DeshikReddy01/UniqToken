@@ -46,7 +46,9 @@ class BPEModel:
 
     @property
     def vocab_size(self) -> int:
-        return len(self.vocab)
+        # Imported rank-based vocabularies can be sparse, so size is the ID
+        # span rather than the number of distinct token strings.
+        return max(self.token_to_id.values(), default=-1) + 1
 
     def _get_pairs(self, word: List[str]) -> Set[Tuple[str, str]]:
         return set(zip(word[:-1], word[1:]))
@@ -85,40 +87,55 @@ class BPEModel:
         if not ranks:
             return list(symbols)
 
+        # Keep a doubly-linked list of live symbol positions. A merge updates
+        # only its two neighboring pairs, so each heap pop is O(log n) instead
+        # of rebuilding and rescanning the entire symbol list.
         syms: List[str] = list(symbols)
-        heap: List[Tuple[int, int, str, str]] = []
+        prev = [i - 1 for i in range(len(syms))]
+        next_pos = [i + 1 if i + 1 < len(syms) else -1 for i in range(len(syms))]
+        alive = [True] * len(syms)
+        heap: List[Tuple[int, int, int, int]] = []
         counter = 0
         for i in range(len(syms) - 1):
             pair = (syms[i], syms[i + 1])
             rank = ranks.get(pair)
             if rank is not None:
-                heapq.heappush(heap, (rank, counter, pair[0], pair[1]))
+                heapq.heappush(heap, (rank, counter, i, i + 1))
                 counter += 1
 
-        merge_stamp = 0
-        while heap and merge_stamp < len(ranks):
-            rank, _, left, right = heapq.heappop(heap)
-            live = ranks.get((left, right), -1)
-            if rank != live:
+        while heap:
+            rank, _, left_idx, right_idx = heapq.heappop(heap)
+            if not alive[left_idx] or not alive[right_idx] or next_pos[left_idx] != right_idx:
                 continue
-            merged = left + right
-            new_syms: List[str] = []
-            i = 0
-            while i < len(syms):
-                if i < len(syms) - 1 and syms[i] == left and syms[i + 1] == right:
-                    new_syms.append(merged)
-                    i += 2
-                else:
-                    new_syms.append(syms[i])
-                    i += 1
-            syms = new_syms
-            merge_stamp += 1
-            for k in range(len(syms) - 1):
-                pr = ranks.get((syms[k], syms[k + 1]))
-                if pr is not None:
-                    heapq.heappush(heap, (pr, counter, syms[k], syms[k + 1]))
+            live_rank = ranks.get((syms[left_idx], syms[right_idx]))
+            if live_rank != rank:
+                continue
+
+            syms[left_idx] += syms[right_idx]
+            alive[right_idx] = False
+            right_next = next_pos[right_idx]
+            next_pos[left_idx] = right_next
+            if right_next != -1:
+                prev[right_next] = left_idx
+
+            left_prev = prev[left_idx]
+            if left_prev != -1:
+                pair_rank = ranks.get((syms[left_prev], syms[left_idx]))
+                if pair_rank is not None:
+                    heapq.heappush(heap, (pair_rank, counter, left_prev, left_idx))
                     counter += 1
-        return syms
+            if right_next != -1:
+                pair_rank = ranks.get((syms[left_idx], syms[right_next]))
+                if pair_rank is not None:
+                    heapq.heappush(heap, (pair_rank, counter, left_idx, right_next))
+                    counter += 1
+
+        result: List[str] = []
+        index = next((i for i, is_alive in enumerate(alive) if is_alive and prev[i] == -1), -1)
+        while index != -1:
+            result.append(syms[index])
+            index = next_pos[index]
+        return result
 
     def _encode_word(self, word: str) -> List[str]:
         symbols = self._build_symbols(word)

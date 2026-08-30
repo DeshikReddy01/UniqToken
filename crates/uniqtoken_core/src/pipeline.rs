@@ -111,6 +111,11 @@ pub fn rust_encode_text_batch(
     byte_fallback: bool,
     space_char: char,
 ) -> PyResult<Vec<Vec<u32>>> {
+    if matches!(space_char, '\u{E000}' | '\u{E001}') {
+        return Err(pyo3::exceptions::PyValueError::new_err(
+            "space_char conflicts with reserved metaspace escape characters",
+        ));
+    }
     py.allow_threads(|| {
         texts
             .par_iter()
@@ -123,9 +128,13 @@ pub fn rust_encode_text_batch(
                     match rust_viterbi_decode(&chunk, trie, byte_fallback, None) {
                         Ok(spans) => {
                             for span in spans {
-                                if let Some(id) = span.token_id {
-                                    sentence_ids.push(id);
-                                }
+                                let id = span.token_id.ok_or_else(|| {
+                                    pyo3::exceptions::PyValueError::new_err(format!(
+                                        "rust_encode_text_batch: decoded token {:?} has no integer ID",
+                                        span.token
+                                    ))
+                                })?;
+                                sentence_ids.push(id);
                             }
                         }
                         // Never silently turn a disconnected lattice into an

@@ -221,9 +221,10 @@ fn viterbi_ids_chars(
     let spans = viterbi_decode_chars(chars, trie, byte_fallback, max_edges_per_node)?;
     let mut ids = Vec::with_capacity(spans.len());
     for s in spans {
-        if let Some(id) = s.token_id {
-            ids.push(id);
-        }
+        let id = s
+            .token_id
+            .ok_or_else(|| format!("decoded token {:?} has no integer ID", s.token))?;
+        ids.push(id);
     }
     Ok(ids)
 }

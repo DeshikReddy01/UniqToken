@@ -5,7 +5,7 @@ import os
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, List, Optional, Sequence, Set, Tuple, Union
+from typing import List, Optional, Sequence, Set, Tuple, Union
 
 from bpe_model import BPEModel
 from byte_codec import ByteFallbackEngine
@@ -15,19 +15,6 @@ from security_shield import SecurityShield
 from seed_builder import SeedVocabularyBuilder
 from streaming_decoder import StreamingDecoder
 from unigram_trainer import UnigramModel, UnigramTrainer
-
-try:
-    import uniqtoken_core as _rust_core
-
-    _HAS_RUST_TOKENIZER = hasattr(_rust_core, "RustTokenizer")
-except ImportError:
-    try:
-        import caliper_core as _rust_core  # type: ignore[no-redef]
-
-        _HAS_RUST_TOKENIZER = hasattr(_rust_core, "RustTokenizer")
-    except ImportError:
-        _rust_core = None  # type: ignore[assignment]
-        _HAS_RUST_TOKENIZER = False
 
 
 @dataclass(frozen=True)
@@ -76,25 +63,6 @@ class CustomTokenizer:
         self.security = SecurityShield(special_tokens=self.model.special_tokens)
         self._cross_word_set: Optional[frozenset[str]] = None
         self._cross_word_model_id: Optional[int] = id(self.model)
-        self._rust_tokenizer: Any = None
-        self._rust_vocab_sig: Optional[Tuple[int, int, str, bool]] = None
-
-    def _get_rust_tokenizer(self):
-        if not _HAS_RUST_TOKENIZER:
-            return None
-        # ponytail: persistent Rust state — one trie/normalizer for hot path
-        sig = (id(self.model.vocab), len(self.model.vocab), self.normalizer.space_char, self.model.byte_fallback)
-        if self._rust_tokenizer is not None and self._rust_vocab_sig == sig:
-            return self._rust_tokenizer
-        try:
-            vocab_list = [(t, lp, self.model.token_to_id[t]) for t, lp in self.model.vocab.items()]
-            assert _rust_core is not None
-            rt = _rust_core.RustTokenizer(vocab_list, self.normalizer.space_char, self.model.byte_fallback)
-            self._rust_tokenizer = rt
-            self._rust_vocab_sig = sig
-            return rt
-        except Exception:
-            return None
 
     @property
     def vocab_size(self) -> int:
@@ -305,32 +273,6 @@ class CustomTokenizer:
         model = trainer.train(chunks, verbose=verbose)
         return cls(normalizer=normalizer, pre_tokenizer=pre_tokenizer, model=model)
 
-    def _is_rust_fast_path_eligible(
-        self,
-        allowed_special: Union[str, Set[str], List[str]],
-        disallowed_special_action: str,
-    ) -> bool:
-        return (
-            _HAS_RUST_TOKENIZER
-            and allowed_special == "none"
-            and disallowed_special_action == "escape"
-            and not self._cross_word_tokens()
-            and self.normalizer.space_char == "\u2581"
-            and self.normalizer.normalize_unicode
-            and self.normalizer.normalize_unicode_spaces
-            and not self.normalizer.normalize_punctuation
-            and not self.normalizer.lowercase
-            and not self.normalizer.collapse_whitespaces
-            and not self.normalizer.strip_whitespace
-            and self.pre_tokenizer.space_char == "\u2581"
-            and not self.pre_tokenizer.split_digits
-            and self.pre_tokenizer.split_punctuation
-            and self.pre_tokenizer.keep_special_tokens
-            and self.pre_tokenizer.special_token_pattern == r"<\|[^\s|]+\|>"
-            and self.pre_tokenizer.digit_chunk_size in (None, 3)
-            and self.pre_tokenizer.hex_literals
-        )
-
     def encode(
         self,
         text: str,
@@ -419,7 +361,7 @@ class CustomTokenizer:
             allowed_special=allowed_special,
             disallowed_special_action=disallowed_special_action,
         )
-        unk_id = self.model.token_to_id.get("<|unk|>", 0)
+        unk_id = self.model.token_to_id.get(self.model.unk_token, 0)
         return [self.model.token_to_id.get(t, unk_id) for t in tokens]
 
     def sample_to_ids(
@@ -435,7 +377,7 @@ class CustomTokenizer:
             allowed_special=allowed_special,
             disallowed_special_action=disallowed_special_action,
         )
-        unk_id = self.model.token_to_id.get("<|unk|>", 0)
+        unk_id = self.model.token_to_id.get(self.model.unk_token, 0)
         return [self.model.token_to_id.get(t, unk_id) for t in tokens]
 
     def encode_with_offsets(
@@ -459,7 +401,7 @@ class CustomTokenizer:
         pre_tokens = self.pre_tokenizer.pre_tokenize_with_offsets(norm, alignment)
 
         result: List[Token] = []
-        unk_id = self.model.token_to_id.get("<|unk|>", 0)
+        unk_id = self.model.token_to_id.get(self.model.unk_token, 0)
 
         for pt in pre_tokens:
             chunk = pt.text
@@ -638,7 +580,7 @@ class CustomTokenizer:
 
     def decode_tokens(self, tokens: Sequence[str]) -> str:
         """Decodes a list of token strings directly back to the original text string."""
-        unk_id = self.model.token_to_id.get("<|unk|>", 0)
+        unk_id = self.model.token_to_id.get(self.model.unk_token, 0)
         token_ids = [self.model.token_to_id.get(t, unk_id) for t in tokens]
         return self.decode(token_ids)
 
@@ -699,9 +641,11 @@ class CustomTokenizer:
             "split_digits": self.pre_tokenizer.split_digits,
             "max_subword_len": self.model.max_subword_len,
             "byte_fallback": self.model.byte_fallback,
+            "unk_token": self.model.unk_token,
             "normalizer": {
                 "space_char": self.normalizer.space_char,
                 "lowercase": self.normalizer.lowercase,
+                "casefold": self.normalizer.casefold,
                 "normalize_unicode": self.normalizer.normalize_unicode,
                 "normalize_punctuation": self.normalizer.normalize_punctuation,
                 "normalize_unicode_spaces": self.normalizer.normalize_unicode_spaces,
@@ -741,6 +685,7 @@ class CustomTokenizer:
             special_tokens=special_tokens,
             max_subword_len=config.get("max_subword_len", 16),
             byte_fallback=config.get("byte_fallback", True),
+            unk_token=config.get("unk_token", "<|unk|>"),
         )
 
         normalizer_config = config.get("normalizer", {})
@@ -749,6 +694,7 @@ class CustomTokenizer:
         normalizer = Normalizer(
             space_char=normalizer_config.get("space_char", config.get("space_char", "\u2581")),
             lowercase=normalizer_config.get("lowercase", False),
+            casefold=normalizer_config.get("casefold", False),
             normalize_unicode=normalizer_config.get("normalize_unicode", True),
             normalize_punctuation=normalizer_config.get("normalize_punctuation", False),
             normalize_unicode_spaces=normalizer_config.get("normalize_unicode_spaces", True),

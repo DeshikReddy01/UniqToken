@@ -9,9 +9,9 @@
 
 Modern subword tokenizers are typically trained as static preprocessing pipelines optimizing either frequency-based merge statistics (BPE) or likelihood-based unigram pruning (SentencePiece) under rigid whitespace boundary constraints. In multilingual settings, these constraints introduce substantial vocabulary fragmentation and uneven script compression ratios. We present **Caliper**, a multilingual subword tokenization architecture that combines: (1) **Script-Aware Candidate Generation** targeting cross-boundary morphemic aggregates, (2) **Candidate Entropy Filtering** to suppress low-frequency tail compositions, and (3) **Unified Unigram Lattice Regularization**.
 
-To evaluate the downstream utility of Caliper against SentencePiece and Boundary-BPE, we conduct a controlled **$3 \times 3 \times 3$ Factorial Experiment** spanning 27 conditions across 3 vocabulary scales ($16\text{K}, 32\text{K}, 64\text{K}$), 3 Transformer LM capacity tiers ($4\text{L}-128\text{d}, 6\text{L}-256\text{d}, 8\text{L}-512\text{d}$), and 5 paired random seeds ($N=171$ total runs) under matched analytical compute ($5.0 \times 10^{12}\text{ FLOPs}$).
+The repository provides a reproducible confirmatory harness. Its executable Phase 14B design covers 2 vocabulary scales ($32\text{K}, 64\text{K}$), 3 Transformer LM capacity tiers, 3 tokenizers, and 5 paired random seeds (90 LM runs) under matched analytical compute. The checked-in Phase 14/15 ledgers and figures are invalidated until regenerated with the corrected scripts.
 
-Our primary empirical contributions are:
+The numerical contribution claims below are retained as a draft outline only and must be recomputed from a fresh ledger before publication.
 1. **Factorial Capacity Interaction**: We establish that vocabulary scaling and downstream Transformer capacity are statistically coupled ($F(2, 8) = 425.71, p = 7.51 \times 10^{-9}$ under a two-way repeated-measures ANOVA). Under-parameterized models suffer a representational bottleneck on dense super-tokens, whereas scaled architectures unlock an additional $-0.405\text{ BPB}$ improvement ($t(4) = -70.10, p_{\text{adj}} = 2.48 \times 10^{-7}$).
 2. **Multi-Objective Pareto Compromise**: Rather than asserting universal dominance, we show that Caliper occupies a distinct middle Pareto regime—particularly at $32\text{K}$—providing a balanced tradeoff between text compression ($\text{BPB}_{\text{SP}} = 2.631 < \text{BPB}_{\text{Cal}} = 2.772 < \text{BPB}_{\text{BPE}} = 2.840$) and per-token validation cross-entropy ($\text{CE}_{\text{BPE}} = 9.914 < \text{CE}_{\text{Cal}} = 11.540 < \text{CE}_{\text{SP}} = 11.957\text{ nats}$).
 3. **Vocabulary Memory Efficiency**: In low-to-intermediate resource regimes, Caliper achieves the lowest BPB among all evaluated $16\text{K}$ configurations ($3.093\text{ BPB}$ at $5.0\text{M}$ parameters) and maintains $75.6\%$ active vocabulary utilization.
@@ -41,7 +41,7 @@ Candidates with normalized entropy below an empirical threshold $\tau_H$ or occu
 ### 2.3 Experimental Setup & Analytical Compute Matching
 To eliminate compute confounds across different vocabulary sizes and model architectures, all downstream Transformer models are trained under an exact matched analytical compute budget:
 $$C_{\text{train}} = 6 \cdot P_{\text{non-embed}} \cdot S \cdot B \cdot T = 5.0 \times 10^{12} \text{ FLOPs}$$
-where $P_{\text{non-embed}}$ denotes non-embedding parameter count, $S$ denotes training steps, $B$ denotes batch size, and $T$ denotes sequence length ($T = 128$).
+where $P_{\text{non-embed}}$ denotes non-embedding parameter count, $S$ denotes training steps, $B$ denotes batch size, and $T$ denotes sequence length ($T = 64$ in the executable harness).
 
 ```
 Model Architectures Evaluated:

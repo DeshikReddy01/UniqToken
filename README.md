@@ -8,7 +8,7 @@
     <strong>Script-Aware, Entropy-Guided Multilingual Subword Tokenizer</strong>
   </p>
   <p align="center">
-    Zero-dependency pure Python — with byte-fallback, exact character-span tracking, and empirically validated downstream LM performance across 27 controlled experimental conditions.
+    Zero-dependency pure Python — with byte-fallback, exact character-span tracking, and reproducible downstream LM benchmark tooling.
   </p>
 </p>
 
@@ -42,9 +42,9 @@ What distinguishes UniqToken from standard subword tokenizers is its **script-aw
 
 ## Research Results
 
-UniqToken has been evaluated through a controlled **3 × 3 × 3 factorial experiment** spanning 27 conditions across 3 vocabulary scales (16K, 32K, 64K), 3 Transformer LM capacity tiers (4L-128d, 6L-256d, 8L-512d), and 5 paired random seeds (N=171 total runs) under matched analytical compute (5.0 × 10¹² FLOPs).
+The repository contains scripts for a controlled factorial benchmark. The executable Phase 14B design currently covers **2 vocabulary scales × 3 LM tiers × 3 tokenizers × 5 seeds = 90 LM runs** under matched analytical compute. The checked-in Phase 14/15 ledgers and figures are **invalidated until regenerated with the corrected scripts**; their numerical results are not current claims.
 
-> **Core Finding:** UniqToken is not a universal replacement for SentencePiece or BPE. It occupies a distinct middle regime in which script-aware candidate generation and entropy-guided merging produce higher byte efficiency than Boundary-BPE while retaining lower token-level cross-entropy than SentencePiece under the tested compute and capacity regimes.
+> **Status:** Regenerate the benchmark ledgers and figures before making comparative performance claims.
 
 ### The 32K Three-Way Pareto Compromise
 

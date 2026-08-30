@@ -73,7 +73,7 @@ class BPETokenizerAdapter:
 
     @property
     def vocab_size(self) -> int:
-        return len(self.model.vocab)
+        return self.model.vocab_size
 
     def encode_to_ids(self, text: str) -> List[int]:
         if self.normalizer is None or self.pre_tokenizer is None:
@@ -91,13 +91,14 @@ class BPETokenizerAdapter:
         return self.model.decode(token_ids)
 
 
-def create_tokenizers(target_vocab: int = 500) -> Dict[str, Any]:
+def create_tokenizers(target_vocab: int = 500, corpus: Optional[List[str]] = None) -> Dict[str, Any]:
     """Builds and returns calibrated tokenizers for downstream comparison."""
     tokenizers: Dict[str, Any] = {}
+    training_corpus = list(corpus if corpus is not None else PRETRAINING_CORPUS)
 
     # 1. UniqToken Unigram
     unigram_tok = CustomTokenizer.train_from_corpus(
-        corpus=PRETRAINING_CORPUS,
+        corpus=training_corpus,
         target_vocab_size=target_vocab,
         ranking_strategy="pmi",
         min_frequency=1,
@@ -107,7 +108,7 @@ def create_tokenizers(target_vocab: int = 500) -> Dict[str, Any]:
 
     # 2. UniqToken SuperBPE
     pretok_chunks: List[str] = []
-    for doc in PRETRAINING_CORPUS:
+    for doc in training_corpus:
         norm = unigram_tok.normalizer.normalize(doc)
         pretok_chunks.extend(unigram_tok.pre_tokenizer.pre_tokenize(norm))
     cem = CrossEntropyMerging(max_merges=30, cross_word=True, verbose=False)
@@ -121,7 +122,7 @@ def create_tokenizers(target_vocab: int = 500) -> Dict[str, Any]:
     # 3. Standard BPE — trained and applied on the same pre-tokenized chunks
     #    as the Caliper variants so the baseline is directly comparable.
     bpe_chunks: List[str] = []
-    for doc in PRETRAINING_CORPUS:
+    for doc in training_corpus:
         norm = unigram_tok.normalizer.normalize(doc)
         bpe_chunks.extend(unigram_tok.pre_tokenizer.pre_tokenize(norm))
     bpe_trainer_inst = bpe_trainer.BPETrainer(
@@ -161,6 +162,7 @@ def train_toy_transformer(
     heads: int = 4,
     layers: int = 2,
     device: str = "auto",
+    seed: int = 42,
 ) -> PretrainingMetrics:
     """
     Trains a causal mini-transformer or lightweight probabilistic model
@@ -198,7 +200,9 @@ def train_toy_transformer(
     if total_tokens == 0 or total_bytes == 0 or not val_flat or validation_bytes == 0:
         raise ValueError("corpus must produce non-empty token and byte sequences")
     compression = total_bytes / total_tokens
-    vocab_size = tok.vocab_size
+    token_to_id = getattr(getattr(tok, "model", None), "token_to_id", None)
+    max_token_id = max(token_to_id.values(), default=-1) if token_to_id else -1
+    vocab_size = max(int(tok.vocab_size), max_token_id + 1)
 
     # 2. Check PyTorch availability
     has_torch = False
@@ -210,8 +214,6 @@ def train_toy_transformer(
         has_torch = True
     except ImportError:
         pass
-
-    start_time = time.perf_counter()
 
     if has_torch and len(train_flat) > seq_len:
         import torch
@@ -251,13 +253,14 @@ def train_toy_transformer(
             if device == "cuda" and not torch.cuda.is_available():
                 raise RuntimeError("device='cuda' requested but torch.cuda.is_available() is False")
             target_device = torch.device(device)
-        torch.manual_seed(42)
+        torch.manual_seed(seed)
         model = MiniCausalLM(vs=vocab_size, d=dim, h=heads, n_l=layers, max_s=seq_len).to(target_device)
         optimizer = torch.optim.AdamW(model.parameters(), lr=3e-3, weight_decay=1e-2)
         loss_fn = nn.CrossEntropyLoss()
+        start_time = time.perf_counter()
 
         data_tensor = torch.tensor(train_flat, dtype=torch.long)
-        max_idx = len(train_flat) - seq_len - 1
+        max_start = len(train_flat) - seq_len - 1
 
         last_train_loss = 0.0
         model.train()
@@ -267,7 +270,7 @@ def train_toy_transformer(
             batch_inputs = []
             batch_targets = []
             for b in range(batch_size):
-                idx = (step * batch_size + b) % max(1, max_idx)
+                idx = (step * batch_size + b) % (max_start + 1)
                 chunk = data_tensor[idx : idx + seq_len + 1]
                 batch_inputs.append(chunk[:-1])
                 batch_targets.append(chunk[1:])
@@ -305,6 +308,7 @@ def train_toy_transformer(
         # Fit a Laplace-smoothed unigram model on training data and evaluate it
         # only on held-out tokens. This is a real held-out baseline, not entropy
         # estimated from the validation distribution itself.
+        start_time = time.perf_counter()
         train_counts: Dict[int, int] = {}
         for token_id in train_flat:
             train_counts[token_id] = train_counts.get(token_id, 0) + 1
@@ -341,7 +345,8 @@ def train_toy_transformer(
 
 def run_pretraining_benchmark(steps: int = 40, export_json: Optional[str] = None) -> List[PretrainingMetrics]:
     """Runs downstream mini-transformer pretraining benchmark across tokenizers."""
-    tokenizers = create_tokenizers(target_vocab=500)
+    train_docs, _ = _split_documents(PRETRAINING_CORPUS)
+    tokenizers = create_tokenizers(target_vocab=500, corpus=train_docs)
     results: List[PretrainingMetrics] = []
 
     print("\n" + "=" * 110)

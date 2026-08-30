@@ -267,4 +267,5 @@ class CrossEntropyMerging:
             special_tokens=list(model.special_tokens),
             max_subword_len=max_len,
             byte_fallback=model.byte_fallback,
+            unk_token=model.unk_token,
         )

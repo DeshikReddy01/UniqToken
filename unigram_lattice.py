@@ -181,7 +181,7 @@ class UnigramLattice:
                 raise ValueError(
                     f"Lattice disconnected at index {curr} of {self.text!r}: no "
                     f"vocabulary/fallback edge covers this character. Train with "
-                    f"byte_fallback=True or ensure <|unk|> is in the vocabulary."
+                    f"byte_fallback=True or ensure {self.unk_token!r} is in the vocabulary."
                 )
             edges.append(selected_edge)
             curr = selected_edge.start
@@ -215,7 +215,7 @@ class UnigramLattice:
             raise ValueError(
                 f"Lattice disconnected for {self.text!r}: no vocabulary/fallback "
                 f"edge covers every character. Train with byte_fallback=True or "
-                f"ensure <|unk|> is in the vocabulary."
+                f"ensure {self.unk_token!r} is in the vocabulary."
             )
 
         log_beta: List[float] = [-float("inf")] * (self.length + 1)
@@ -264,7 +264,7 @@ class UnigramLattice:
             raise ValueError(
                 f"Lattice disconnected for {self.text!r}: no vocabulary/fallback "
                 f"edge covers every character. Train with byte_fallback=True or "
-                f"ensure <|unk|> is in the vocabulary."
+                f"ensure {self.unk_token!r} is in the vocabulary."
             )
 
         # 2. Backward Sampling
@@ -277,7 +277,7 @@ class UnigramLattice:
                 raise ValueError(
                     f"Lattice disconnected at index {curr} of {self.text!r}: no "
                     f"vocabulary/fallback edge covers this character. Train with "
-                    f"byte_fallback=True or ensure <|unk|> is in the vocabulary."
+                    f"byte_fallback=True or ensure {self.unk_token!r} is in the vocabulary."
                 )
 
             # Compute transition probabilities for incoming edges ending at curr

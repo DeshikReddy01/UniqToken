@@ -53,6 +53,7 @@ sys.path.insert(0, str(_ROOT))
 from benchmarks.train_toy_transformer import (  # noqa: E402
     PRETRAINING_CORPUS,
     BPETokenizerAdapter,
+    _split_documents,
     train_toy_transformer,
 )
 
@@ -122,12 +123,12 @@ class _ExternalWrapper:
         return self._encode(text)
 
 
-def _train_caliper_unigram(budget: int):
+def _train_caliper_unigram(budget: int, corpus: List[str]):
     """Caliper PMI Unigram trained from scratch on the corpus."""
     from tokenizer import CustomTokenizer
 
     return CustomTokenizer.train_from_corpus(
-        corpus=PRETRAINING_CORPUS,
+        corpus=corpus,
         target_vocab_size=budget,
         ranking_strategy="pmi",
         min_frequency=1,
@@ -135,7 +136,7 @@ def _train_caliper_unigram(budget: int):
     )
 
 
-def _train_caliper_bpe(budget: int, normalizer, pre_tokenizer):
+def _train_caliper_bpe(budget: int, normalizer, pre_tokenizer, corpus: List[str]):
     """Caliper BPE trained from scratch on the pre-tokenized corpus chunks.
 
     The harness's existing ``create_tokenizers`` already builds this; we
@@ -145,7 +146,7 @@ def _train_caliper_bpe(budget: int, normalizer, pre_tokenizer):
     import bpe_trainer
 
     chunks: List[str] = []
-    for doc in PRETRAINING_CORPUS:
+    for doc in corpus:
         norm = normalizer.normalize(doc)
         chunks.extend(pre_tokenizer.pre_tokenize(norm))
     trainer = bpe_trainer.BPETrainer(
@@ -160,23 +161,24 @@ def _train_caliper_bpe(budget: int, normalizer, pre_tokenizer):
     )
 
 
-def _train_caliper_superbpe(budget: int):
+def _train_caliper_superbpe(budget: int, corpus: List[str]):
     """Caliper Unigram + CEM cross-word merging (SuperBPE)."""
     from cem_merger import CrossEntropyMerging
     from tokenizer import CustomTokenizer
 
     base = CustomTokenizer.train_from_corpus(
-        corpus=PRETRAINING_CORPUS,
+        corpus=corpus,
         target_vocab_size=budget,
         ranking_strategy="pmi",
         min_frequency=1,
         verbose=False,
     )
     chunks: List[str] = []
-    for doc in PRETRAINING_CORPUS:
+    for doc in corpus:
         norm = base.normalizer.normalize(doc)
         chunks.extend(base.pre_tokenizer.pre_tokenize(norm))
-    cem = CrossEntropyMerging(max_merges=30, cross_word=True, verbose=False)
+    merge_budget = max(0, budget - len(base.model.vocab))
+    cem = CrossEntropyMerging(max_merges=min(30, merge_budget), cross_word=True, verbose=False)
     sbp_model = cem.optimize(base.model, chunks=chunks)
     return CustomTokenizer(
         normalizer=base.normalizer,
@@ -185,7 +187,7 @@ def _train_caliper_superbpe(budget: int):
     )
 
 
-def _train_sentencepiece(budget: int):
+def _train_sentencepiece(budget: int, corpus: List[str]):
     """Train a SentencePiece Unigram model at the matched budget, then
     import it into Caliper for inference so the harness sees a uniform
     ``encode_to_ids`` interface.
@@ -199,7 +201,8 @@ def _train_sentencepiece(budget: int):
     with tempfile.TemporaryDirectory() as t:
         cpath = os.path.join(t, "c.txt")
         prefix = os.path.join(t, "sp")
-        open(cpath, "w", encoding="utf-8").write("\n".join(PRETRAINING_CORPUS))
+        with open(cpath, "w", encoding="utf-8") as f:
+            f.write("\n".join(corpus))
         target = budget
         for _ in range(5):
             try:
@@ -300,7 +303,9 @@ def run_vocab_quality_race(
 
     train_kwargs = dict(train_kwargs or {})
     train_kwargs.setdefault("device", device)
+    train_kwargs.setdefault("seed", seed)
     corpus_bytes = sum(len(d.encode("utf-8")) for d in PRETRAINING_CORPUS)
+    train_corpus, _ = _split_documents(PRETRAINING_CORPUS)
     report = RaceReport(
         budget=budget,
         corpus_size_documents=len(PRETRAINING_CORPUS),
@@ -309,20 +314,20 @@ def run_vocab_quality_race(
         seed=seed,
     )
 
-    unigram_tok = _train_caliper_unigram(budget)
+    unigram_tok = _train_caliper_unigram(budget, train_corpus)
     report.entries.append(_race_entry("UniqToken (Unigram)", "uniqtoken", budget, unigram_tok, steps, **train_kwargs))
     unigram_norm = unigram_tok.normalizer
     unigram_pretok = unigram_tok.pre_tokenizer
 
-    bpe_tok = _train_caliper_bpe(budget, unigram_norm, unigram_pretok)
+    bpe_tok = _train_caliper_bpe(budget, unigram_norm, unigram_pretok, train_corpus)
     report.entries.append(_race_entry("UniqToken (BPE)", "uniqtoken", budget, bpe_tok, steps, **train_kwargs))
 
-    sbp_tok = _train_caliper_superbpe(budget)
+    sbp_tok = _train_caliper_superbpe(budget, train_corpus)
     report.entries.append(_race_entry("UniqToken (SuperBPE)", "uniqtoken", budget, sbp_tok, steps, **train_kwargs))
 
     if include_sentencepiece:
         try:
-            spm_tok = _train_sentencepiece(budget)
+            spm_tok = _train_sentencepiece(budget, train_corpus)
             actual = getattr(spm_tok, "_spm_actual_vocab", len(spm_tok.model.vocab))
             entry = _race_entry(
                 "SentencePiece (Unigram)",
@@ -486,8 +491,8 @@ def main() -> int:
         steps=args.steps,
         seed=args.seed,
         include_pretrained=not args.no_pretrained,
-        include_tiktoken=not args.no_tiktoken,
-        include_hf=not args.no_hf,
+        include_tiktoken=not args.no_pretrained and not args.no_tiktoken,
+        include_hf=not args.no_pretrained and not args.no_hf,
         include_sentencepiece=not args.no_sentencepiece,
         device=args.device,
         train_kwargs={

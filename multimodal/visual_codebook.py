@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import math
 import random
+import re
 from typing import Dict, List, Tuple
 
 
@@ -32,6 +33,8 @@ class VisualCodebook:
             raise ValueError("embedding_dim must be positive")
         if not 0 < ema_decay < 1:
             raise ValueError("ema_decay must be in (0, 1)")
+        if epsilon <= 0 or not math.isfinite(epsilon):
+            raise ValueError("epsilon must be a finite positive number")
 
         self.num_embeddings = num_embeddings
         self.embedding_dim = embedding_dim
@@ -69,6 +72,8 @@ class VisualCodebook:
         """
         if len(patch_vector) != self.embedding_dim:
             raise ValueError(f"Patch vector dimension {len(patch_vector)} != embedding_dim {self.embedding_dim}")
+        if any(not isinstance(value, (int, float)) or not math.isfinite(value) for value in patch_vector):
+            raise ValueError("patch_vector must contain only finite numeric values")
 
         patch_norm = sum(p * p for p in patch_vector)
 
@@ -96,7 +101,7 @@ class VisualCodebook:
         """
         Reconstructs the continuous patch pixel vector from a discrete visual token string.
         """
-        if not token_str.startswith("<|vis_") or not token_str.endswith("|>"):
+        if not isinstance(token_str, str) or not re.fullmatch(r"<\|vis_\d{4}\|>", token_str):
             raise ValueError(f"Invalid visual token format: {token_str!r}")
 
         idx = int(token_str[6:-2])
@@ -116,25 +121,32 @@ class VisualCodebook:
         """
         if len(patch_vectors) != len(indices):
             raise ValueError("patch_vectors and indices must have same length")
+        if not patch_vectors:
+            return
 
-        self._update_count += 1
-
+        # Validate and aggregate the complete batch before mutating EMA state.
+        # Applying decay once per vector makes the result depend on batch size.
+        counts: Dict[int, int] = {}
+        sums: Dict[int, List[float]] = {}
         for vec, idx in zip(patch_vectors, indices):
             if len(vec) != self.embedding_dim:
                 raise ValueError(f"Patch vector dimension {len(vec)} != embedding_dim {self.embedding_dim}")
+            if any(not isinstance(value, (int, float)) or not math.isfinite(value) for value in vec):
+                raise ValueError("patch_vectors must contain only finite numeric values")
             if not 0 <= idx < self.num_embeddings:
                 raise ValueError(f"Codebook index {idx} out of range")
 
-            # Update EMA cluster size
-            old_size = self._ema_cluster_size[idx]
-            new_size = self.ema_decay * old_size + (1 - self.ema_decay)
-            self._ema_cluster_size[idx] = new_size
+            counts[idx] = counts.get(idx, 0) + 1
+            batch_sum = sums.setdefault(idx, [0.0] * self.embedding_dim)
+            for d, value in enumerate(vec):
+                batch_sum[d] += value
 
-            # Update EMA embedding sum
-            for d in range(self.embedding_dim):
-                self._ema_embed_sum[idx][d] = (
-                    self.ema_decay * self._ema_embed_sum[idx][d] + (1 - self.ema_decay) * vec[d]
-                )
+        self._update_count += 1
+        batch_weight = 1 - self.ema_decay
+        for idx, count in counts.items():
+            self._ema_cluster_size[idx] = self.ema_decay * self._ema_cluster_size[idx] + batch_weight * count
+            for d, value in enumerate(sums[idx]):
+                self._ema_embed_sum[idx][d] = self.ema_decay * self._ema_embed_sum[idx][d] + batch_weight * value
 
         # Periodically re-normalize codebook vectors from EMA statistics
         # This is done lazily to avoid overhead on every update
@@ -270,6 +282,10 @@ class VisualCodebook:
             raise ValueError("visual codebook state has an invalid codebook size")
         if any(len(vector) != cb.embedding_dim for vector in codebook):
             raise ValueError("visual codebook state has an invalid vector dimension")
+        if any(
+            not isinstance(value, (int, float)) or not math.isfinite(value) for vector in codebook for value in vector
+        ):
+            raise ValueError("visual codebook state contains non-finite values")
         # copy: avoid aliasing the caller's nested lists
         cb.codebook = [vector[:] for vector in codebook]
         cb._ema_cluster_size = state.get("ema_cluster_size", [0.0] * cb.num_embeddings)
@@ -277,6 +293,21 @@ class VisualCodebook:
             "ema_embed_sum",
             [[0.0] * cb.embedding_dim for _ in range(cb.num_embeddings)],
         )
+        if len(cb._ema_cluster_size) != cb.num_embeddings or len(cb._ema_embed_sum) != cb.num_embeddings:
+            raise ValueError("visual codebook state has invalid EMA dimensions")
+        if any(
+            not isinstance(value, (int, float)) or not math.isfinite(value) or value < 0
+            for value in cb._ema_cluster_size
+        ):
+            raise ValueError("visual codebook EMA cluster sizes must be finite and non-negative")
+        if any(
+            len(vector) != cb.embedding_dim
+            or any(not isinstance(value, (int, float)) or not math.isfinite(value) for value in vector)
+            for vector in cb._ema_embed_sum
+        ):
+            raise ValueError("visual codebook EMA sums have invalid values")
         cb._update_count = state.get("update_count", 0)
+        if not isinstance(cb._update_count, int) or isinstance(cb._update_count, bool) or cb._update_count < 0:
+            raise ValueError("visual codebook update_count must be a non-negative integer")
         cb._codebook_norms = [sum(c * c for c in code_vec) for code_vec in cb.codebook]
         return cb
