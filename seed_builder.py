@@ -17,7 +17,6 @@ except ImportError:
         caliper_core = None  # type: ignore[assignment]
 
 
-
 @dataclass(frozen=True)
 class SeedToken:
     """
