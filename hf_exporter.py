@@ -89,7 +89,7 @@ class HuggingFaceExporter:
             {
                 "type": "Metaspace",
                 "replacement": normalizer.space_char,
-                # Caliper replaces existing whitespace but does not prepend a
+                # UniqToken replaces existing whitespace but does not prepend a
                 # metaspace token to text with no leading whitespace.
                 "prepend_scheme": "never",
                 "split": True,
@@ -117,7 +117,7 @@ class HuggingFaceExporter:
             unrepresentable.append("casefold")
         if unrepresentable:
             warnings.warn(
-                "HuggingFace export cannot fully represent this Caliper pre-tokenizer "
+                "HuggingFace export cannot fully represent this UniqToken pre-tokenizer "
                 f"configuration ({', '.join(unrepresentable)}); the exported tokenizer "
                 "may tokenize differently from the source model.",
                 stacklevel=2,

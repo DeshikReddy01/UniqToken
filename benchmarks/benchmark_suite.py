@@ -98,6 +98,18 @@ class TokenizerBenchmarkSuite:
             "Indices: 1048576, 2097152, 4194304, 8388608. Verify sum(x_i) for i in range(1000)."
         )
         * 30,
+        "Agglutinative_Turkish": (
+            "Doğal dil işleme modellerinde eklemeli dillerin morfolojik yapısının doğru çözümlenmesi büyük önem taşır. "
+            "Türkçede çekim ve yapım eklerinin ardışık dizilimi, kelime gövdelerinin korunmasını ve alt-kelime "
+            "bölümlemesinin dilbilgisi kurallarına uygun olarak gerçekleştirilmesini gerektirir."
+        )
+        * 30,
+        "Agglutinative_Finnish": (
+            "Luonnollisen kielen käsittelyssä agglutinoivien kielten sananmuodostus asettaa erityisiä vaatimuksia. "
+            "Suomen kielen taivutuspäätteet ja johdokset muodostavat monimutkaisia rakenteita, joiden oikea "
+            "tokenisointi takaa kielimallin optimaalisen suorituskyvyn ja sanaston tehokkaan käytön."
+        )
+        * 30,
     }
 
     def __init__(self, tokenizer: Optional[CustomTokenizer] = None):

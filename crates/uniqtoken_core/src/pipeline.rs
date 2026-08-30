@@ -2,7 +2,7 @@
 
 use crate::normalizer::rust_normalize;
 use crate::trie::RustPrefixTrie;
-use crate::viterbi::{decode_cached, rust_viterbi_decode};
+use crate::viterbi::decode_cached;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use rayon::prelude::*;
@@ -127,13 +127,13 @@ pub fn rust_encode_text_batch(
                 let mut sentence_ids: Vec<u32> = Vec::with_capacity(chunks.len() * 2);
 
                 for chunk in chunks {
-                    match rust_viterbi_decode(&chunk, trie, byte_fallback, None) {
-                        Ok(spans) => {
-                            for span in spans {
-                                let id = span.token_id.ok_or_else(|| {
+                    match decode_cached(&chunk, trie, byte_fallback) {
+                        Ok(seg) => {
+                            for (token, token_id, ..) in seg.iter() {
+                                let id = token_id.ok_or_else(|| {
                                     pyo3::exceptions::PyValueError::new_err(format!(
                                         "rust_encode_text_batch: decoded token {:?} has no integer ID",
-                                        span.token
+                                        token
                                     ))
                                 })?;
                                 sentence_ids.push(id);

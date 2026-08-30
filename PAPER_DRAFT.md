@@ -1,20 +1,20 @@
 # Beyond Subword Boundaries: Script-Aware Entropy-Guided SuperBPE and Downstream LM Capacity Coupling
 
 **Authors**: Research Team  
-**Artifact Repository**: `https://github.com/umran666/caliper`
+**Artifact Repository**: `https://github.com/umran666/UniqToken`
 
 ---
 
 ## Abstract
 
-Modern subword tokenizers are typically trained as static preprocessing pipelines optimizing either frequency-based merge statistics (BPE) or likelihood-based unigram pruning (SentencePiece) under rigid whitespace boundary constraints. In multilingual settings, these constraints introduce substantial vocabulary fragmentation and uneven script compression ratios. We present **Caliper**, a multilingual subword tokenization architecture that combines: (1) **Script-Aware Candidate Generation** targeting cross-boundary morphemic aggregates, (2) **Candidate Entropy Filtering** to suppress low-frequency tail compositions, and (3) **Unified Unigram Lattice Regularization**.
+Modern subword tokenizers are typically trained as static preprocessing pipelines optimizing either frequency-based merge statistics (BPE) or likelihood-based unigram pruning (SentencePiece) under rigid whitespace boundary constraints. In multilingual settings, these constraints introduce substantial vocabulary fragmentation and uneven script compression ratios. We present **UniqToken**, a multilingual subword tokenization architecture that combines: (1) **Script-Aware Candidate Generation** targeting cross-boundary morphemic aggregates, (2) **Candidate Entropy Filtering** to suppress low-frequency tail compositions, and (3) **Unified Unigram Lattice Regularization**.
 
 The repository provides a reproducible confirmatory harness. Its executable Phase 14B design covers 2 vocabulary scales ($32\text{K}, 64\text{K}$), 3 Transformer LM capacity tiers, 3 tokenizers, and 5 paired random seeds (90 LM runs) under matched analytical compute. The checked-in Phase 14/15 ledgers and figures are invalidated until regenerated with the corrected scripts.
 
 The numerical contribution claims below are retained as a draft outline only and must be recomputed from a fresh ledger before publication.
 1. **Factorial Capacity Interaction**: We establish that vocabulary scaling and downstream Transformer capacity are statistically coupled ($F(2, 8) = 425.71, p = 7.51 \times 10^{-9}$ under a two-way repeated-measures ANOVA). Under-parameterized models suffer a representational bottleneck on dense super-tokens, whereas scaled architectures unlock an additional $-0.405\text{ BPB}$ improvement ($t(4) = -70.10, p_{\text{adj}} = 2.48 \times 10^{-7}$).
-2. **Multi-Objective Pareto Compromise**: Rather than asserting universal dominance, we show that Caliper occupies a distinct middle Pareto regime—particularly at $32\text{K}$—providing a balanced tradeoff between text compression ($\text{BPB}_{\text{SP}} = 2.631 < \text{BPB}_{\text{Cal}} = 2.772 < \text{BPB}_{\text{BPE}} = 2.840$) and per-token validation cross-entropy ($\text{CE}_{\text{BPE}} = 9.914 < \text{CE}_{\text{Cal}} = 11.540 < \text{CE}_{\text{SP}} = 11.957\text{ nats}$).
-3. **Vocabulary Memory Efficiency**: In low-to-intermediate resource regimes, Caliper achieves the lowest BPB among all evaluated $16\text{K}$ configurations ($3.093\text{ BPB}$ at $5.0\text{M}$ parameters) and maintains $75.6\%$ active vocabulary utilization.
+2. **Multi-Objective Pareto Compromise**: Rather than asserting universal dominance, we show that UniqToken occupies a distinct middle Pareto regime—particularly at $32\text{K}$—providing a balanced tradeoff between text compression ($\text{BPB}_{\text{SP}} = 2.631 < \text{BPB}_{\text{Cal}} = 2.772 < \text{BPB}_{\text{BPE}} = 2.840$) and per-token validation cross-entropy ($\text{CE}_{\text{BPE}} = 9.914 < \text{CE}_{\text{Cal}} = 11.540 < \text{CE}_{\text{SP}} = 11.957\text{ nats}$).
+3. **Vocabulary Memory Efficiency**: In low-to-intermediate resource regimes, UniqToken achieves the lowest BPB among all evaluated $16\text{K}$ configurations ($3.093\text{ BPB}$ at $5.0\text{M}$ parameters) and maintains $75.6\%$ active vocabulary utilization.
 
 ---
 
@@ -31,10 +31,10 @@ We formalize this interaction through a systematic factorial benchmark across vo
 ## 2. Architecture & Methods
 
 ### 2.1 Script-Aware Candidate Generation
-Caliper segments input corpora using Unicode script family detection (e.g. Latin, Devanagari, Bengali, Arabic, Cyrillic) and applies script-specialized candidate expansion rules. Rather than restricting merges to intra-word n-grams, Caliper allows controlled cross-boundary agglomerations for high-frequency grammatical clitics and functional compound words while enforcing structural boundary protection on root morphemes.
+UniqToken segments input corpora using Unicode script family detection (e.g. Latin, Devanagari, Bengali, Arabic, Cyrillic) and applies script-specialized candidate expansion rules. Rather than restricting merges to intra-word n-grams, UniqToken allows controlled cross-boundary agglomerations for high-frequency grammatical clitics and functional compound words while enforcing structural boundary protection on root morphemes.
 
 ### 2.2 Entropy-Guided Candidate Filtering
-To prevent vocabulary pollution from combinatorially explosive, low-frequency tail candidates, Caliper evaluates the empirical candidate entropy:
+To prevent vocabulary pollution from combinatorially explosive, low-frequency tail candidates, UniqToken evaluates the empirical candidate entropy:
 $$H(c) = -\sum_{x \in \mathcal{X}_c} p(x \mid c) \log p(x \mid c)$$
 Candidates with normalized entropy below an empirical threshold $\tau_H$ or occurrence frequencies below corpus support thresholds are pruned before final vocabulary assembly.
 
@@ -88,14 +88,14 @@ $$\text{Model: } \text{BPB} \sim V + \text{Capacity} + (V \times \text{Capacity}
 At the $32\text{K} \times \text{Large } (8\text{L}-512\text{d})$ configuration, the three tokenizers establish a strict three-way trade-off:
 - **SentencePiece-Unigram**: Maximizes text compression ($\text{BPB} = 2.631$, $6.56\text{ B/Tok}$), but yields high per-token cross-entropy ($\text{CE} = 11.957\text{ nats}$).
 - **Boundary-BPE**: Minimizes per-token cross-entropy ($\text{CE} = 9.914\text{ nats}$), but achieves lower text compression ($\text{BPB} = 2.840$, $5.04\text{ B/Tok}$).
-- **Caliper-SuperBPE**: Provides a balanced compromise ($\text{BPB} = 2.772$, $\text{CE} = 11.540\text{ nats}$, $6.01\text{ B/Tok}$), maintaining superior active vocabulary utilization ($75.6\%$).
+- **UniqToken-SuperBPE**: Provides a balanced compromise ($\text{BPB} = 2.772$, $\text{CE} = 11.540\text{ nats}$, $6.01\text{ B/Tok}$), maintaining superior active vocabulary utilization ($75.6\%$).
 
 ---
 
 ## 4. Discussion & Limitations
 
 ### 4.1 Memory-Budget Tradeoffs
-Because embedding parameters scale linearly with vocabulary size ($M_{\text{embed}} = 2 \cdot V \cdot d_{\text{model}} \cdot 4\text{ bytes}$), expanding from $16\text{K} \rightarrow 64\text{K}$ at $d=512$ increases the embedding memory footprint from $64.0\text{ MB}$ to $256.0\text{ MB}$. Engineers operating under tight edge deployment constraints can exploit Caliper's low-capacity efficiency ($3.093\text{ BPB}$ at $16\text{K}-\text{Small}$) to capture competitive compression at a fraction of the parameter memory footprint.
+Because embedding parameters scale linearly with vocabulary size ($M_{\text{embed}} = 2 \cdot V \cdot d_{\text{model}} \cdot 4\text{ bytes}$), expanding from $16\text{K} \rightarrow 64\text{K}$ at $d=512$ increases the embedding memory footprint from $64.0\text{ MB}$ to $256.0\text{ MB}$. Engineers operating under tight edge deployment constraints can exploit UniqToken's low-capacity efficiency ($3.093\text{ BPB}$ at $16\text{K}-\text{Small}$) to capture competitive compression at a fraction of the parameter memory footprint.
 
 ### 4.2 Limitations
 1. **Corpus Scope**: Evaluations were conducted on a curated multilingual corpus (English + Indic languages). Cross-linguistic generalization to agglutinative or logographic scripts warrants further investigation.
@@ -104,6 +104,23 @@ Because embedding parameters scale linearly with vocabulary size ($M_{\text{embe
 
 ---
 
+
+### 4.3 Theoretical Complexity & Frontier Scaling Bounds
+
+#### 4.3.1 Inference Time Complexity
+Given an input sequence of length $ characters and a maximum subword length {\\max} \\le 16$, the Viterbi dynamic programming segmentation over the prefix DAG requires:
+\\mathcal{O}(L \\cdot K_{\\max}) = \\mathcal{O}(L)
+Because {\\max}$ is an architectural constant, segmentation executes in strictly linear time with respect to input length, invariant to total vocabulary size $. Furthermore, with word-level LRU segment caching, common sub-sequence segmentation complexity approaches $\\mathcal{O}(1)$ amortized lookups per chunk.
+
+#### 4.3.2 Memory Complexity & Frontier Invariance
+The memory required during inference consists of the dynamic programming lattice state:
+M_{\\text{infer}} = \\mathcal{O}(L)
+The embedding table memory footprint is strictly bounded by:
+M_{\\text{embed}} = 2 \\cdot V \\cdot d_{\\text{model}} \\cdot 4\\text{ bytes}
+Because {\\text{embed}}$ depends exclusively on the vocabulary size $ and model hidden dimension {\\text{model}}$, it remains strictly invariant to the total number of training tokens {\\text{tokens}}$. Consequently, the tokenization mechanics scale seamlessly from small experimental setups to frontier regimes (\\text{K}-256\\text{K}$ vocabulary, \\text{B}+$ parameters, trillions of pre-training tokens).
+
+---
+
 ## 5. Conclusion
 
-We demonstrated that tokenizer design and language model capacity cannot be treated as independent components. Caliper's script-aware, entropy-guided tokenization moves the multilingual compression/predictability tradeoff frontier, providing an effective architectural compromise in the $32\text{K}$ regime.
+We demonstrated that tokenizer design and language model capacity cannot be treated as independent components. UniqToken's script-aware, entropy-guided tokenization moves the multilingual compression/predictability tradeoff frontier, providing an effective architectural compromise in the $32\text{K}$ regime.
