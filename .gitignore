@@ -1,3 +1,4 @@
+# Python bytecode & cache
 __pycache__/
 *.py[cod]
 *$py.class
@@ -6,14 +7,25 @@ __pycache__/
 .pytest_cache/
 .coverage
 htmlcov/
+
+# Build & packaging artifacts
 build/
 dist/
 *.egg-info/
+*.whl
+*.pyd
+*.so
+*.dylib
+
+# Rust target artifacts
+target/
+crates/**/target/
+crates/**/dist/
+
+# Logs & temp files
+*.log
+artifacts/
+saved_model/
 *.swp
 *.swo
 .DS_Store
-artifacts/
-saved_model/
-*.log
-target/
-caliper_core/target/

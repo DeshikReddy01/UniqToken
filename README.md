@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="banner.jpeg" alt="UniqToken Banner" width="100%">
+  <img src="assets/banner.jpeg" alt="UniqToken Banner" width="100%">
 </p>
 
 <p align="center">
