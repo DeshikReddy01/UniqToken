@@ -3,6 +3,14 @@
 use ahash::AHashMap;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
+use std::sync::{Arc, Mutex};
+
+/// Cached Viterbi segmentation of one chunk: (token, token_id, start, end) triples.
+pub(crate) type CachedSegmentation = Arc<Vec<(String, Option<u32>, usize, usize)>>;
+
+/// ponytail: cap is clear-all, not LRU; upgrade if eviction churn shows up.
+const SEG_CACHE_CAP: usize = 100_000;
+
 
 #[derive(Default, Clone)]
 pub struct TrieNode {
@@ -17,6 +25,10 @@ pub struct TrieNode {
 #[derive(Default, Clone)]
 pub struct RustPrefixTrie {
     root: TrieNode,
+    /// Word-level segmentation memoization, shared across Rayon workers.
+    /// Lives on the trie itself so it is invalidated automatically whenever
+    /// the vocabulary changes (Python builds a fresh RustPrefixTrie per vocab).
+    seg_cache: Arc<Mutex<AHashMap<(bool, String), CachedSegmentation>>>,
 }
 
 #[pymethods]
@@ -25,6 +37,7 @@ impl RustPrefixTrie {
     pub fn new() -> Self {
         Self {
             root: TrieNode::default(),
+            seg_cache: Arc::new(Mutex::new(AHashMap::with_capacity(8192))),
         }
     }
 
@@ -107,5 +120,24 @@ impl RustPrefixTrie {
             current = current.children.get(&ch)?;
         }
         current.is_terminal.then_some((current.token_id, current.log_p))
+    }
+
+    /// Looks up a cached segmentation. Keyed by (byte_fallback, chunk) since
+    /// both change the segmentation for a fixed vocabulary.
+    pub(crate) fn seg_cache_get(&self, byte_fallback: bool, chunk: &str) -> Option<CachedSegmentation> {
+        let key = (byte_fallback, chunk.to_string());
+        self.seg_cache.lock().ok()?.get(&key).cloned()
+    }
+
+    /// Stores a segmentation. The key is re-allocated on insert; lookups on
+    /// hot repeated chunks amortize this many times over.
+    pub(crate) fn seg_cache_put(&self, byte_fallback: bool, chunk: &str, seg: CachedSegmentation) {
+        if let Ok(mut cache) = self.seg_cache.lock() {
+            let key = (byte_fallback, chunk.to_string());
+            if !cache.contains_key(&key) && cache.len() >= SEG_CACHE_CAP {
+                cache.clear();
+            }
+            cache.insert(key, seg);
+        }
     }
 }

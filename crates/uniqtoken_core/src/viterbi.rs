@@ -1,13 +1,80 @@
 //! Native Viterbi decoding and forward-backward expectation algorithms.
 
-use crate::trie::RustPrefixTrie;
+use crate::trie::{CachedSegmentation, RustPrefixTrie};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use rayon::prelude::*;
 
 const DEFAULT_BYTE_LOG_P: f64 = -10.0;
+
+/// Chunks longer than this skip the segmentation cache: long chunks dominate
+/// cache memory while repeating far less often than short words.
+const SEG_CACHE_MAX_CHUNK_BYTES: usize = 1024;
+
+/// Word-level memoization wrapper around `viterbi_decode_chars`.
+///
+/// Real corpora are Zipfian — a handful of distinct words make up most chunks —
+/// so a cache hit (hash lookup + Arc clone) replaces the whole trie walk + DP.
+/// `max_edges_per_node` pruning is NOT cacheable; callers pass `None` here.
+pub(crate) fn decode_cached(
+    text: &str,
+    trie: &RustPrefixTrie,
+    byte_fallback: bool,
+) -> Result<CachedSegmentation, String> {
+    if text.is_empty() {
+        return Ok(Arc::new(Vec::new()));
+    }
+    if text.len() > SEG_CACHE_MAX_CHUNK_BYTES {
+        let chars: Vec<char> = text.chars().collect();
+        let spans = viterbi_decode_chars(&chars, trie, byte_fallback, None)?;
+        return Ok(Arc::new(
+            spans
+                .into_iter()
+                .map(|s| (s.token, s.token_id, s.start, s.end))
+                .collect(),
+        ));
+    }
+    if let Some(hit) = trie.seg_cache_get(byte_fallback, text) {
+        return Ok(hit);
+    }
+    let chars: Vec<char> = text.chars().collect();
+    let spans = viterbi_decode_chars(&chars, trie, byte_fallback, None)?;
+    let seg: CachedSegmentation = Arc::new(
+        spans
+            .into_iter()
+            .map(|s| (s.token, s.token_id, s.start, s.end))
+            .collect(),
+    );
+    trie.seg_cache_put(byte_fallback, text, seg.clone());
+    Ok(seg)
+}
+
+fn spans_from_cached(seg: &CachedSegmentation) -> Vec<ViterbiSpan> {
+    seg.iter()
+        .map(|(token, token_id, start, end)| ViterbiSpan {
+            token: token.clone(),
+            token_id: *token_id,
+            start: *start,
+            end: *end,
+        })
+        .collect()
+}
+
+fn tokens_from_cached(seg: &CachedSegmentation) -> Vec<String> {
+    seg.iter().map(|(token, ..)| token.clone()).collect()
+}
+
+fn ids_from_cached(seg: &CachedSegmentation) -> Result<Vec<u32>, String> {
+    seg.iter()
+        .map(|(token, token_id, ..)| {
+            token_id
+                .ok_or_else(|| format!("decoded token {token:?} has no integer ID"))
+        })
+        .collect()
+}
 
 #[derive(Clone, Debug)]
 struct TokenPiece {
@@ -243,9 +310,12 @@ pub fn rust_viterbi_decode(
             "max_edges_per_node must be greater than zero",
         ));
     }
+    if max_edges_per_node.is_none() {
+        let seg = decode_cached(text, trie, byte_fallback).map_err(PyValueError::new_err)?;
+        return Ok(spans_from_cached(&seg));
+    }
     let chars: Vec<char> = text.chars().collect();
-    viterbi_decode_chars(&chars, trie, byte_fallback, max_edges_per_node)
-        .map_err(PyValueError::new_err)
+    viterbi_decode_chars(&chars, trie, byte_fallback, max_edges_per_node).map_err(PyValueError::new_err)
 }
 
 /// Computes most probable segmentations for a batch of strings concurrently using Rayon (releases GIL).
@@ -263,14 +333,27 @@ pub fn rust_viterbi_decode_batch(
             "max_edges_per_node must be greater than zero",
         ));
     }
+    let decode_item = |text: &str| -> Result<Vec<ViterbiSpan>, String> {
+        if max_edges_per_node.is_none() {
+            decode_cached(text, trie, byte_fallback).map(|seg| spans_from_cached(&seg))
+        } else {
+            let chars: Vec<char> = text.chars().collect();
+            viterbi_decode_chars(&chars, trie, byte_fallback, max_edges_per_node)
+        }
+    };
+    // ponytail: rayon par_iter costs ~200us/call on Windows thread-pool wakeup;
+    // below ~32 items sequential beats it ~4x. Upgrade path: work-estimate
+    // (total bytes) instead of item count.
+    if texts.len() < 32 {
+        return texts
+            .iter()
+            .map(|text| decode_item(text).map_err(PyValueError::new_err))
+            .collect();
+    }
     py.allow_threads(|| {
         texts
             .par_iter()
-            .map(|text| {
-                let chars: Vec<char> = text.chars().collect();
-                viterbi_decode_chars(&chars, trie, byte_fallback, max_edges_per_node)
-                    .map_err(PyValueError::new_err)
-            })
+            .map(|text| decode_item(text).map_err(PyValueError::new_err))
             .collect()
     })
 }
@@ -290,15 +373,28 @@ pub fn rust_encode_tokens_batch(
             "max_edges_per_node must be greater than zero",
         ));
     }
+    let decode_item = |text: &str| -> Result<Vec<String>, String> {
+        if max_edges_per_node.is_none() {
+            decode_cached(text, trie, byte_fallback).map(|seg| tokens_from_cached(&seg))
+        } else {
+            let chars: Vec<char> = text.chars().collect();
+            viterbi_decode_chars(&chars, trie, byte_fallback, max_edges_per_node)
+                .map(|spans| spans.into_iter().map(|s| s.token).collect())
+        }
+    };
+    // ponytail: rayon par_iter costs ~200us/call on Windows thread-pool wakeup;
+    // below ~32 items sequential beats it ~4x. Upgrade path: work-estimate
+    // (total bytes) instead of item count.
+    if texts.len() < 32 {
+        return texts
+            .iter()
+            .map(|text| decode_item(text).map_err(PyValueError::new_err))
+            .collect();
+    }
     py.allow_threads(|| {
         texts
             .par_iter()
-            .map(|text| {
-                let chars: Vec<char> = text.chars().collect();
-                let spans = viterbi_decode_chars(&chars, trie, byte_fallback, max_edges_per_node)
-                    .map_err(PyValueError::new_err)?;
-                Ok(spans.into_iter().map(|s| s.token).collect())
-            })
+            .map(|text| decode_item(text).map_err(PyValueError::new_err))
             .collect()
     })
 }
@@ -318,14 +414,27 @@ pub fn rust_encode_ids_batch(
             "max_edges_per_node must be greater than zero",
         ));
     }
+    let decode_item = |text: &str| -> Result<Vec<u32>, String> {
+        if max_edges_per_node.is_none() {
+            decode_cached(text, trie, byte_fallback).and_then(|seg| ids_from_cached(&seg))
+        } else {
+            let chars: Vec<char> = text.chars().collect();
+            viterbi_ids_chars(&chars, trie, byte_fallback, max_edges_per_node)
+        }
+    };
+    // ponytail: rayon par_iter costs ~200us/call on Windows thread-pool wakeup;
+    // below ~32 items sequential beats it ~4x. Upgrade path: work-estimate
+    // (total bytes) instead of item count.
+    if texts.len() < 32 {
+        return texts
+            .iter()
+            .map(|text| decode_item(text).map_err(PyValueError::new_err))
+            .collect();
+    }
     py.allow_threads(|| {
         texts
             .par_iter()
-            .map(|text| {
-                let chars: Vec<char> = text.chars().collect();
-                viterbi_ids_chars(&chars, trie, byte_fallback, max_edges_per_node)
-                    .map_err(PyValueError::new_err)
-            })
+            .map(|text| decode_item(text).map_err(PyValueError::new_err))
             .collect()
     })
 }

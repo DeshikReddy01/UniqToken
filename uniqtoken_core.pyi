@@ -56,6 +56,30 @@ def rust_encode_text_batch(
     byte_fallback: bool = True,
     space_char: str = "\u2581",
 ) -> List[List[int]]: ...
+def rust_encode_text_native(
+    text: str,
+    trie: RustPrefixTrie,
+    byte_fallback: bool = True,
+    space_char: str = "\u2581",
+    normalize_unicode: bool = True,
+    normalize_unicode_spaces: bool = True,
+    normalize_punctuation: bool = False,
+    lowercase: bool = False,
+    collapse_whitespaces: bool = False,
+    strip_whitespace: bool = False,
+) -> List[str]: ...
+def rust_encode_text_native_batch(
+    texts: Sequence[str],
+    trie: RustPrefixTrie,
+    byte_fallback: bool = True,
+    space_char: str = "\u2581",
+    normalize_unicode: bool = True,
+    normalize_unicode_spaces: bool = True,
+    normalize_punctuation: bool = False,
+    lowercase: bool = False,
+    collapse_whitespaces: bool = False,
+    strip_whitespace: bool = False,
+) -> List[List[str]]: ...
 def rust_forward_backward_expectations(
     text: str,
     trie: RustPrefixTrie,

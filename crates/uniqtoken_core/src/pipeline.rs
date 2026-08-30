@@ -1,7 +1,9 @@
 //! High-performance native end-to-end normalization, pre-tokenization, and batch encoding pipeline.
 
+use crate::normalizer::rust_normalize;
 use crate::trie::RustPrefixTrie;
-use crate::viterbi::rust_viterbi_decode;
+use crate::viterbi::{decode_cached, rust_viterbi_decode};
+use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use rayon::prelude::*;
 use regex::Regex;
@@ -148,6 +150,166 @@ pub fn rust_encode_text_batch(
                     }
                 }
                 Ok(sentence_ids)
+            })
+            .collect()
+    })
+}
+
+/// Security gate for the fused native pipeline.
+///
+/// The Python pipeline runs `SecurityShield.sanitize` (NFKC + control-token
+/// policy) before normalization. When the NFKC-canonicalized text cannot
+/// contain control-token syntax, sanitize is provably the identity and the
+/// native pipeline is exactly equivalent; otherwise bail out so Python handles
+/// escaping/raising. Private-use metaspace escape characters also belong to
+/// the Python Normalizer's escape dance.
+fn native_security_gate(text: &str, normalize_unicode: bool) -> PyResult<()> {
+    if text.contains('\u{E000}') || text.contains('\u{E001}') {
+        return Err(PyValueError::new_err(
+            "text contains private-use metaspace escape characters; use the Python pipeline",
+        ));
+    }
+    if normalize_unicode {
+        // NFKC can synthesize '<' or '|' from fullwidth/compatibility chars
+        // (e.g. '＜' U+FF1C -> '<', '｜' U+FF5C -> '|'), so the check must run
+        // on the canonical form. NFKC is idempotent; the second pass inside
+        // rust_normalize is negligible.
+        let canonical: String = text.nfkc().collect();
+        if canonical.contains("<|") {
+            return Err(PyValueError::new_err(
+                "text contains control-token syntax after NFKC; use the Python pipeline",
+            ));
+        }
+    } else if text.contains("<|") {
+        return Err(PyValueError::new_err(
+            "text contains control-token syntax; use the Python pipeline",
+        ));
+    }
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn encode_text_native_inner(
+    text: &str,
+    trie: &RustPrefixTrie,
+    byte_fallback: bool,
+    space_char: char,
+    normalize_unicode: bool,
+    normalize_unicode_spaces: bool,
+    normalize_punctuation: bool,
+    lowercase: bool,
+    collapse_whitespaces: bool,
+    strip_whitespace: bool,
+) -> PyResult<Vec<String>> {
+    native_security_gate(text, normalize_unicode)?;
+    let normalized = rust_normalize(
+        text,
+        space_char,
+        normalize_unicode,
+        normalize_unicode_spaces,
+        normalize_punctuation,
+        lowercase,
+        collapse_whitespaces,
+        strip_whitespace,
+    )?;
+    let re = get_full_pretok_regex();
+    let mut tokens: Vec<String> = Vec::new();
+    for m in re.find_iter(&normalized) {
+        let seg = decode_cached(m.as_str(), trie, byte_fallback).map_err(PyValueError::new_err)?;
+        tokens.extend(seg.iter().map(|(token, ..)| token.clone()));
+    }
+    Ok(tokens)
+}
+
+/// Fused single-text encode: normalize + full pre-tokenizer regex + Viterbi in
+/// ONE FFI crossing. Only equivalent to the Python pipeline when the caller
+/// gates on the same config the Python path would use (see
+/// `CustomTokenizer._native_pipeline_kwargs`); this function additionally
+/// refuses texts that would need security-shield escaping.
+#[pyfunction]
+#[allow(clippy::too_many_arguments)]
+#[pyo3(signature = (text, trie, byte_fallback=true, space_char='\u{2581}', normalize_unicode=true, normalize_unicode_spaces=true, normalize_punctuation=false, lowercase=false, collapse_whitespaces=false, strip_whitespace=false))]
+pub fn rust_encode_text_native(
+    text: &str,
+    trie: &RustPrefixTrie,
+    byte_fallback: bool,
+    space_char: char,
+    normalize_unicode: bool,
+    normalize_unicode_spaces: bool,
+    normalize_punctuation: bool,
+    lowercase: bool,
+    collapse_whitespaces: bool,
+    strip_whitespace: bool,
+) -> PyResult<Vec<String>> {
+    encode_text_native_inner(
+        text,
+        trie,
+        byte_fallback,
+        space_char,
+        normalize_unicode,
+        normalize_unicode_spaces,
+        normalize_punctuation,
+        lowercase,
+        collapse_whitespaces,
+        strip_whitespace,
+    )
+}
+
+/// Fused batch encode: one FFI + Rayon across texts. On any per-text rejection
+/// (e.g. control-token syntax) the whole batch errors so the caller can fall
+/// back to the Python pipeline wholesale.
+#[pyfunction]
+#[allow(clippy::too_many_arguments)]
+#[pyo3(signature = (texts, trie, byte_fallback=true, space_char='\u{2581}', normalize_unicode=true, normalize_unicode_spaces=true, normalize_punctuation=false, lowercase=false, collapse_whitespaces=false, strip_whitespace=false))]
+pub fn rust_encode_text_native_batch(
+    py: Python<'_>,
+    texts: Vec<String>,
+    trie: &RustPrefixTrie,
+    byte_fallback: bool,
+    space_char: char,
+    normalize_unicode: bool,
+    normalize_unicode_spaces: bool,
+    normalize_punctuation: bool,
+    lowercase: bool,
+    collapse_whitespaces: bool,
+    strip_whitespace: bool,
+) -> PyResult<Vec<Vec<String>>> {
+    // ponytail: same sequential-below-32 rule as the raw batch functions.
+    if texts.len() < 32 {
+        return texts
+            .iter()
+            .map(|text| {
+                encode_text_native_inner(
+                    text,
+                    trie,
+                    byte_fallback,
+                    space_char,
+                    normalize_unicode,
+                    normalize_unicode_spaces,
+                    normalize_punctuation,
+                    lowercase,
+                    collapse_whitespaces,
+                    strip_whitespace,
+                )
+            })
+            .collect();
+    }
+    py.allow_threads(|| {
+        texts
+            .par_iter()
+            .map(|text| {
+                encode_text_native_inner(
+                    text,
+                    trie,
+                    byte_fallback,
+                    space_char,
+                    normalize_unicode,
+                    normalize_unicode_spaces,
+                    normalize_punctuation,
+                    lowercase,
+                    collapse_whitespaces,
+                    strip_whitespace,
+                )
             })
             .collect()
     })
