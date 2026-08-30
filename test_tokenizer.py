@@ -148,6 +148,17 @@ class CustomTokenizerTests(unittest.TestCase):
             self.tokenizer,
         )
 
+    def test_vocabulary_adapter_compaction_produces_contiguous_ids(self):
+        compacted, remap = VocabularyAdapter.compact_vocabulary(self.tokenizer)
+        self.assertEqual(len(compacted.model.token_to_id), len(self.model.token_to_id))
+        self.assertEqual(sorted(compacted.model.id_to_token.keys()), list(range(len(self.model.token_to_id))))
+        self.assertEqual(len(remap), len(self.model.token_to_id))
+
+    def test_trie_clear_seg_cache(self):
+        if hasattr(self.model, "_rust_trie") and self.model._rust_trie is not None:
+            self.model._rust_trie.clear_seg_cache()
+            self.assertEqual(self.model._rust_trie.seg_cache_len(), 0)
+
 
 class LatticeTests(unittest.TestCase):
     def test_rejects_invalid_sampling_temperature(self):

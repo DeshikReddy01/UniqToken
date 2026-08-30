@@ -89,6 +89,18 @@ impl RustPrefixTrie {
     pub fn contains(&self, token: &str) -> bool {
         self.exact_metadata(token).is_some()
     }
+
+    /// Clears the shared word-level segmentation memoization cache.
+    pub fn clear_seg_cache(&self) {
+        if let Ok(mut cache) = self.seg_cache.lock() {
+            cache.clear();
+        }
+    }
+
+    /// Returns the number of cached segmentations.
+    pub fn seg_cache_len(&self) -> usize {
+        self.seg_cache.lock().map(|c| c.len()).unwrap_or(0)
+    }
 }
 
 impl RustPrefixTrie {

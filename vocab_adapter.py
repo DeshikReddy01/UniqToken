@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import math
 from collections import Counter
-from typing import List, Set
+from typing import Dict, List, Set, Tuple
 
 from seed_builder import SeedVocabularyBuilder
 from tokenizer import CustomTokenizer
@@ -118,3 +118,40 @@ class VocabularyAdapter:
             pre_tokenizer=pre_tokenizer,
             model=updated_model,
         )
+
+    @classmethod
+    def compact_vocabulary(cls, tokenizer: CustomTokenizer) -> Tuple[CustomTokenizer, Dict[int, int]]:
+        """
+        Compacts sparse or extended vocabulary IDs into a contiguous range [0..N-1].
+        Returns the compacted tokenizer and a mapping from old_token_id to new_token_id
+        for migrating neural embedding matrices.
+        """
+        old_model = tokenizer.model
+        sorted_tokens = sorted(old_model.token_to_id.keys(), key=lambda t: old_model.token_to_id[t])
+
+        new_token_to_id: Dict[str, int] = {}
+        new_id_to_token: Dict[int, str] = {}
+        remap_dict: Dict[int, int] = {}
+
+        for new_id, tok in enumerate(sorted_tokens):
+            old_id = old_model.token_to_id[tok]
+            new_token_to_id[tok] = new_id
+            new_id_to_token[new_id] = tok
+            remap_dict[old_id] = new_id
+
+        compacted_model = UnigramModel(
+            vocab=dict(old_model.vocab),
+            token_to_id=new_token_to_id,
+            id_to_token=new_id_to_token,
+            special_tokens=list(old_model.special_tokens),
+            max_subword_len=old_model.max_subword_len,
+            byte_fallback=old_model.byte_fallback,
+            unk_token=old_model.unk_token,
+        )
+
+        compacted_tok = CustomTokenizer(
+            normalizer=tokenizer.normalizer,
+            pre_tokenizer=tokenizer.pre_tokenizer,
+            model=compacted_model,
+        )
+        return compacted_tok, remap_dict

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import functools
 import re
 import unicodedata
 import difflib
@@ -267,6 +268,12 @@ class Normalizer:
         return "".join(restored)
 
 
+@functools.lru_cache(maxsize=128)
+def _get_cached_regex(pattern: str) -> re.Pattern[str]:
+    """Compiles and memoizes regular expression patterns across pre-tokenizer instances."""
+    return re.compile(pattern)
+
+
 class RegexPreTokenizer:
     """
     Offset-preserving, regex-based Pre-Tokenizer.
@@ -368,7 +375,7 @@ class RegexPreTokenizer:
         )
 
         combined_pattern = "|".join(f"(?:{p})" for p in self.patterns)
-        self.regex = re.compile(combined_pattern)
+        self.regex = _get_cached_regex(combined_pattern)
 
     def pre_tokenize_iter(
         self,
