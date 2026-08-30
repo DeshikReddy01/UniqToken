@@ -5,6 +5,18 @@ from collections import Counter, deque
 from dataclasses import dataclass
 from typing import Deque, Dict, Iterable, List, Optional, Set, Tuple
 
+# Module-level Rust core alias, preferring the repo's own crate name. Kept in
+# one place so inner functions never `import caliper_core` (a stale
+# site-packages module whose RustPrefixTrie class is a *different* type).
+try:
+    import uniqtoken_core as caliper_core
+except ImportError:
+    try:
+        import caliper_core  # type: ignore[no-redef]
+    except ImportError:
+        caliper_core = None  # type: ignore[assignment]
+
+
 
 @dataclass(frozen=True)
 class SeedToken:
@@ -192,19 +204,22 @@ class SeedVocabularyBuilder:
         if self.min_boundary_entropy is not None:
             counts, _ = self.mine_ngrams_with_entropy(chunk_counts)
             return counts
-        # ponytail: Rust &str slice + AHashMap if available; Python fallback exact
-        try:
-            import caliper_core
-
-            if hasattr(caliper_core, "rust_mine_ngrams"):
-                rust_res = caliper_core.rust_mine_ngrams(
-                    dict(chunk_counts),
-                    self.max_ngram_length,
-                    set(self.special_tokens) if self.special_tokens else None,
-                )
-                return Counter(rust_res)
-        except (ImportError, AttributeError, ValueError, TypeError):
-            pass
+        # ponytail: Rust &str slice + AHashMap if available; Python fallback exact.
+        # Reuse the module-level uniqtoken_core alias (imported as caliper_core);
+        # importing the stale site-packages `caliper_core` here would bypass the
+        # repo's own Rust core and break class-identity for shared types.
+        core = caliper_core if caliper_core is not None else None
+        if core is not None:
+            try:
+                if hasattr(core, "rust_mine_ngrams"):
+                    rust_res = core.rust_mine_ngrams(
+                        dict(chunk_counts),
+                        self.max_ngram_length,
+                        set(self.special_tokens) if self.special_tokens else None,
+                    )
+                    return Counter(rust_res)
+            except (ImportError, AttributeError, ValueError, TypeError):
+                pass
         ngram_counts: Counter[str] = Counter()
         default_max = self.max_ngram_length
         for chunk, chunk_freq in chunk_counts.items():

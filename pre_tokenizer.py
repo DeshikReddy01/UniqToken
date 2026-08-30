@@ -397,6 +397,24 @@ class RegexPreTokenizer:
                 )
             yield PreToken(text=match.group(0), start=start, end=end, raw_span=raw_span)
 
+    @property
+    def _native_pretok_parity(self) -> bool:
+        """True when this config is exactly the native Rust pre-tokenizer regex.
+
+        The native regex hardcodes: hex literals ON, unbounded digit runs, the
+        default special-token pattern and the default metaspace char. Any other
+        config must use the Python regex or the two would diverge.
+        """
+        return (
+            self.space_char == "\u2581"
+            and not self.split_digits
+            and self.split_punctuation
+            and self.keep_special_tokens
+            and self.special_token_pattern == r"<\|[^\s|]+\|>"
+            and self.hex_literals
+            and self.digit_chunk_size is None
+        )
+
     def pre_tokenize(self, text: str) -> List[str]:
         """
         Returns a flat list of pre-tokenized chunk strings.
@@ -404,14 +422,7 @@ class RegexPreTokenizer:
         if not isinstance(text, str):
             raise TypeError(f"text must be a string, got {type(text).__name__}")
         # ponytail: Rust pre_tokenize for default config; Python fallback exact
-        if (
-            _HAS_RUST_NORM
-            and self.space_char == "\u2581"
-            and not self.split_digits
-            and self.split_punctuation
-            and self.keep_special_tokens
-            and self.special_token_pattern == r"<\|[^\s|]+\|>"
-        ):
+        if _HAS_RUST_NORM and self._native_pretok_parity:
             assert _caliper_core is not None
             try:
                 return _caliper_core.rust_pre_tokenize(text)

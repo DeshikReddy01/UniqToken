@@ -68,19 +68,38 @@ def run_throughput_benchmark(num_sentences: int = 5000) -> None:
     batch_tokens_count = sum(len(seq) for seq in batch_enc.input_ids)
     rate_batch = batch_tokens_count / max(t_batch, 1e-6)
 
+    # Measure Caliper Fused Native Pipeline (one FFI: normalize+pretokenize+Viterbi+IDs)
+    t0 = time.perf_counter()
+    native_ids = tok.encode_to_ids_batch(texts)
+    t_native = time.perf_counter() - t0
+    native_tokens_count = sum(len(seq) for seq in native_ids)
+    rate_native = native_tokens_count / max(t_native, 1e-6)
+
     # Measure Caliper Pure Native Rayon Batch (Zero-Copy Integer Stream)
     rate_raw_rayon = 0.0
     raw_rayon_count = 0
     t_raw_rayon = 0.0
     try:
-        import caliper_core
+        import uniqtoken_core as caliper_core
+    except ImportError:
+        import caliper_core  # type: ignore[no-redef]
 
+    try:
         rust_trie = tok.model._get_rust_trie()
         if rust_trie is not None:
+            # rust_encode_ids_batch expects pre-tokenized chunks (exactly what
+            # tok.encode feeds the model) — NOT raw sentences. Include the
+            # Python normalize/pre-tokenize time in the reported rate.
             t0 = time.perf_counter()
-            raw_ids = caliper_core.rust_encode_ids_batch(texts, rust_trie, tok.model.byte_fallback)
-            t_raw_rayon = time.perf_counter() - t0
-            raw_rayon_count = sum(len(x) for x in raw_ids)
+            flat_chunks: List[str] = []
+            for t in texts:
+                flat_chunks.extend(tok.pre_tokenizer.pre_tokenize(tok.normalizer.normalize(t)))
+            t_prep = time.perf_counter() - t0
+            t0 = time.perf_counter()
+            chunk_ids = caliper_core.rust_encode_ids_batch(flat_chunks, rust_trie, tok.model.byte_fallback)
+            t_enc = time.perf_counter() - t0
+            t_raw_rayon = t_prep + t_enc
+            raw_rayon_count = sum(len(x) for x in chunk_ids)
             rate_raw_rayon = raw_rayon_count / max(t_raw_rayon, 1e-6)
     except Exception as e:
         print(f"Raw Rayon error: {e}")
@@ -160,6 +179,7 @@ def run_throughput_benchmark(num_sentences: int = 5000) -> None:
     # Compute MB/s rates
     mb_s_single = mb_total / max(t_single, 1e-6)
     mb_s_batch = mb_total / max(t_batch, 1e-6)
+    mb_s_native = mb_total / max(t_native, 1e-6) if t_native > 0 else 0.0
     mb_s_raw = mb_total / max(t_raw_rayon, 1e-6) if t_raw_rayon > 0 else 0.0
     mb_s_hf = mb_total / max(t_hf, 1e-6) if t_hf > 0 else 0.0
     mb_s_sp = mb_total / max(t_sp, 1e-6) if t_sp > 0 else 0.0
@@ -175,6 +195,10 @@ def run_throughput_benchmark(num_sentences: int = 5000) -> None:
     print(
         f"{'Caliper (Collator + Rayon Spans)':<30} | {batch_tokens_count:<8} | {total_input_bytes / max(batch_tokens_count, 1):<6.2f} | {t_batch:<9.4f} | {rate_batch:>12,.0f} tok/s | {mb_s_batch:>8.2f} MB/s | {f'{rate_batch / max(rate_single, 1e-6):.2f}x':<10}"
     )
+    if rate_native > 0:
+        print(
+            f"{'Caliper (Fused Native Pipeline)':<30} | {native_tokens_count:<8} | {total_input_bytes / max(native_tokens_count, 1):<6.2f} | {t_native:<9.4f} | {rate_native:>12,.0f} tok/s | {mb_s_native:>8.2f} MB/s | {f'{rate_native / max(rate_single, 1e-6):.2f}x':<10}"
+        )
     if rate_raw_rayon > 0:
         print(
             f"{'Caliper (Rayon Parallel Stream)':<30} | {raw_rayon_count:<8} | {total_input_bytes / max(raw_rayon_count, 1):<6.2f} | {t_raw_rayon:<9.4f} | {rate_raw_rayon:>12,.0f} tok/s | {mb_s_raw:>8.2f} MB/s | {f'{rate_raw_rayon / max(rate_single, 1e-6):.2f}x':<10}"

@@ -5,7 +5,7 @@ import os
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional, Sequence, Set, Tuple, Union
+from typing import Any, Dict, List, Optional, Sequence, Set, Tuple, Union
 
 from bpe_model import BPEModel
 from byte_codec import ByteFallbackEngine
@@ -15,6 +15,17 @@ from security_shield import SecurityShield
 from seed_builder import SeedVocabularyBuilder
 from streaming_decoder import StreamingDecoder
 from unigram_trainer import UnigramModel, UnigramTrainer
+
+# Native Rust core, preferring the repo's own crate name. Kept at module level
+# so inner functions never `import caliper_core` (the stale site-packages
+# module has incompatible class identity).
+try:
+    import uniqtoken_core as _native_core
+except ImportError:
+    try:
+        import caliper_core as _native_core  # type: ignore[no-redef]
+    except ImportError:
+        _native_core = None  # type: ignore[assignment]
 
 
 @dataclass(frozen=True)
@@ -63,6 +74,8 @@ class CustomTokenizer:
         self.security = SecurityShield(special_tokens=self.model.special_tokens)
         self._cross_word_set: Optional[frozenset[str]] = None
         self._cross_word_model_id: Optional[int] = id(self.model)
+        self._specials_pipe_form: Optional[bool] = None
+        self._specials_model_id: Optional[int] = None
 
     @property
     def vocab_size(self) -> int:
@@ -110,6 +123,69 @@ class CustomTokenizer:
             self._cross_word_set = frozenset(t for t in self.model.vocab if sc in t and t.index(sc) > 0 and t.strip(sc))
             self._cross_word_model_id = id(self.model)
         return self._cross_word_set
+
+    def _special_tokens_contain_pipe_marker(self) -> bool:
+        """True when every special token contains the literal ``<|``.
+
+        This is the exact condition under which text containing a special token
+        necessarily contains ``<|`` in its NFKC-canonical form — which is what
+        the native pipeline's security gate keys on. Cached per model object
+        like ``_cross_word_tokens``.
+        """
+        if self._specials_pipe_form is None or self._specials_model_id != id(self.model):
+            self._specials_pipe_form = all("<|" in tok for tok in self.model.special_tokens)
+            self._specials_model_id = id(self.model)
+        return self._specials_pipe_form
+
+    def _native_pipeline_kwargs(self) -> Optional[Dict[str, Any]]:
+        """Kwargs for the fused native pipeline, or None when any configured
+        stage would diverge from the native implementation.
+
+        The native path replaces the Python SecurityShield/normalizer/
+        pre-tokenizer/Viterbi stages with one Rust call, so it is only taken
+        when every stage is provably equivalent:
+        - no indent compression, no SuperBPE cross-word merges
+        - all special tokens contain ``<|`` (see _special_tokens_contain_pipe_marker)
+        - normalizer config expressible by the native normalizer (no casefold)
+        - pre-tokenizer config exactly matches the native regex
+        - the native side additionally refuses any text whose NFKC form could
+          contain control-token syntax, falling back to the full Python path
+        """
+        if _native_core is None or not hasattr(_native_core, "rust_encode_text_native"):
+            return None
+        if self._indent_compression_enabled or self._cross_word_tokens():
+            return None
+        if not self._special_tokens_contain_pipe_marker():
+            return None
+        normalizer = self.normalizer
+        if normalizer.casefold or not self.pre_tokenizer._native_pretok_parity:
+            return None
+        return {
+            "space_char": normalizer.space_char,
+            "normalize_unicode": normalizer.normalize_unicode,
+            "normalize_unicode_spaces": normalizer.normalize_unicode_spaces,
+            "normalize_punctuation": normalizer.normalize_punctuation,
+            "lowercase": normalizer.lowercase,
+            "collapse_whitespaces": normalizer.collapse_whitespaces,
+            "strip_whitespace": normalizer.strip_whitespace,
+        }
+
+    def _encode_tokens_native_batch(self, texts: Sequence[str]) -> Optional[List[List[str]]]:
+        """Batch-encode via the fused native pipeline (one FFI, Rayon across
+        texts). Returns None whenever the caller must use the Python pipeline."""
+        kwargs = self._native_pipeline_kwargs()
+        if kwargs is None or not hasattr(_native_core, "rust_encode_text_native_batch"):
+            return None
+        assert _native_core is not None
+        rust_trie = self.model._get_rust_trie()
+        if rust_trie is None:
+            return None
+        try:
+            return _native_core.rust_encode_text_native_batch(
+                list(texts), rust_trie, self.model.byte_fallback, **kwargs
+            )
+        except (ValueError, TypeError, AttributeError):
+            return None
 
     def _apply_cross_word_merges(self, tokens: List[str]) -> List[str]:
         """Greedily fuses adjacent tokens until no SuperBPE merge remains."""
@@ -286,6 +362,24 @@ class CustomTokenizer:
             raise TypeError(f"text must be a string, got {type(text).__name__}")
         if not text:
             return []
+
+        # Fused native fast path: sanitize (identity here), normalization,
+        # pre-tokenization and Viterbi all happen in ONE FFI call. The Rust
+        # side re-checks the security gate (NFKC-canonical "<|") and raises,
+        # falling back to the full Python pipeline below.
+        native_kwargs = self._native_pipeline_kwargs()
+        if native_kwargs is not None and allowed_special == "none" and disallowed_special_action == "escape":
+            assert _native_core is not None
+            rust_trie = self.model._get_rust_trie()
+            if rust_trie is None:
+                native_kwargs = None
+            else:
+                try:
+                    return _native_core.rust_encode_text_native(
+                        text, rust_trie, self.model.byte_fallback, **native_kwargs
+                    )
+                except (ValueError, TypeError, AttributeError):
+                    pass  # control-token syntax or unavailable native core → Python path
 
         sanitized_text = self._prepare_text(
             text,
@@ -469,6 +563,19 @@ class CustomTokenizer:
             return []
         if num_workers is not None and num_workers < 1:
             raise ValueError(f"num_workers must be >= 1 (or None), got {num_workers}")
+
+        # Fused native batch: one FFI + Rayon. Only when the whole batch can be
+        # proven equivalent to the per-text Python path (gates below).
+        if (
+            allowed_special == "none"
+            and disallowed_special_action == "escape"
+            and (num_workers is None or num_workers > 1)
+        ):
+            native_tokens = self._encode_tokens_native_batch(texts)
+            if native_tokens is not None:
+                token_to_id = self.model.token_to_id
+                unk_id = token_to_id.get(self.model.unk_token, 0)
+                return [[token_to_id.get(tok, unk_id) for tok in toks] for toks in native_tokens]
 
         if len(texts) <= 64 or num_workers == 1:
             return [

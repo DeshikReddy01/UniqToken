@@ -81,12 +81,21 @@ class BatchCollator:
         batch_tokens: List[List[str]] = []
         unk_id = self.tokenizer.model.token_to_id.get(self.tokenizer.model.unk_token, 0)
 
+        # Native fused batch path: one FFI for normalize+pre-tokenize+Viterbi
+        # across all texts (see CustomTokenizer._encode_tokens_native_batch).
+        # Only used when the native pipeline is provably identical to the
+        # per-text Python path and sampling is not requested.
+        native_tokens = self.tokenizer._encode_tokens_native_batch(texts) if not sample else None
+
         # Keep this path identical to tokenizer.encode/sample, including
         # security policy, normalization, pre-tokenization, and cross-word
         # merges. Native trie decoding has a different contract for these
         # transformations and can silently produce divergent IDs.
-        for text in texts:
-            tokens = self.tokenizer.sample(text, alpha=alpha) if sample else self.tokenizer.encode(text)
+        for idx, text in enumerate(texts):
+            if native_tokens is not None:
+                tokens = native_tokens[idx]
+            else:
+                tokens = self.tokenizer.sample(text, alpha=alpha) if sample else self.tokenizer.encode(text)
             ids = [self.tokenizer.model.token_to_id.get(t, unk_id) for t in tokens]
 
             # Truncate content FIRST (reserving room for specials), so BOS/EOS

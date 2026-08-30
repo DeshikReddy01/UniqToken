@@ -180,24 +180,27 @@ class UnigramModel:
         # ponytail: batch cuts 4600→100 FFI/cache checks; Rust batch when compiled else hoisted Python
         rust_trie = self._get_rust_trie()
         if rust_trie is not None:
-            try:
-                import caliper_core
-
-                # ponytail: rust_encode_tokens_batch returns Vec<Vec<String>> directly — no ViterbiSpan wrapper, single FFI
-                if hasattr(caliper_core, "rust_encode_tokens_batch"):
-                    # ponytail: no span cache for token-only batch; encode_with_spans will compute exact spans on miss
-                    return caliper_core.rust_encode_tokens_batch(chunks, rust_trie, self.byte_fallback)
-                batch_spans = caliper_core.rust_viterbi_decode_batch(chunks, rust_trie, self.byte_fallback)
-                res: List[List[str]] = []
-                cache = self._get_seg_cache()
-                for chunk, rust_span_list in zip(chunks, batch_spans):
-                    lst = [s.token for s in rust_span_list]
-                    if len(chunk) <= 64 and len(cache) < self._MAX_CACHE_SIZE and chunk not in cache:
-                        cache[chunk] = [(s.token, s.start, s.end) for s in rust_span_list]
-                    res.append(lst)
-                return res
-            except (ImportError, AttributeError, ValueError):
-                pass
+            # caliper_core is the module-level alias for uniqtoken_core (or None);
+            # do NOT re-import `caliper_core` here — the stale site-packages
+            # module would reject this module's RustPrefixTrie instances.
+            core = caliper_core
+            if core is not None:
+                try:
+                    # ponytail: rust_encode_tokens_batch returns Vec<Vec<String>> directly — no ViterbiSpan wrapper, single FFI
+                    if hasattr(core, "rust_encode_tokens_batch"):
+                        # ponytail: no span cache for token-only batch; encode_with_spans will compute exact spans on miss
+                        return core.rust_encode_tokens_batch(chunks, rust_trie, self.byte_fallback)
+                    batch_spans = core.rust_viterbi_decode_batch(chunks, rust_trie, self.byte_fallback)
+                    res: List[List[str]] = []
+                    cache = self._get_seg_cache()
+                    for chunk, rust_span_list in zip(chunks, batch_spans):
+                        lst = [s.token for s in rust_span_list]
+                        if len(chunk) <= 64 and len(cache) < self._MAX_CACHE_SIZE and chunk not in cache:
+                            cache[chunk] = [(s.token, s.start, s.end) for s in rust_span_list]
+                        res.append(lst)
+                    return res
+                except (ImportError, AttributeError, ValueError):
+                    pass
         # Python fallback — hoisted trie/cache
         cache = self._get_seg_cache()
         trie = self._get_trie()
