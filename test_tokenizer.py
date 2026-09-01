@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import math
+import struct
 import unittest
 from math import log
 from pathlib import Path
@@ -18,7 +19,13 @@ from multimodal.multimodal_tokenizer import MultimodalTokenizer, ImageElement
 from multimodal.audio_codec import ResidualVectorQuantizer, AudioSegment
 from trie import PrefixTrie
 from bpe_trainer import BPETrainer
-from hf_exporter import HuggingFaceExporter
+from hf_exporter import (
+    GGUFExporter,
+    GGUFTokenType,
+    HuggingFaceExporter,
+    extract_gguf_metadata,
+    extract_gguf_scores,
+)
 from indentation_compressor import IndentationCompressor
 from security_shield import SecurityShield
 from seed_builder import SeedVocabularyBuilder
@@ -1254,6 +1261,158 @@ class PhaseTwoOptimizationTests(unittest.TestCase):
             self.assertGreater(r.total_tokens, 0)
             self.assertGreater(r.bytes_per_token, 0.0)
             self.assertGreater(r.effective_bytes_in_2k_context, 0)
+
+
+class GGUFExportTests(unittest.TestCase):
+    def setUp(self):
+        self.vocab = {
+            "<|unk|>": -10.0,
+            "<|bos|>": -10.0,
+            "<|eos|>": -10.0,
+            "<|pad|>": -10.0,
+            "<0x41>": -5.5,
+            "<0x0A>": -6.25,
+            "hello": math.log(0.4),
+            "world": math.log(0.3),
+            "uniq": -2.71828,
+            "token": -1.41421,
+        }
+        self.token_to_id = {token: idx for idx, token in enumerate(self.vocab)}
+        self.id_to_token = {idx: token for token, idx in self.token_to_id.items()}
+        self.model = UnigramModel(
+            vocab=self.vocab,
+            token_to_id=self.token_to_id,
+            id_to_token=self.id_to_token,
+            special_tokens=["<|unk|>", "<|bos|>", "<|eos|>", "<|pad|>"],
+            max_subword_len=5,
+            byte_fallback=True,
+            unk_token="<|unk|>",
+        )
+        self.tokenizer = CustomTokenizer(
+            normalizer=Normalizer(),
+            pre_tokenizer=RegexPreTokenizer(),
+            model=self.model,
+        )
+
+    def test_gguf_dict_generation(self):
+        meta = HuggingFaceExporter.export_to_gguf_dict(self.tokenizer)
+        self.assertEqual(meta["tokenizer.ggml.model"], "llama")
+
+        tokens = meta["tokenizer.ggml.tokens"]
+        scores = meta["tokenizer.ggml.scores"]
+        token_types = meta["tokenizer.ggml.token_type"]
+
+        self.assertEqual(len(tokens), len(self.vocab))
+        self.assertEqual(len(scores), len(self.vocab))
+        self.assertEqual(len(token_types), len(self.vocab))
+
+        # Contiguous tokens in ID order
+        for idx, tok in enumerate(tokens):
+            self.assertEqual(tok, self.id_to_token[idx])
+            self.assertAlmostEqual(scores[idx], self.vocab[tok], places=5)
+
+        # Verify token types
+        token_type_map = dict(zip(tokens, token_types))
+        self.assertEqual(token_type_map["<|unk|>"], GGUFTokenType.UNKNOWN)
+        self.assertEqual(token_type_map["<|bos|>"], GGUFTokenType.CONTROL)
+        self.assertEqual(token_type_map["<|eos|>"], GGUFTokenType.CONTROL)
+        self.assertEqual(token_type_map["<|pad|>"], GGUFTokenType.CONTROL)
+        self.assertEqual(token_type_map["<0x41>"], GGUFTokenType.BYTE)
+        self.assertEqual(token_type_map["<0x0A>"], GGUFTokenType.BYTE)
+        self.assertEqual(token_type_map["hello"], GGUFTokenType.NORMAL)
+        self.assertEqual(token_type_map["world"], GGUFTokenType.NORMAL)
+
+        # Verify special token IDs
+        self.assertEqual(meta["tokenizer.ggml.bos_token_id"], self.token_to_id["<|bos|>"])
+        self.assertEqual(meta["tokenizer.ggml.eos_token_id"], self.token_to_id["<|eos|>"])
+        self.assertEqual(meta["tokenizer.ggml.unknown_token_id"], self.token_to_id["<|unk|>"])
+        self.assertEqual(meta["tokenizer.ggml.padding_token_id"], self.token_to_id["<|pad|>"])
+
+    def test_gguf_round_trip_score_extraction(self):
+        # 1. Round-trip in-memory bytes
+        gguf_bytes = self.tokenizer.export_to_gguf()
+        self.assertIsInstance(gguf_bytes, bytes)
+        self.assertGreater(len(gguf_bytes), 24)
+
+        extracted_scores = extract_gguf_scores(gguf_bytes)
+        self.assertEqual(len(extracted_scores), len(self.vocab))
+
+        for tok, orig_score in self.vocab.items():
+            self.assertIn(tok, extracted_scores)
+            extracted_score = extracted_scores[tok]
+            self.assertAlmostEqual(
+                extracted_score,
+                orig_score,
+                places=5,
+                msg=f"Score mismatch for token {tok!r}: expected {orig_score}, got {extracted_score}",
+            )
+
+        # 2. Round-trip file persistence
+        with TemporaryDirectory() as tmp_dir:
+            gguf_path = Path(tmp_dir) / "test_model.gguf"
+            HuggingFaceExporter.save_gguf(self.tokenizer, gguf_path)
+            self.assertTrue(gguf_path.exists())
+            self.assertGreater(gguf_path.stat().st_size, 24)
+
+            file_scores = extract_gguf_scores(gguf_path)
+            self.assertEqual(len(file_scores), len(self.vocab))
+            for tok, orig_score in self.vocab.items():
+                self.assertAlmostEqual(file_scores[tok], orig_score, places=5)
+
+            # Also verify full metadata extraction from file
+            metadata = extract_gguf_metadata(gguf_path)
+            self.assertEqual(metadata["tokenizer.ggml.model"], "llama")
+            self.assertEqual(metadata["tokenizer.ggml.tokens"], list(self.token_to_id.keys()))
+            self.assertEqual(metadata["tokenizer.ggml.unknown_token_id"], self.token_to_id["<|unk|>"])
+
+    def test_gguf_non_contiguous_ids_rejected(self):
+        sparse_token_to_id = {"a": 0, "b": 2}
+        sparse_model = UnigramModel(
+            vocab={"a": -1.0, "b": -2.0},
+            token_to_id=sparse_token_to_id,
+            id_to_token={0: "a", 2: "b"},
+            special_tokens=[],
+            byte_fallback=False,
+        )
+        sparse_tok = CustomTokenizer(Normalizer(), RegexPreTokenizer(), sparse_model)
+        with self.assertRaises(ValueError):
+            HuggingFaceExporter.export_to_gguf_dict(sparse_tok)
+
+    def test_gguf_user_defined_and_fallback_scores(self):
+        vocab = {"<|user_flag|>": -0.5, "unscored_special": -10.0}
+        # Note: 'unscored_special' is NOT in model.vocab, will trigger default score -10.0
+        model_vocab = {"<|user_flag|>": -0.5}
+        token_to_id = {"<|user_flag|>": 0, "unscored_special": 1}
+        model = UnigramModel(
+            vocab=model_vocab,
+            token_to_id=token_to_id,
+            id_to_token={0: "<|user_flag|>", 1: "unscored_special"},
+            special_tokens=["<|user_flag|>", "unscored_special"],
+            byte_fallback=False,
+        )
+        tok = CustomTokenizer(Normalizer(), RegexPreTokenizer(), model)
+        meta = GGUFExporter.export_to_gguf_dict(tok)
+
+        self.assertEqual(meta["tokenizer.ggml.token_type"][0], GGUFTokenType.USER_DEFINED)
+        self.assertEqual(meta["tokenizer.ggml.token_type"][1], GGUFTokenType.CONTROL)
+        self.assertEqual(meta["tokenizer.ggml.scores"][1], -10.0)
+
+        # Round-trip via GGUFExporter alias
+        gguf_bytes = GGUFExporter.export_to_gguf(tok)
+        scores = extract_gguf_scores(gguf_bytes)
+        self.assertAlmostEqual(scores["<|user_flag|>"], -0.5, places=5)
+        self.assertAlmostEqual(scores["unscored_special"], -10.0, places=5)
+
+    def test_gguf_invalid_binary_rejected(self):
+        with self.assertRaises(ValueError):
+            extract_gguf_metadata(b"too_short")
+
+        with self.assertRaises(ValueError):
+            extract_gguf_metadata(b"NOTGGUF" + b"\x00" * 30)
+
+        with self.assertRaises(ValueError):
+            extract_gguf_metadata(b"GGUF" + struct.pack("<IQQ", 999, 0, 0))
+
 
 
 if __name__ == "__main__":
