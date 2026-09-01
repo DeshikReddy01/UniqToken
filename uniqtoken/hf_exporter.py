@@ -6,9 +6,9 @@ import warnings
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
-from byte_codec import ByteFallbackEngine
-from pre_tokenizer import Normalizer
-from tokenizer import CustomTokenizer
+from .byte_codec import ByteFallbackEngine
+from .pre_tokenizer import Normalizer
+from .tokenizer import CustomTokenizer
 
 GGUF_MAGIC = b"GGUF"
 GGUF_VERSION = 3

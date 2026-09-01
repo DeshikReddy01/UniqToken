@@ -7,13 +7,13 @@ import unittest
 from math import log
 from tempfile import TemporaryDirectory
 
-from byte_codec import ByteFallbackEngine
-from multimodal.audio_codec import ResidualVectorQuantizer
-from multimodal.image_patcher import DynamicImagePatcher
-from pre_tokenizer import Normalizer, RegexPreTokenizer
-from security_shield import SecurityShield
-from tokenizer import CustomTokenizer
-from unigram_trainer import UnigramModel
+from uniqtoken.byte_codec import ByteFallbackEngine
+from uniqtoken.multimodal.audio_codec import ResidualVectorQuantizer
+from uniqtoken.multimodal.image_patcher import DynamicImagePatcher
+from uniqtoken.pre_tokenizer import Normalizer, RegexPreTokenizer
+from uniqtoken.security_shield import SecurityShield
+from uniqtoken.tokenizer import CustomTokenizer
+from uniqtoken.unigram_trainer import UnigramModel
 
 
 class PropertyBasedFuzzSuite(unittest.TestCase):

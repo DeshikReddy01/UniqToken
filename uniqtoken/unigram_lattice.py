@@ -5,7 +5,7 @@ import random
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
-from byte_codec import ByteFallbackEngine
+from .byte_codec import ByteFallbackEngine
 
 
 def logsumexp(log_probs: List[float]) -> float:

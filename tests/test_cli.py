@@ -9,7 +9,7 @@ import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-import cli
+import uniqtoken.cli as cli
 
 
 class CLITests(unittest.TestCase):

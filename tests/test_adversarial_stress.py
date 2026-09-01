@@ -12,8 +12,8 @@ Stress tests the tokenizer engine under extreme conditions:
 from __future__ import annotations
 
 import unittest
-from byte_codec import ByteFallbackEngine
-from tokenizer import CustomTokenizer
+from uniqtoken.byte_codec import ByteFallbackEngine
+from uniqtoken.tokenizer import CustomTokenizer
 
 
 class AdversarialPathologicalStressSuite(unittest.TestCase):

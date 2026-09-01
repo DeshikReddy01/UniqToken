@@ -15,10 +15,10 @@ from typing import List
 
 import pytest
 
-import tokenizer as tokenizer_module
-from batch_collator import BatchCollator
-from pre_tokenizer import RegexPreTokenizer
-from tokenizer import CustomTokenizer
+import uniqtoken.tokenizer as tokenizer_module
+from uniqtoken.batch_collator import BatchCollator
+from uniqtoken.pre_tokenizer import RegexPreTokenizer
+from uniqtoken.tokenizer import CustomTokenizer
 
 try:
     HAS_NATIVE = hasattr(tokenizer_module._native_core, "rust_encode_text_native")

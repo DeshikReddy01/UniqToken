@@ -82,32 +82,11 @@ Homepage = "https://github.com/umran666/uniqtoken"
 Repository = "https://github.com/umran666/uniqtoken"
 
 [project.scripts]
-uniqtoken = "cli:main"
-caliper = "cli:main"
+uniqtoken = "uniqtoken.cli:main"
+caliper = "uniqtoken.cli:main"
 
 [tool.setuptools]
-py-modules = [
-    "batch_collator",
-    "bpe_model",
-    "bpe_trainer",
-    "byte_codec",
-    "cem_merger",
-    "cli",
-    "hf_exporter",
-    "hf_importer",
-    "indentation_compressor",
-    "pre_tokenizer",
-    "security_shield",
-    "seed_builder",
-    "streaming_decoder",
-    "tiktoken_adapter",
-    "tokenizer",
-    "trie",
-    "unigram_lattice",
-    "unigram_trainer",
-    "vocab_adapter",
-]
-packages = ["uniqtoken", "multimodal", "benchmarks"]
+packages = ["uniqtoken", "uniqtoken.multimodal", "benchmarks"]
 
 [tool.ruff]
 line-length = 120

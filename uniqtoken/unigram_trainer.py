@@ -5,10 +5,10 @@ from collections import Counter
 from dataclasses import dataclass
 from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
 
-from seed_builder import SeedToken, SeedVocabularyBuilder
-from trie import PrefixTrie
-from unigram_lattice import UnigramLattice
-from byte_codec import ByteFallbackEngine
+from .seed_builder import SeedToken, SeedVocabularyBuilder
+from .trie import PrefixTrie
+from .unigram_lattice import UnigramLattice
+from .byte_codec import ByteFallbackEngine
 
 try:
     import uniqtoken_core as caliper_core
@@ -303,7 +303,7 @@ class UnigramModel:
         return [self.token_to_id.get(t, unk_id) for t in tokens]
 
     def decode(self, token_ids: List[int], space_char: str = "\u2581") -> str:
-        from byte_codec import ByteFallbackEngine
+        from .byte_codec import ByteFallbackEngine
 
         tokens = [self.id_to_token.get(i, self.unk_token) for i in token_ids]
         return ByteFallbackEngine.decode_tokens(tokens, space_char=space_char)

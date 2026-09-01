@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import unittest
-from pre_tokenizer import Normalizer
-from tokenizer import CustomTokenizer
+from uniqtoken.pre_tokenizer import Normalizer
+from uniqtoken.tokenizer import CustomTokenizer
 
 
 class BatchParityTests(unittest.TestCase):

@@ -125,7 +125,7 @@ class _ExternalWrapper:
 
 def _train_caliper_unigram(budget: int, corpus: List[str]):
     """Caliper PMI Unigram trained from scratch on the corpus."""
-    from tokenizer import CustomTokenizer
+    from uniqtoken.tokenizer import CustomTokenizer
 
     return CustomTokenizer.train_from_corpus(
         corpus=corpus,
@@ -143,7 +143,7 @@ def _train_caliper_bpe(budget: int, normalizer, pre_tokenizer, corpus: List[str]
     repeat the logic here so the orchestrator owns the budget and can
     swap it independently of the legacy harness's hardcoded 500.
     """
-    import bpe_trainer
+    import uniqtoken.bpe_trainer as bpe_trainer
 
     chunks: List[str] = []
     for doc in corpus:
@@ -163,8 +163,8 @@ def _train_caliper_bpe(budget: int, normalizer, pre_tokenizer, corpus: List[str]
 
 def _train_caliper_superbpe(budget: int, corpus: List[str]):
     """Caliper Unigram + CEM cross-word merging (SuperBPE)."""
-    from cem_merger import CrossEntropyMerging
-    from tokenizer import CustomTokenizer
+    from uniqtoken.cem_merger import CrossEntropyMerging
+    from uniqtoken.tokenizer import CustomTokenizer
 
     base = CustomTokenizer.train_from_corpus(
         corpus=corpus,
@@ -196,7 +196,7 @@ def _train_sentencepiece(budget: int, corpus: List[str]):
     vocabulary floor; we report the actual vocab size in the row.
     """
     import sentencepiece as spm
-    from sentencepiece_importer import import_sentencepiece
+    from uniqtoken.sentencepiece_importer import import_sentencepiece
 
     with tempfile.TemporaryDirectory() as t:
         cpath = os.path.join(t, "c.txt")

@@ -3,8 +3,8 @@ from __future__ import annotations
 from collections import Counter, defaultdict
 from typing import Dict, List, Optional, Set, Tuple
 
-from bpe_model import BPEModel
-from byte_codec import ByteFallbackEngine
+from .bpe_model import BPEModel
+from .byte_codec import ByteFallbackEngine
 
 
 class BPETrainer:

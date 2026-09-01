@@ -5,7 +5,7 @@ import re as _stdlib_re
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Union
 
-from bpe_model import BPEModel
+from .bpe_model import BPEModel
 
 try:
     # Exact parity with tiktoken's Rust regex needs \p{L}/\p{N} classes and

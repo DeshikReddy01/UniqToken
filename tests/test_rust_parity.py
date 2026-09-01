@@ -7,8 +7,8 @@ from __future__ import annotations
 import unittest
 from math import log
 
-from tokenizer import CustomTokenizer
-from unigram_trainer import UnigramModel, UnigramTrainer
+from uniqtoken.tokenizer import CustomTokenizer
+from uniqtoken.unigram_trainer import UnigramModel, UnigramTrainer
 
 try:
     import uniqtoken_core as caliper_core
@@ -72,7 +72,7 @@ class RustPythonParityTests(unittest.TestCase):
             rust_tuples = [(s.token, s.start, s.end) for s in rust_spans]
 
             # 2. Pure Python lattice decode (bypassing Rust dispatch)
-            from unigram_lattice import UnigramLattice
+            from uniqtoken.unigram_lattice import UnigramLattice
 
             py_lattice = UnigramLattice(
                 sent,

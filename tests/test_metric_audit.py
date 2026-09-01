@@ -26,8 +26,8 @@ if hasattr(sys.stdout, "reconfigure"):
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from seed_builder import SeedVocabularyBuilder
-from tokenizer import CustomTokenizer
+from uniqtoken.seed_builder import SeedVocabularyBuilder
+from uniqtoken.tokenizer import CustomTokenizer
 
 # 12-Script Rich Multilingual Dataset Generator for Accounting Invariant Audit
 MULTILINGUAL_DATA_SOURCES: Dict[str, List[str]] = {

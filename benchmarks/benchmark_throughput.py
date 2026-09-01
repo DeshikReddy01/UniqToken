@@ -24,8 +24,8 @@ if hasattr(sys.stdout, "reconfigure"):
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from batch_collator import BatchCollator
-from tokenizer import CustomTokenizer
+from uniqtoken.batch_collator import BatchCollator
+from uniqtoken.tokenizer import CustomTokenizer
 
 
 def run_throughput_benchmark(num_sentences: int = 5000) -> None:
@@ -142,7 +142,7 @@ def run_throughput_benchmark(num_sentences: int = 5000) -> None:
     try:
         import json
         from tokenizers import Tokenizer
-        from hf_exporter import HuggingFaceExporter
+        from uniqtoken.hf_exporter import HuggingFaceExporter
 
         with TemporaryDirectory() as tmp_dir:
             hf_dict = HuggingFaceExporter.export_to_hf_dict(tok)

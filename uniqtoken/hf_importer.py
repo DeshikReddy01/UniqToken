@@ -6,16 +6,16 @@ import warnings
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
-from bpe_model import BPEModel
-from pre_tokenizer import Normalizer, RegexPreTokenizer
-from tokenizer import CustomTokenizer
-from unigram_trainer import UnigramModel
+from .bpe_model import BPEModel
+from .pre_tokenizer import Normalizer, RegexPreTokenizer
+from .tokenizer import CustomTokenizer
+from .unigram_trainer import UnigramModel
 
 try:
     # ByteLevel/GPT-2 pre-tokenization needs \p{L}/\p{N}; same requirement as
     # the tiktoken adapter.
     import regex as _re
-    from tiktoken_adapter import TIKTOKEN_PATTERNS
+    from .tiktoken_adapter import TIKTOKEN_PATTERNS
 except ImportError:  # pragma: no cover
     _re = None
     TIKTOKEN_PATTERNS = {}

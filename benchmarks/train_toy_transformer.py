@@ -27,9 +27,9 @@ from typing import Any, Dict, List, Optional, Tuple
 # Ensure project root is in sys.path when executed directly
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-import bpe_trainer
-from cem_merger import CrossEntropyMerging
-from tokenizer import CustomTokenizer
+import uniqtoken.bpe_trainer as bpe_trainer
+from uniqtoken.cem_merger import CrossEntropyMerging
+from uniqtoken.tokenizer import CustomTokenizer
 
 
 @dataclass

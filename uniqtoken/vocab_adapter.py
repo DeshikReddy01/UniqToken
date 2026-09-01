@@ -4,9 +4,9 @@ import math
 from collections import Counter
 from typing import Dict, List, Set, Tuple
 
-from seed_builder import SeedVocabularyBuilder
-from tokenizer import CustomTokenizer
-from unigram_trainer import UnigramModel
+from .seed_builder import SeedVocabularyBuilder
+from .tokenizer import CustomTokenizer
+from .unigram_trainer import UnigramModel
 
 
 class VocabularyAdapter:

@@ -7,14 +7,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Set, Tuple, Union
 
-from bpe_model import BPEModel
-from byte_codec import ByteFallbackEngine
-from indentation_compressor import IndentationCompressor
-from pre_tokenizer import Normalizer, RegexPreTokenizer
-from security_shield import SecurityShield
-from seed_builder import SeedVocabularyBuilder
-from streaming_decoder import StreamingDecoder
-from unigram_trainer import UnigramModel, UnigramTrainer
+from .bpe_model import BPEModel
+from .byte_codec import ByteFallbackEngine
+from .indentation_compressor import IndentationCompressor
+from .pre_tokenizer import Normalizer, RegexPreTokenizer
+from .security_shield import SecurityShield
+from .seed_builder import SeedVocabularyBuilder
+from .streaming_decoder import StreamingDecoder
+from .unigram_trainer import UnigramModel, UnigramTrainer
 
 # Native Rust core, preferring the repo's own crate name. Kept at module level
 # so inner functions never `import caliper_core` (the stale site-packages
@@ -825,7 +825,7 @@ class CustomTokenizer:
         """
         Exports the tokenizer to canonical HuggingFace tokenizer.json and tokenizer_config.json schema.
         """
-        from hf_exporter import HuggingFaceExporter
+        from .hf_exporter import HuggingFaceExporter
 
         HuggingFaceExporter.save_hf_pretrained(self, directory)
 
@@ -834,6 +834,6 @@ class CustomTokenizer:
         Exports the tokenizer to LLaMA.cpp GGUF v3 binary format.
         Optionally writes to output_path if provided, and returns the binary GGUF bytes.
         """
-        from hf_exporter import HuggingFaceExporter
+        from .hf_exporter import HuggingFaceExporter
 
         return HuggingFaceExporter.export_to_gguf(self, output_path=output_path, model_name=model_name)

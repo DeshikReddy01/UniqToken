@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
-from tokenizer import CustomTokenizer
+from .tokenizer import CustomTokenizer
 
 
 @dataclass

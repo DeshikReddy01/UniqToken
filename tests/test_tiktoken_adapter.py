@@ -13,7 +13,7 @@ import tempfile
 import unittest
 from typing import Any
 
-from tiktoken_adapter import (
+from uniqtoken.tiktoken_adapter import (
     TiktokenEncoding,
     load_tiktoken_ranks,
 )

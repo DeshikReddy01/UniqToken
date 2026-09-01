@@ -11,11 +11,11 @@ from typing import Any, Dict, List, Optional
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from bpe_trainer import BPETrainer
-from cem_merger import CrossEntropyMerging
-from hf_exporter import HuggingFaceExporter
-from tokenizer import CustomTokenizer
-from unigram_trainer import UnigramTrainer
+from uniqtoken.bpe_trainer import BPETrainer
+from uniqtoken.cem_merger import CrossEntropyMerging
+from uniqtoken.hf_exporter import HuggingFaceExporter
+from uniqtoken.tokenizer import CustomTokenizer
+from uniqtoken.unigram_trainer import UnigramTrainer
 
 
 @dataclass

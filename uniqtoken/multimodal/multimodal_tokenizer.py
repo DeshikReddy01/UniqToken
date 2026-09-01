@@ -8,10 +8,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Union
 
-from multimodal.image_patcher import DynamicImagePatcher, ImagePatch
-from multimodal.visual_codebook import VisualCodebook
-from multimodal.audio_codec import ResidualVectorQuantizer, AudioSegment
-from tokenizer import CustomTokenizer
+from uniqtoken.multimodal.image_patcher import DynamicImagePatcher, ImagePatch
+from uniqtoken.multimodal.visual_codebook import VisualCodebook
+from uniqtoken.multimodal.audio_codec import ResidualVectorQuantizer, AudioSegment
+from uniqtoken.tokenizer import CustomTokenizer
 
 
 @dataclass

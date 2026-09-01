@@ -8,29 +8,29 @@ from math import log
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from byte_codec import ByteFallbackEngine
-from batch_collator import BatchCollator
-from pre_tokenizer import Normalizer, RegexPreTokenizer
-from tokenizer import CustomTokenizer, TokenizationReport
-from unigram_trainer import UnigramModel, UnigramTrainer
-from unigram_lattice import UnigramLattice
-from vocab_adapter import VocabularyAdapter
-from multimodal.multimodal_tokenizer import MultimodalTokenizer, ImageElement
-from multimodal.audio_codec import ResidualVectorQuantizer, AudioSegment
-from trie import PrefixTrie
-from bpe_trainer import BPETrainer
-from hf_exporter import (
+from uniqtoken.byte_codec import ByteFallbackEngine
+from uniqtoken.batch_collator import BatchCollator
+from uniqtoken.pre_tokenizer import Normalizer, RegexPreTokenizer
+from uniqtoken.tokenizer import CustomTokenizer, TokenizationReport
+from uniqtoken.unigram_trainer import UnigramModel, UnigramTrainer
+from uniqtoken.unigram_lattice import UnigramLattice
+from uniqtoken.vocab_adapter import VocabularyAdapter
+from uniqtoken.multimodal.multimodal_tokenizer import MultimodalTokenizer, ImageElement
+from uniqtoken.multimodal.audio_codec import ResidualVectorQuantizer, AudioSegment
+from uniqtoken.trie import PrefixTrie
+from uniqtoken.bpe_trainer import BPETrainer
+from uniqtoken.hf_exporter import (
     GGUFExporter,
     GGUFTokenType,
     HuggingFaceExporter,
     extract_gguf_metadata,
     extract_gguf_scores,
 )
-from indentation_compressor import IndentationCompressor
-from security_shield import SecurityShield
-from seed_builder import SeedVocabularyBuilder
-from streaming_decoder import StreamingDecoder
-from cem_merger import CrossEntropyMerging
+from uniqtoken.indentation_compressor import IndentationCompressor
+from uniqtoken.security_shield import SecurityShield
+from uniqtoken.seed_builder import SeedVocabularyBuilder
+from uniqtoken.streaming_decoder import StreamingDecoder
+from uniqtoken.cem_merger import CrossEntropyMerging
 
 
 class NormalizerTests(unittest.TestCase):
@@ -284,7 +284,7 @@ class MultimodalTests(unittest.TestCase):
             loaded._assign_id("<|new_metadata|>")
 
     def test_nonzero_pixel_range_uses_normalized_zero_padding(self):
-        from multimodal.image_patcher import DynamicImagePatcher
+        from uniqtoken.multimodal.image_patcher import DynamicImagePatcher
 
         patcher = DynamicImagePatcher(patch_size=2, channels=1, pixel_range=(10.0, 20.0))
         patches, _ = patcher.extract_patches([[[15.0]]])
@@ -384,7 +384,7 @@ class BPETests(unittest.TestCase):
         inputs (long words, words with no learnable merges, multibyte chars,
         repeated patterns that would stress the heap's stale-entry handling).
         """
-        from bpe_model import BPEModel
+        from uniqtoken.bpe_model import BPEModel
 
         corpus = (
             ["the quick brown fox jumps over the lazy dog"] * 5
@@ -447,7 +447,7 @@ class BPETests(unittest.TestCase):
     def test_bpe_heap_encode_handles_unknown_words(self):
         """Words with no learned merges (or empty merges table) must fall back
         to the per-character symbols without crashing or losing fidelity."""
-        from bpe_model import BPEModel
+        from uniqtoken.bpe_model import BPEModel
 
         trainer = BPETrainer(num_merges=3, byte_fallback=True)
         bpe_model = trainer.train(["hello", "world"])
@@ -765,7 +765,7 @@ class AudioCodecTests(unittest.TestCase):
 
 class NeuralCodecTests(unittest.TestCase):
     def test_neural_visual_codec_forward_and_tokens(self):
-        from multimodal.neural_codecs import HAS_TORCH, NeuralVisualCodec
+        from uniqtoken.multimodal.neural_codecs import HAS_TORCH, NeuralVisualCodec
 
         if not HAS_TORCH:
             self.skipTest("PyTorch is not installed")
@@ -801,7 +801,7 @@ class NeuralCodecTests(unittest.TestCase):
         )
 
     def test_neural_audio_codec_forward_and_tokens(self):
-        from multimodal.neural_codecs import HAS_TORCH, NeuralAudioCodec
+        from uniqtoken.multimodal.neural_codecs import HAS_TORCH, NeuralAudioCodec
 
         if not HAS_TORCH:
             self.skipTest("PyTorch is not installed")
@@ -1065,14 +1065,14 @@ class SuperBPETests(unittest.TestCase):
         self.assertGreater(len(reassigned_cw), 0)
 
     def test_image_patcher_empty_nested_pixels(self):
-        from multimodal.image_patcher import DynamicImagePatcher
+        from uniqtoken.multimodal.image_patcher import DynamicImagePatcher
 
         patcher = DynamicImagePatcher(patch_size=4, channels=3)
         self.assertEqual(patcher.extract_patches([]), ([], (0, 0)))
         self.assertEqual(patcher.extract_patches([[]]), ([], (0, 0)))
 
     def test_vocab_adapter_extreme_underflow(self):
-        from vocab_adapter import VocabularyAdapter
+        from uniqtoken.vocab_adapter import VocabularyAdapter
 
         _, _, _, base_tok, _, _ = self._make_pipeline()
         # Simulate extreme negative log-probs
@@ -1216,7 +1216,7 @@ class PhaseTwoOptimizationTests(unittest.TestCase):
         self.assertEqual(seq_offsets, batch_offsets)
 
     def test_compact_trie_slots_and_id_mapping(self):
-        from trie import PrefixTrie, TrieNode
+        from uniqtoken.trie import PrefixTrie, TrieNode
 
         node = TrieNode()
         self.assertTrue(hasattr(node, "__slots__"))
@@ -1428,7 +1428,7 @@ class GGUFExportTests(unittest.TestCase):
 
     def test_gguf_duplicate_tokens_rejected(self):
         """Verifies that duplicate tokens in GGUF vocabulary tables raise ValueError."""
-        from hf_exporter import GGUFValueType
+        from uniqtoken.hf_exporter import GGUFValueType
 
         data = bytearray()
         data.extend(b"GGUF")
@@ -1455,7 +1455,7 @@ class GGUFExportTests(unittest.TestCase):
 
     def test_gguf_non_list_tokens_or_scores_rejected(self):
         """Verifies that non-list values for tokens or scores in GGUF metadata raise ValueError."""
-        from hf_exporter import GGUFValueType
+        from uniqtoken.hf_exporter import GGUFValueType
 
         data = bytearray()
         data.extend(b"GGUF")
@@ -1481,7 +1481,7 @@ class GGUFExportTests(unittest.TestCase):
 
     def test_gguf_non_string_tokens_or_non_float_scores_rejected(self):
         """Verifies that non-string tokens or non-float scores raise ValueError."""
-        from hf_exporter import GGUFValueType
+        from uniqtoken.hf_exporter import GGUFValueType
 
         data = bytearray()
         data.extend(b"GGUF")

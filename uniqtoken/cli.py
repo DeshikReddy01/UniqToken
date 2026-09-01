@@ -19,9 +19,9 @@ from typing import List, Optional
 
 from benchmarks.benchmark_suite import TokenizerBenchmarkSuite
 from benchmarks.downstream_eval import DownstreamEvaluator
-from cem_merger import CrossEntropyMerging
-from indentation_compressor import IndentationCompressor
-from tokenizer import CustomTokenizer
+from .cem_merger import CrossEntropyMerging
+from .indentation_compressor import IndentationCompressor
+from .tokenizer import CustomTokenizer
 
 
 def _reconfigure_stdio() -> None:

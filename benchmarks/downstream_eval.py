@@ -21,8 +21,8 @@ from typing import Any, Dict, List, Optional
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from cem_merger import CrossEntropyMerging
-from tokenizer import CustomTokenizer
+from uniqtoken.cem_merger import CrossEntropyMerging
+from uniqtoken.tokenizer import CustomTokenizer
 
 
 @dataclass

@@ -9,10 +9,10 @@ bypass, CEM stale total_pairs ordering, and BPE strict decode of invalid IDs.
 import random
 import unittest
 
-from bpe_model import BPEModel  # noqa: F401  (import guard for typo checks)
-from bpe_trainer import BPETrainer
-from cem_merger import CrossEntropyMerging
-from tokenizer import CustomTokenizer
+from uniqtoken.bpe_model import BPEModel  # noqa: F401  (import guard for typo checks)
+from uniqtoken.bpe_trainer import BPETrainer
+from uniqtoken.cem_merger import CrossEntropyMerging
+from uniqtoken.tokenizer import CustomTokenizer
 
 
 def _train_unigram(vocab_size: int = 300) -> CustomTokenizer:

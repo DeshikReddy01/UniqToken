@@ -13,7 +13,7 @@ import unittest
 import warnings
 from typing import Any
 
-from sentencepiece_importer import (
+from uniqtoken.sentencepiece_importer import (
     SP_BYTE,
     SP_CONTROL,
     SP_NORMAL,

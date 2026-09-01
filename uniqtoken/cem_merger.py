@@ -4,8 +4,8 @@ import math
 from collections import Counter
 from typing import Dict, Iterable, List, Optional, Set, Tuple
 
-from byte_codec import ByteFallbackEngine
-from unigram_trainer import UnigramModel
+from .byte_codec import ByteFallbackEngine
+from .unigram_trainer import UnigramModel
 
 
 class CrossEntropyMerging:

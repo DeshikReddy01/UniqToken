@@ -6,9 +6,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Union
 
-from pre_tokenizer import Normalizer, RegexPreTokenizer
-from tokenizer import CustomTokenizer
-from unigram_trainer import UnigramModel
+from .pre_tokenizer import Normalizer, RegexPreTokenizer
+from .tokenizer import CustomTokenizer
+from .unigram_trainer import UnigramModel
 
 # SentencePiece PieceType enum (sentencepiece_model.proto)
 SP_NORMAL = 1

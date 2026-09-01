@@ -46,12 +46,12 @@ if hasattr(sys.stdout, "reconfigure"):
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from bpe_trainer import BPETrainer
-from cem_merger import CrossEntropyMerging
-from pre_tokenizer import Normalizer, RegexPreTokenizer
-from seed_builder import SeedToken, SeedVocabularyBuilder
-from tokenizer import CustomTokenizer
-from unigram_trainer import UnigramTrainer
+from uniqtoken.bpe_trainer import BPETrainer
+from uniqtoken.cem_merger import CrossEntropyMerging
+from uniqtoken.pre_tokenizer import Normalizer, RegexPreTokenizer
+from uniqtoken.seed_builder import SeedToken, SeedVocabularyBuilder
+from uniqtoken.tokenizer import CustomTokenizer
+from uniqtoken.unigram_trainer import UnigramTrainer
 
 
 def generate_high_entropy_corpus(num_docs: int = 1000, seed: int = 42) -> Tuple[List[str], Dict[str, str]]:

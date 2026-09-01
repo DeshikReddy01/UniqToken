@@ -3,7 +3,7 @@ from __future__ import annotations
 import heapq
 from typing import Dict, List, Optional, Set, Tuple
 
-from byte_codec import ByteFallbackEngine
+from .byte_codec import ByteFallbackEngine
 
 
 class BPEModel:

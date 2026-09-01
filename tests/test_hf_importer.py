@@ -11,7 +11,7 @@ import unittest
 import warnings
 from typing import Any
 
-from hf_importer import import_hf_tokenizer
+from uniqtoken.hf_importer import import_hf_tokenizer
 
 try:
     from tokenizers import Tokenizer, decoders, pre_tokenizers
@@ -85,7 +85,7 @@ class HFByteLevelBPEImportTests(unittest.TestCase):
     def setUpClass(cls):
         # GPT-2-style byte-level vocab: fixed merges over b"hello world" PLUS
         # full 256-byte coverage (real vocabs always have it).
-        from hf_importer import _bytes_to_unicode
+        from uniqtoken.hf_importer import _bytes_to_unicode
 
         byte_map = _bytes_to_unicode()
         vocab = {
@@ -132,7 +132,7 @@ class HFByteLevelBPEImportTests(unittest.TestCase):
         cls.cal = import_hf_tokenizer(cls.hf_json)
 
     def test_returns_byte_level_encoder(self):
-        from hf_importer import HFByteLevelBPE
+        from uniqtoken.hf_importer import HFByteLevelBPE
 
         self.assertIsInstance(self.cal, HFByteLevelBPE)
 
