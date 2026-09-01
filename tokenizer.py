@@ -828,3 +828,12 @@ class CustomTokenizer:
         from hf_exporter import HuggingFaceExporter
 
         HuggingFaceExporter.save_hf_pretrained(self, directory)
+
+    def export_to_gguf(self, output_path: Optional[Union[str, Path]] = None, model_name: str = "llama") -> bytes:
+        """
+        Exports the tokenizer to LLaMA.cpp GGUF v3 binary format.
+        Optionally writes to output_path if provided, and returns the binary GGUF bytes.
+        """
+        from hf_exporter import HuggingFaceExporter
+
+        return HuggingFaceExporter.export_to_gguf(self, output_path=output_path, model_name=model_name)
