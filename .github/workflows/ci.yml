@@ -75,7 +75,7 @@ jobs:
 
       - name: Run Full Test Suite (Unit & Property Fuzzing)
         run: |
-          python -m unittest discover -p "test_*.py" -v
+          python -m unittest discover -s tests -p "test_*.py" -v
 
       - name: Run Empirical Benchmark Suite Smoke Test
         run: |
