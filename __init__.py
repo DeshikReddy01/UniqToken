@@ -9,7 +9,12 @@ from bpe_model import BPEModel
 from bpe_trainer import BPETrainer
 from byte_codec import ByteFallbackEngine
 from cem_merger import CrossEntropyMerging
-from hf_exporter import GGUFExporter, HuggingFaceExporter
+from hf_exporter import (
+    GGUFExporter,
+    HuggingFaceExporter,
+    extract_gguf_metadata,
+    extract_gguf_scores,
+)
 from indentation_compressor import IndentationCompressor
 from pre_tokenizer import Normalizer, PreToken, RegexPreTokenizer
 from security_shield import SecurityShield
@@ -102,6 +107,8 @@ __all__ = [
     "BatchEncoding",
     "HuggingFaceExporter",
     "GGUFExporter",
+    "extract_gguf_metadata",
+    "extract_gguf_scores",
     # Multimodal Engine
     "MultimodalTokenizer",
     "MultimodalSequence",

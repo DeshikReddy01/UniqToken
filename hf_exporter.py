@@ -261,6 +261,7 @@ class HuggingFaceExporter:
         }
 
         def get_token_id(*candidates: Optional[str]) -> Optional[int]:
+            """Returns the first matching token ID among candidate strings, or None."""
             for cand in candidates:
                 if cand is not None and cand in model.token_to_id:
                     return model.token_to_id[cand]
@@ -303,6 +304,7 @@ class HuggingFaceExporter:
         data.extend(struct.pack("<IQQ", GGUF_VERSION, 0, len(meta)))
 
         def pack_str(s: str) -> bytes:
+            """Encodes a string as a GGUF length-prefixed UTF-8 byte sequence."""
             s_bytes = s.encode("utf-8")
             return struct.pack("<Q", len(s_bytes)) + s_bytes
 
@@ -392,6 +394,7 @@ class HuggingFaceExporter:
         pos += 16
 
         def read_str(p: int) -> Tuple[str, int]:
+            """Reads a GGUF length-prefixed UTF-8 string at buffer offset p."""
             if p + 8 > len(data):
                 raise ValueError("Truncated GGUF string length prefix")
             (length,) = struct.unpack("<Q", data[p : p + 8])
@@ -516,13 +519,15 @@ class HuggingFaceExporter:
         Extracts a dictionary mapping token strings to float log-probability scores from GGUF binary data.
         """
         meta = cls.extract_gguf_metadata(source)
-        tokens: List[str] = meta.get("tokenizer.ggml.tokens", [])
-        scores: List[float] = meta.get("tokenizer.ggml.scores", [])
-        if len(tokens) != len(scores):
-            raise ValueError(f"Mismatched tokens ({len(tokens)}) and scores ({len(scores)}) in GGUF metadata")
-        if len(set(tokens)) != len(tokens):
+        tokens_val = meta.get("tokenizer.ggml.tokens")
+        scores_val = meta.get("tokenizer.ggml.scores")
+        if not isinstance(tokens_val, list) or not isinstance(scores_val, list):
+            raise ValueError("GGUF metadata 'tokenizer.ggml.tokens' and 'tokenizer.ggml.scores' must both be lists")
+        if len(tokens_val) != len(scores_val):
+            raise ValueError(f"Mismatched tokens ({len(tokens_val)}) and scores ({len(scores_val)}) in GGUF metadata")
+        if len(set(tokens_val)) != len(tokens_val):
             raise ValueError("Duplicate tokens detected in GGUF vocabulary table")
-        return dict(zip(tokens, scores))
+        return dict(zip(tokens_val, scores_val))
 
 
 # Module-level aliases

@@ -1264,7 +1264,10 @@ class PhaseTwoOptimizationTests(unittest.TestCase):
 
 
 class GGUFExportTests(unittest.TestCase):
+    """Unit tests for GGUF tokenizer metadata export and score extraction."""
+
     def setUp(self):
+        """Sets up synthetic UnigramModel and CustomTokenizer fixture with diverse token types."""
         self.vocab = {
             "<|unk|>": -10.0,
             "<|bos|>": -10.0,
@@ -1295,6 +1298,7 @@ class GGUFExportTests(unittest.TestCase):
         )
 
     def test_gguf_dict_generation(self):
+        """Verifies GGUF dictionary schema keys, ordered token sequence, and token types."""
         meta = HuggingFaceExporter.export_to_gguf_dict(self.tokenizer)
         self.assertEqual(meta["tokenizer.ggml.model"], "llama")
 
@@ -1329,6 +1333,7 @@ class GGUFExportTests(unittest.TestCase):
         self.assertEqual(meta["tokenizer.ggml.padding_token_id"], self.token_to_id["<|pad|>"])
 
     def test_gguf_round_trip_score_extraction(self):
+        """Verifies round-trip extraction of scores from both memory bytes and saved files."""
         # 1. Round-trip in-memory bytes
         gguf_bytes = self.tokenizer.export_to_gguf()
         self.assertIsInstance(gguf_bytes, bytes)
@@ -1366,6 +1371,7 @@ class GGUFExportTests(unittest.TestCase):
             self.assertEqual(metadata["tokenizer.ggml.unknown_token_id"], self.token_to_id["<|unk|>"])
 
     def test_gguf_non_contiguous_ids_rejected(self):
+        """Verifies that non-contiguous token IDs starting from 0 raise ValueError."""
         sparse_token_to_id = {"a": 0, "b": 2}
         sparse_model = UnigramModel(
             vocab={"a": -1.0, "b": -2.0},
@@ -1379,6 +1385,7 @@ class GGUFExportTests(unittest.TestCase):
             HuggingFaceExporter.export_to_gguf_dict(sparse_tok)
 
     def test_gguf_user_defined_and_fallback_scores(self):
+        """Verifies classification of user-defined special tokens and default fallback scores."""
         vocab = {"<|user_flag|>": -0.5, "unscored_special": -10.0}
         # Note: 'unscored_special' is NOT in model.vocab, will trigger default score -10.0
         model_vocab = {"<|user_flag|>": -0.5}
@@ -1404,6 +1411,7 @@ class GGUFExportTests(unittest.TestCase):
         self.assertAlmostEqual(scores["unscored_special"], -10.0, places=5)
 
     def test_gguf_invalid_binary_rejected(self):
+        """Verifies that corrupted magic, bad version, or truncated KV payloads raise ValueError."""
         with self.assertRaises(ValueError):
             extract_gguf_metadata(b"too_short")
 
@@ -1419,7 +1427,7 @@ class GGUFExportTests(unittest.TestCase):
             extract_gguf_metadata(truncated_kv)
 
     def test_gguf_duplicate_tokens_rejected(self):
-        # Construct mock metadata with duplicate tokens
+        """Verifies that duplicate tokens in GGUF vocabulary tables raise ValueError."""
         from hf_exporter import GGUFValueType
 
         data = bytearray()
@@ -1427,6 +1435,7 @@ class GGUFExportTests(unittest.TestCase):
         data.extend(struct.pack("<IQQ", 3, 0, 2))
 
         def pack_str(s: str) -> bytes:
+            """Packs length-prefixed string bytes."""
             b = s.encode("utf-8")
             return struct.pack("<Q", len(b)) + b
 
@@ -1440,6 +1449,32 @@ class GGUFExportTests(unittest.TestCase):
         data.extend(pack_str("tokenizer.ggml.scores"))
         data.extend(struct.pack("<IIQ", GGUFValueType.ARRAY, GGUFValueType.FLOAT32, 2))
         data.extend(struct.pack("<2f", -1.0, -2.0))
+
+        with self.assertRaises(ValueError):
+            extract_gguf_scores(bytes(data))
+
+    def test_gguf_non_list_tokens_or_scores_rejected(self):
+        """Verifies that non-list values for tokens or scores in GGUF metadata raise ValueError."""
+        from hf_exporter import GGUFValueType
+
+        data = bytearray()
+        data.extend(b"GGUF")
+        data.extend(struct.pack("<IQQ", 3, 0, 2))
+
+        def pack_str(s: str) -> bytes:
+            """Packs length-prefixed string bytes."""
+            b = s.encode("utf-8")
+            return struct.pack("<Q", len(b)) + b
+
+        # Key 1: tokenizer.ggml.tokens as scalar string instead of array
+        data.extend(pack_str("tokenizer.ggml.tokens"))
+        data.extend(struct.pack("<I", GGUFValueType.STRING))
+        data.extend(pack_str("hello"))
+
+        # Key 2: tokenizer.ggml.scores as float array
+        data.extend(pack_str("tokenizer.ggml.scores"))
+        data.extend(struct.pack("<IIQ", GGUFValueType.ARRAY, GGUFValueType.FLOAT32, 1))
+        data.extend(struct.pack("<f", -1.0))
 
         with self.assertRaises(ValueError):
             extract_gguf_scores(bytes(data))
