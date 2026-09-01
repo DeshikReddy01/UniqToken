@@ -1413,6 +1413,36 @@ class GGUFExportTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             extract_gguf_metadata(b"GGUF" + struct.pack("<IQQ", 999, 0, 0))
 
+        # Truncated KV section raises ValueError (not raw struct.error)
+        truncated_kv = b"GGUF" + struct.pack("<IQQ", 3, 0, 5) + b"\x00" * 8
+        with self.assertRaises(ValueError):
+            extract_gguf_metadata(truncated_kv)
+
+    def test_gguf_duplicate_tokens_rejected(self):
+        # Construct mock metadata with duplicate tokens
+        from hf_exporter import GGUFValueType
+
+        data = bytearray()
+        data.extend(b"GGUF")
+        data.extend(struct.pack("<IQQ", 3, 0, 2))
+
+        def pack_str(s: str) -> bytes:
+            b = s.encode("utf-8")
+            return struct.pack("<Q", len(b)) + b
+
+        # Key 1: tokenizer.ggml.tokens (duplicate 'hello')
+        data.extend(pack_str("tokenizer.ggml.tokens"))
+        data.extend(struct.pack("<IIQ", GGUFValueType.ARRAY, GGUFValueType.STRING, 2))
+        data.extend(pack_str("hello"))
+        data.extend(pack_str("hello"))
+
+        # Key 2: tokenizer.ggml.scores
+        data.extend(pack_str("tokenizer.ggml.scores"))
+        data.extend(struct.pack("<IIQ", GGUFValueType.ARRAY, GGUFValueType.FLOAT32, 2))
+        data.extend(struct.pack("<2f", -1.0, -2.0))
+
+        with self.assertRaises(ValueError):
+            extract_gguf_scores(bytes(data))
 
 
 if __name__ == "__main__":

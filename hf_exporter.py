@@ -392,90 +392,121 @@ class HuggingFaceExporter:
         pos += 16
 
         def read_str(p: int) -> Tuple[str, int]:
+            if p + 8 > len(data):
+                raise ValueError("Truncated GGUF string length prefix")
             (length,) = struct.unpack("<Q", data[p : p + 8])
             p += 8
+            if p + length > len(data):
+                raise ValueError("Truncated GGUF string bytes")
             s_bytes = data[p : p + length]
             p += length
             return s_bytes.decode("utf-8", errors="replace"), p
 
         metadata: Dict[str, Any] = {}
-        for _ in range(kv_count):
-            key, pos = read_str(pos)
-            (val_type,) = struct.unpack("<I", data[pos : pos + 4])
-            pos += 4
+        try:
+            for _ in range(kv_count):
+                key, pos = read_str(pos)
+                if pos + 4 > len(data):
+                    raise ValueError("Truncated GGUF metadata value type")
+                (val_type,) = struct.unpack("<I", data[pos : pos + 4])
+                pos += 4
 
-            if val_type == GGUFValueType.UINT8:
-                (val,) = struct.unpack("<B", data[pos : pos + 1])
-                pos += 1
-            elif val_type == GGUFValueType.INT8:
-                (val,) = struct.unpack("<b", data[pos : pos + 1])
-                pos += 1
-            elif val_type == GGUFValueType.UINT16:
-                (val,) = struct.unpack("<H", data[pos : pos + 2])
-                pos += 2
-            elif val_type == GGUFValueType.INT16:
-                (val,) = struct.unpack("<h", data[pos : pos + 2])
-                pos += 2
-            elif val_type == GGUFValueType.UINT32:
-                (val,) = struct.unpack("<I", data[pos : pos + 4])
-                pos += 4
-            elif val_type == GGUFValueType.INT32:
-                (val,) = struct.unpack("<i", data[pos : pos + 4])
-                pos += 4
-            elif val_type == GGUFValueType.FLOAT32:
-                (val,) = struct.unpack("<f", data[pos : pos + 4])
-                pos += 4
-            elif val_type == GGUFValueType.BOOL:
-                (val_b,) = struct.unpack("<B", data[pos : pos + 1])
-                val = bool(val_b)
-                pos += 1
-            elif val_type == GGUFValueType.STRING:
-                val, pos = read_str(pos)
-            elif val_type == GGUFValueType.ARRAY:
-                item_type, count = struct.unpack("<IQ", data[pos : pos + 12])
-                pos += 12
-                if item_type == GGUFValueType.STRING:
-                    arr: List[Any] = []
-                    for _ in range(count):
-                        s, pos = read_str(pos)
-                        arr.append(s)
-                elif item_type == GGUFValueType.FLOAT32:
-                    arr = list(struct.unpack(f"<{count}f", data[pos : pos + count * 4]))
-                    pos += count * 4
-                elif item_type == GGUFValueType.INT32:
-                    arr = list(struct.unpack(f"<{count}i", data[pos : pos + count * 4]))
-                    pos += count * 4
-                elif item_type == GGUFValueType.UINT32:
-                    arr = list(struct.unpack(f"<{count}I", data[pos : pos + count * 4]))
-                    pos += count * 4
-                elif item_type == GGUFValueType.INT64:
-                    arr = list(struct.unpack(f"<{count}q", data[pos : pos + count * 8]))
-                    pos += count * 8
-                elif item_type == GGUFValueType.UINT64:
-                    arr = list(struct.unpack(f"<{count}Q", data[pos : pos + count * 8]))
-                    pos += count * 8
-                elif item_type == GGUFValueType.FLOAT64:
-                    arr = list(struct.unpack(f"<{count}d", data[pos : pos + count * 8]))
-                    pos += count * 8
-                elif item_type == GGUFValueType.BOOL:
-                    arr = [bool(b) for b in data[pos : pos + count]]
-                    pos += count
+                if val_type == GGUFValueType.UINT8:
+                    (val,) = struct.unpack("<B", data[pos : pos + 1])
+                    pos += 1
+                elif val_type == GGUFValueType.INT8:
+                    (val,) = struct.unpack("<b", data[pos : pos + 1])
+                    pos += 1
+                elif val_type == GGUFValueType.UINT16:
+                    (val,) = struct.unpack("<H", data[pos : pos + 2])
+                    pos += 2
+                elif val_type == GGUFValueType.INT16:
+                    (val,) = struct.unpack("<h", data[pos : pos + 2])
+                    pos += 2
+                elif val_type == GGUFValueType.UINT32:
+                    (val,) = struct.unpack("<I", data[pos : pos + 4])
+                    pos += 4
+                elif val_type == GGUFValueType.INT32:
+                    (val,) = struct.unpack("<i", data[pos : pos + 4])
+                    pos += 4
+                elif val_type == GGUFValueType.FLOAT32:
+                    (val,) = struct.unpack("<f", data[pos : pos + 4])
+                    pos += 4
+                elif val_type == GGUFValueType.BOOL:
+                    (val_b,) = struct.unpack("<B", data[pos : pos + 1])
+                    val = bool(val_b)
+                    pos += 1
+                elif val_type == GGUFValueType.STRING:
+                    val, pos = read_str(pos)
+                elif val_type == GGUFValueType.ARRAY:
+                    if pos + 12 > len(data):
+                        raise ValueError("Truncated GGUF array header")
+                    item_type, count = struct.unpack("<IQ", data[pos : pos + 12])
+                    pos += 12
+                    if item_type == GGUFValueType.STRING:
+                        arr: List[Any] = []
+                        for _ in range(count):
+                            s, pos = read_str(pos)
+                            arr.append(s)
+                    elif item_type == GGUFValueType.FLOAT32:
+                        needed = count * 4
+                        if pos + needed > len(data):
+                            raise ValueError("Truncated GGUF float array payload")
+                        arr = list(struct.unpack(f"<{count}f", data[pos : pos + needed]))
+                        pos += needed
+                    elif item_type == GGUFValueType.INT32:
+                        needed = count * 4
+                        if pos + needed > len(data):
+                            raise ValueError("Truncated GGUF int32 array payload")
+                        arr = list(struct.unpack(f"<{count}i", data[pos : pos + needed]))
+                        pos += needed
+                    elif item_type == GGUFValueType.UINT32:
+                        needed = count * 4
+                        if pos + needed > len(data):
+                            raise ValueError("Truncated GGUF uint32 array payload")
+                        arr = list(struct.unpack(f"<{count}I", data[pos : pos + needed]))
+                        pos += needed
+                    elif item_type == GGUFValueType.INT64:
+                        needed = count * 8
+                        if pos + needed > len(data):
+                            raise ValueError("Truncated GGUF int64 array payload")
+                        arr = list(struct.unpack(f"<{count}q", data[pos : pos + needed]))
+                        pos += needed
+                    elif item_type == GGUFValueType.UINT64:
+                        needed = count * 8
+                        if pos + needed > len(data):
+                            raise ValueError("Truncated GGUF uint64 array payload")
+                        arr = list(struct.unpack(f"<{count}Q", data[pos : pos + needed]))
+                        pos += needed
+                    elif item_type == GGUFValueType.FLOAT64:
+                        needed = count * 8
+                        if pos + needed > len(data):
+                            raise ValueError("Truncated GGUF float64 array payload")
+                        arr = list(struct.unpack(f"<{count}d", data[pos : pos + needed]))
+                        pos += needed
+                    elif item_type == GGUFValueType.BOOL:
+                        if pos + count > len(data):
+                            raise ValueError("Truncated GGUF bool array payload")
+                        arr = [bool(b) for b in data[pos : pos + count]]
+                        pos += count
+                    else:
+                        raise NotImplementedError(f"Unsupported GGUF array element type {item_type}")
+                    val = arr
+                elif val_type == GGUFValueType.UINT64:
+                    (val,) = struct.unpack("<Q", data[pos : pos + 8])
+                    pos += 8
+                elif val_type == GGUFValueType.INT64:
+                    (val,) = struct.unpack("<q", data[pos : pos + 8])
+                    pos += 8
+                elif val_type == GGUFValueType.FLOAT64:
+                    (val,) = struct.unpack("<d", data[pos : pos + 8])
+                    pos += 8
                 else:
-                    raise NotImplementedError(f"Unsupported GGUF array element type {item_type}")
-                val = arr
-            elif val_type == GGUFValueType.UINT64:
-                (val,) = struct.unpack("<Q", data[pos : pos + 8])
-                pos += 8
-            elif val_type == GGUFValueType.INT64:
-                (val,) = struct.unpack("<q", data[pos : pos + 8])
-                pos += 8
-            elif val_type == GGUFValueType.FLOAT64:
-                (val,) = struct.unpack("<d", data[pos : pos + 8])
-                pos += 8
-            else:
-                raise NotImplementedError(f"Unsupported GGUF value type {val_type}")
+                    raise NotImplementedError(f"Unsupported GGUF value type {val_type}")
 
-            metadata[key] = val
+                metadata[key] = val
+        except (struct.error, IndexError) as exc:
+            raise ValueError(f"Truncated or corrupted GGUF metadata payload: {exc}") from exc
 
         return metadata
 
@@ -488,9 +519,9 @@ class HuggingFaceExporter:
         tokens: List[str] = meta.get("tokenizer.ggml.tokens", [])
         scores: List[float] = meta.get("tokenizer.ggml.scores", [])
         if len(tokens) != len(scores):
-            raise ValueError(
-                f"Mismatched tokens ({len(tokens)}) and scores ({len(scores)}) in GGUF metadata"
-            )
+            raise ValueError(f"Mismatched tokens ({len(tokens)}) and scores ({len(scores)}) in GGUF metadata")
+        if len(set(tokens)) != len(tokens):
+            raise ValueError("Duplicate tokens detected in GGUF vocabulary table")
         return dict(zip(tokens, scores))
 
 
@@ -498,4 +529,3 @@ class HuggingFaceExporter:
 GGUFExporter = HuggingFaceExporter
 extract_gguf_metadata = HuggingFaceExporter.extract_gguf_metadata
 extract_gguf_scores = HuggingFaceExporter.extract_gguf_scores
-
