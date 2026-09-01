@@ -1479,6 +1479,31 @@ class GGUFExportTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             extract_gguf_scores(bytes(data))
 
+    def test_gguf_non_string_tokens_or_non_float_scores_rejected(self):
+        """Verifies that non-string tokens or non-float scores raise ValueError."""
+        from hf_exporter import GGUFValueType
+
+        data = bytearray()
+        data.extend(b"GGUF")
+        data.extend(struct.pack("<IQQ", 3, 0, 2))
+
+        def pack_str(s: str) -> bytes:
+            b = s.encode("utf-8")
+            return struct.pack("<Q", len(b)) + b
+
+        # Key 1: tokenizer.ggml.tokens as int array instead of string array
+        data.extend(pack_str("tokenizer.ggml.tokens"))
+        data.extend(struct.pack("<IIQ", GGUFValueType.ARRAY, GGUFValueType.INT32, 2))
+        data.extend(struct.pack("<2i", 1, 2))
+
+        # Key 2: tokenizer.ggml.scores as float array
+        data.extend(pack_str("tokenizer.ggml.scores"))
+        data.extend(struct.pack("<IIQ", GGUFValueType.ARRAY, GGUFValueType.FLOAT32, 2))
+        data.extend(struct.pack("<2f", -1.0, -2.0))
+
+        with self.assertRaises(ValueError):
+            extract_gguf_scores(bytes(data))
+
 
 if __name__ == "__main__":
     unittest.main()

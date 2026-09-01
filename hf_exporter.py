@@ -521,13 +521,20 @@ class HuggingFaceExporter:
         meta = cls.extract_gguf_metadata(source)
         tokens_val = meta.get("tokenizer.ggml.tokens")
         scores_val = meta.get("tokenizer.ggml.scores")
-        if not isinstance(tokens_val, list) or not isinstance(scores_val, list):
-            raise ValueError("GGUF metadata 'tokenizer.ggml.tokens' and 'tokenizer.ggml.scores' must both be lists")
+        if (
+            not isinstance(tokens_val, list)
+            or not isinstance(scores_val, list)
+            or not all(isinstance(token, str) for token in tokens_val)
+            or not all(isinstance(score, (int, float)) and not isinstance(score, bool) for score in scores_val)
+        ):
+            raise ValueError(
+                "GGUF metadata 'tokenizer.ggml.tokens' must be a list of strings and 'tokenizer.ggml.scores' must be a list of numeric floats"
+            )
         if len(tokens_val) != len(scores_val):
             raise ValueError(f"Mismatched tokens ({len(tokens_val)}) and scores ({len(scores_val)}) in GGUF metadata")
         if len(set(tokens_val)) != len(tokens_val):
             raise ValueError("Duplicate tokens detected in GGUF vocabulary table")
-        return dict(zip(tokens_val, scores_val))
+        return {token: float(score) for token, score in zip(tokens_val, scores_val)}
 
 
 # Module-level aliases
