@@ -110,6 +110,19 @@ class TokenizerBenchmarkSuite:
             "tokenisointi takaa kielimallin optimaalisen suorituskyvyn ja sanaston tehokkaan käytön."
         )
         * 30,
+        "Agglutinative_Swahili": (
+            "Katika uchakataji wa lugha asilia na teknolojia ya kompyuta, mfumo wa ugawaji maneno una umuhimu mkubwa sana. "
+            "Lugha ya Kiswahili hutumia viambishi awali na viambishi tamati kuunda maumbo changamano ya maneno, "
+            "ambapo mzizi wa neno huambatanishwa na viwakilishi vya ngeli, nafsi, na nyakati mbalimbali. "
+            "Ugawaji sahihi wa vipande vya maneno unahitajika ili kuwezesha miundo ya lugha kuelewa miundo ya kisarufi bila kupoteza maana."
+        )
+        * 30,
+        "Agglutinative_Yoruba": (
+            "Nínú ìmọ̀ ẹ̀rọ ìṣirò àti ìtúpalẹ̀ èdè àdánidá, pínpín àwọn ọ̀rọ̀ sí wẹ́wẹ́ jẹ́ kókó pàtàkì fún àwọn àwòṣe kọ̀mpútà. "
+            "Èdè Yorùbá ní àwọn àmì ohùn àti àwọn àmì ìsàlẹ̀ tí ó ń fi ìyàtọ̀ sí ìtumọ̀ ọ̀rọ̀, pẹ̀lú àwọn àfòmọ́ tí ó ń so mọ́ orí ọ̀rọ̀. "
+            "Pínpín ọ̀rọ̀ ní ọ̀nà tó péye ń mú kí ẹ̀rọ mọ bí a ṣe ń lo àwọn ìsọ̀rí ọ̀rọ̀ láìsí àdánù kankan nínú ìtumọ̀."
+        )
+        * 30,
     }
 
     def __init__(self, tokenizer: Optional[CustomTokenizer] = None):
@@ -480,19 +493,19 @@ class TokenizerBenchmarkSuite:
         return results
 
     def print_summary_report(self, include_large_payloads: bool = False) -> None:
-        print("=" * 115)
-        print("UNIQTOKEN TOKENIZER EMPIRICAL BENCHMARK REPORT")
-        print("=" * 115)
-
         results = self.run_all_benchmarks()
 
-        header = f"{'Dataset':<18} | {'Bytes':<7} | {'Tokens':<7} | {'Bytes/Tok':<10} | {'Fertility':<10} | {'Enc KB/s':<10} | {'Tok/sec':<10} | {'RAM (MB)':<9} | {'Fallback %':<11} | {'Offset Overhead':<15}"
+        header = f"{'Dataset':<22} | {'Bytes':<7} | {'Tokens':<7} | {'Bytes/Tok':<10} | {'Fertility':<10} | {'Enc KB/s':<10} | {'Tok/sec':<10} | {'RAM (MB)':<9} | {'Fallback %':<11} | {'Offset Overhead':<15}"
+        sep = "=" * len(header)
+        print(sep)
+        print("UNIQTOKEN TOKENIZER EMPIRICAL BENCHMARK REPORT")
+        print(sep)
         print(header)
         print("-" * len(header))
 
         for r in results:
             print(
-                f"{r.dataset_name:<18} | {r.num_bytes:<7} | {r.num_tokens:<7} | "
+                f"{r.dataset_name:<22} | {r.num_bytes:<7} | {r.num_tokens:<7} | "
                 f"{r.bytes_per_token:<10} | {r.tokens_per_word:<10} | "
                 f"{r.encode_speed_kbs:<10} | {r.encode_speed_tokens_sec:<10} | "
                 f"{r.peak_ram_mb:<9} | {r.fallback_rate_pct:<11} | "
