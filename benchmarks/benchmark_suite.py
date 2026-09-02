@@ -55,7 +55,7 @@ class TokenizerBenchmarkSuite:
             "tokenization subword vocabularies. Subword tokenization balances the trade-off "
             "between character-level sequence bloat and word-level vocabulary explosion. "
             "Modern systems require robust handling of diverse orthographic conventions, "
-            "case normalization, and punctuation isolation."
+            "case normalization, and punctuation isolation.\n"
         )
         * 40,
         "Python_Code": (
@@ -78,36 +78,49 @@ class TokenizerBenchmarkSuite:
         "Indic_Hindi": (
             "प्राकृतिक भाषा प्रसंस्करण और कंप्यूटर विज्ञान में टोकनाइज़र एक अत्यंत महत्वपूर्ण घटक है। "
             "देवनागरी लिपि में मात्राओं और हलंत (विराम) का उचित संयोजन बनाए रखना आवश्यक है ताकि "
-            "अक्षरों का विखंडन न हो। भाषा मॉडल की सटीकता सही टोकनीकरण पर निर्भर करती है।"
+            "अक्षरों का विखंडन न हो। भाषा मॉडल की सटीकता सही टोकनीकरण पर निर्भर करती है।\n"
         )
         * 30,
         "CJK_Japanese": (
             "自然言語処理におけるトークナイザーは、テキストを一連のサブワードに分割する重要な役割を果たします。"
             "日本語のように単語間に空白が存在しない言語では、形態素解析やバイトフォールバック機構が極めて重要です。"
-            "正確なアライメントとオフセット追跡が必要です。"
+            "正確なアライメントとオフセット追跡が必要です。\n"
         )
         * 30,
         "Arabic_Script": (
             "تعتبر معالجة اللغات الطبيعية وتجزئة النصوص من أهم ركائز الذكاء الاصطناعي الحديث. "
-            "يتطلب التعامل مع اللغة العربية دعماً دقيقاً للحركات وعلامات التشكيل لضمان عدم فقدان المعنى."
+            "يتطلب التعامل مع اللغة العربية دعماً دقيقاً للحركات وعلامات التشكيل لضमान عدم فقدان المعنى.\n"
         )
         * 30,
         "Arithmetic_Math": (
             "Solve the system of equations: f(x, y) = 3.14159 * x^2 + 2.71828 * y - 42.0. "
             "Given matrices A = [[12, 34], [56, 78]] and B = [[90, 11], [22, 33]], calculate det(A * B). "
-            "Indices: 1048576, 2097152, 4194304, 8388608. Verify sum(x_i) for i in range(1000)."
+            "Indices: 1048576, 2097152, 4194304, 8388608. Verify sum(x_i) for i in range(1000).\n"
         )
         * 30,
         "Agglutinative_Turkish": (
             "Doğal dil işleme modellerinde eklemeli dillerin morfolojik yapısının doğru çözümlenmesi büyük önem taşır. "
             "Türkçede çekim ve yapım eklerinin ardışık dizilimi, kelime gövdelerinin korunmasını ve alt-kelime "
-            "bölümlemesinin dilbilgisi kurallarına uygun olarak gerçekleştirilmesini gerektirir."
+            "bölümlemesinin dilbilgisi kurallarına uygun olarak gerçekleştirilmesini gerektirir.\n"
         )
         * 30,
         "Agglutinative_Finnish": (
             "Luonnollisen kielen käsittelyssä agglutinoivien kielten sananmuodostus asettaa erityisiä vaatimuksia. "
             "Suomen kielen taivutuspäätteet ja johdokset muodostavat monimutkaisia rakenteita, joiden oikea "
-            "tokenisointi takaa kielimallin optimaalisen suorituskyvyn ja sanaston tehokkaan käytön."
+            "tokenisointi takaa kielimallin optimaalisen suorituskyvyn ja sanaston tehokkaan käytön.\n"
+        )
+        * 30,
+        "Agglutinative_Swahili": (
+            "Katika uchakataji wa lugha asilia na teknolojia ya kompyuta, mfumo wa ugawaji maneno una umuhimu mkubwa sana. "
+            "Lugha ya Kiswahili hutumia viambishi awali na viambishi tamati kuunda maumbo changamano ya maneno, "
+            "ambapo mzizi wa neno huambatanishwa na viwakilishi vya ngeli, nafsi, na nyakati mbalimbali. "
+            "Ugawaji sahihi wa vipande vya maneno unahitajika ili kuwezesha miundo ya lugha kuelewa miundo ya kisarufi bila kupoteza maana.\n"
+        )
+        * 30,
+        "Yoruba": (
+            "Nínú ìmọ̀ ẹ̀rọ ìṣirò àti ìtúpalẹ̀ èdè àdánidá, pínpín àwọn ọ̀rọ̀ sí wẹ́wẹ́ jẹ́ kókó pàtàkì fún àwọn àwòṣe kọ̀mpútà. "
+            "Èdè Yorùbá ní àwọn àmì ohùn àti àwọn àmì ìsàlẹ̀ tí ó ń fi ìyàtọ̀ sí ìtumọ̀ ọ̀rọ̀, pẹ̀lú àwọn àfòmọ́ tí ó ń so mọ́ orí ọ̀rọ̀. "
+            "Pínpín ọ̀rọ̀ ní ọ̀nà tó péye ń mú kí ẹ̀rọ mọ bí a ṣe ń lo àwọn ìsọ̀rí ọ̀rọ̀ láìsí àdánù kankan nínú ìtumọ̀.\n"
         )
         * 30,
     }
@@ -480,19 +493,19 @@ class TokenizerBenchmarkSuite:
         return results
 
     def print_summary_report(self, include_large_payloads: bool = False) -> None:
-        print("=" * 115)
-        print("UNIQTOKEN TOKENIZER EMPIRICAL BENCHMARK REPORT")
-        print("=" * 115)
-
         results = self.run_all_benchmarks()
 
-        header = f"{'Dataset':<18} | {'Bytes':<7} | {'Tokens':<7} | {'Bytes/Tok':<10} | {'Fertility':<10} | {'Enc KB/s':<10} | {'Tok/sec':<10} | {'RAM (MB)':<9} | {'Fallback %':<11} | {'Offset Overhead':<15}"
+        header = f"{'Dataset':<22} | {'Bytes':<7} | {'Tokens':<7} | {'Bytes/Tok':<10} | {'Fertility':<10} | {'Enc KB/s':<10} | {'Tok/sec':<10} | {'RAM (MB)':<9} | {'Fallback %':<11} | {'Offset Overhead':<15}"
+        sep = "=" * len(header)
+        print(sep)
+        print("UNIQTOKEN TOKENIZER EMPIRICAL BENCHMARK REPORT")
+        print(sep)
         print(header)
         print("-" * len(header))
 
         for r in results:
             print(
-                f"{r.dataset_name:<18} | {r.num_bytes:<7} | {r.num_tokens:<7} | "
+                f"{r.dataset_name:<22} | {r.num_bytes:<7} | {r.num_tokens:<7} | "
                 f"{r.bytes_per_token:<10} | {r.tokens_per_word:<10} | "
                 f"{r.encode_speed_kbs:<10} | {r.encode_speed_tokens_sec:<10} | "
                 f"{r.peak_ram_mb:<9} | {r.fallback_rate_pct:<11} | "
