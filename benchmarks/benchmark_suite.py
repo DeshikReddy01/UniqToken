@@ -55,7 +55,7 @@ class TokenizerBenchmarkSuite:
             "tokenization subword vocabularies. Subword tokenization balances the trade-off "
             "between character-level sequence bloat and word-level vocabulary explosion. "
             "Modern systems require robust handling of diverse orthographic conventions, "
-            "case normalization, and punctuation isolation."
+            "case normalization, and punctuation isolation.\n"
         )
         * 40,
         "Python_Code": (
@@ -78,36 +78,36 @@ class TokenizerBenchmarkSuite:
         "Indic_Hindi": (
             "प्राकृतिक भाषा प्रसंस्करण और कंप्यूटर विज्ञान में टोकनाइज़र एक अत्यंत महत्वपूर्ण घटक है। "
             "देवनागरी लिपि में मात्राओं और हलंत (विराम) का उचित संयोजन बनाए रखना आवश्यक है ताकि "
-            "अक्षरों का विखंडन न हो। भाषा मॉडल की सटीकता सही टोकनीकरण पर निर्भर करती है।"
+            "अक्षरों का विखंडन न हो। भाषा मॉडल की सटीकता सही टोकनीकरण पर निर्भर करती है।\n"
         )
         * 30,
         "CJK_Japanese": (
             "自然言語処理におけるトークナイザーは、テキストを一連のサブワードに分割する重要な役割を果たします。"
             "日本語のように単語間に空白が存在しない言語では、形態素解析やバイトフォールバック機構が極めて重要です。"
-            "正確なアライメントとオフセット追跡が必要です。"
+            "正確なアライメントとオフセット追跡が必要です。\n"
         )
         * 30,
         "Arabic_Script": (
             "تعتبر معالجة اللغات الطبيعية وتجزئة النصوص من أهم ركائز الذكاء الاصطناعي الحديث. "
-            "يتطلب التعامل مع اللغة العربية دعماً دقيقاً للحركات وعلامات التشكيل لضمان عدم فقدان المعنى."
+            "يتطلب التعامل مع اللغة العربية دعماً دقيقاً للحركات وعلامات التشكيل لضमान عدم فقدان المعنى.\n"
         )
         * 30,
         "Arithmetic_Math": (
             "Solve the system of equations: f(x, y) = 3.14159 * x^2 + 2.71828 * y - 42.0. "
             "Given matrices A = [[12, 34], [56, 78]] and B = [[90, 11], [22, 33]], calculate det(A * B). "
-            "Indices: 1048576, 2097152, 4194304, 8388608. Verify sum(x_i) for i in range(1000)."
+            "Indices: 1048576, 2097152, 4194304, 8388608. Verify sum(x_i) for i in range(1000).\n"
         )
         * 30,
         "Agglutinative_Turkish": (
             "Doğal dil işleme modellerinde eklemeli dillerin morfolojik yapısının doğru çözümlenmesi büyük önem taşır. "
             "Türkçede çekim ve yapım eklerinin ardışık dizilimi, kelime gövdelerinin korunmasını ve alt-kelime "
-            "bölümlemesinin dilbilgisi kurallarına uygun olarak gerçekleştirilmesini gerektirir."
+            "bölümlemesinin dilbilgisi kurallarına uygun olarak gerçekleştirilmesini gerektirir.\n"
         )
         * 30,
         "Agglutinative_Finnish": (
             "Luonnollisen kielen käsittelyssä agglutinoivien kielten sananmuodostus asettaa erityisiä vaatimuksia. "
             "Suomen kielen taivutuspäätteet ja johdokset muodostavat monimutkaisia rakenteita, joiden oikea "
-            "tokenisointi takaa kielimallin optimaalisen suorituskyvyn ja sanaston tehokkaan käytön."
+            "tokenisointi takaa kielimallin optimaalisen suorituskyvyn ja sanaston tehokkaan käytön.\n"
         )
         * 30,
         "Agglutinative_Swahili": (
