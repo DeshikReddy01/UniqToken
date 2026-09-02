@@ -114,13 +114,13 @@ class TokenizerBenchmarkSuite:
             "Katika uchakataji wa lugha asilia na teknolojia ya kompyuta, mfumo wa ugawaji maneno una umuhimu mkubwa sana. "
             "Lugha ya Kiswahili hutumia viambishi awali na viambishi tamati kuunda maumbo changamano ya maneno, "
             "ambapo mzizi wa neno huambatanishwa na viwakilishi vya ngeli, nafsi, na nyakati mbalimbali. "
-            "Ugawaji sahihi wa vipande vya maneno unahitajika ili kuwezesha miundo ya lugha kuelewa miundo ya kisarufi bila kupoteza maana."
+            "Ugawaji sahihi wa vipande vya maneno unahitajika ili kuwezesha miundo ya lugha kuelewa miundo ya kisarufi bila kupoteza maana.\n"
         )
         * 30,
-        "Agglutinative_Yoruba": (
+        "Yoruba": (
             "Nínú ìmọ̀ ẹ̀rọ ìṣirò àti ìtúpalẹ̀ èdè àdánidá, pínpín àwọn ọ̀rọ̀ sí wẹ́wẹ́ jẹ́ kókó pàtàkì fún àwọn àwòṣe kọ̀mpútà. "
             "Èdè Yorùbá ní àwọn àmì ohùn àti àwọn àmì ìsàlẹ̀ tí ó ń fi ìyàtọ̀ sí ìtumọ̀ ọ̀rọ̀, pẹ̀lú àwọn àfòmọ́ tí ó ń so mọ́ orí ọ̀rọ̀. "
-            "Pínpín ọ̀rọ̀ ní ọ̀nà tó péye ń mú kí ẹ̀rọ mọ bí a ṣe ń lo àwọn ìsọ̀rí ọ̀rọ̀ láìsí àdánù kankan nínú ìtumọ̀."
+            "Pínpín ọ̀rọ̀ ní ọ̀nà tó péye ń mú kí ẹ̀rọ mọ bí a ṣe ń lo àwọn ìsọ̀rí ọ̀rọ̀ láìsí àdánù kankan nínú ìtumọ̀.\n"
         )
         * 30,
     }
