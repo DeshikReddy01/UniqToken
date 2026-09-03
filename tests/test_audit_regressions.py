@@ -119,7 +119,9 @@ try:
     import uniqtoken_core
 
     HAS_RUST = True
-except ImportError:
+except ModuleNotFoundError as exc:
+    if exc.name != "uniqtoken_core":
+        raise
     HAS_RUST = False
 
 
