@@ -421,7 +421,6 @@ class UnigramTrainer:
 
         # Step 1: Pre-aggregate chunk frequencies
         chunk_counts = Counter(pre_tokenized_chunks)
-        total_corpus_bytes = sum(len(c.encode("utf-8", errors="replace")) * count for c, count in chunk_counts.items())
 
         # Step 2: Build Seed Vocabulary
         seed_builder = SeedVocabularyBuilder(
@@ -449,7 +448,11 @@ class UnigramTrainer:
 
         total_to_prune = max(1, len(current_vocab_log_probs) - self.target_vocab_size)
         pbar = None
+        total_corpus_bytes = 0
         if show_progress:
+            total_corpus_bytes = sum(
+                len(c.encode("utf-8", errors="replace")) * count for c, count in chunk_counts.items()
+            )
             pbar = tqdm(
                 total=total_to_prune,
                 desc="EM Training & Pruning",
@@ -474,92 +477,10 @@ class UnigramTrainer:
         delta_str = "init"
         em_throughput = 0.0
 
-        # Step 4: Iterative EM Optimization & Pruning Loop
-        while len(current_vocab_log_probs) > self.target_vocab_size:
-            num_candidates = sum(1 for tok in current_vocab_log_probs if tok not in required_tokens)
-            if pbar is not None:
-                pbar.set_postfix(
-                    {
-                        "vocab": len(current_vocab_log_probs),
-                        "ΔL": delta_str,
-                        "candidates": num_candidates,
-                        "throughput": f"{em_throughput:.2f} MB/s",
-                        "round": round_num,
-                    },
-                    refresh=False,
-                )
-
-            # --- E-STEP & M-STEP SUB-ITERATIONS ---
-            prev_log_lik = -float("inf")
-            for sub_iter in range(self.em_sub_iterations):
-                em_start = time.perf_counter()
-                expected_counts: Dict[str, float] = {}
-                total_corpus_log_lik = 0.0
-                can_use_rust_em = (
-                    _HAS_CALIPER_CORE
-                    and self.min_edge_log_prob is None
-                    and self.max_edges_per_node is None
-                    and self.max_ngram_length >= 16
-                )
-                if can_use_rust_em:
-                    try:
-                        rust_trie = caliper_core.RustPrefixTrie(self.max_ngram_length)
-                        for t, lp in current_vocab_log_probs.items():
-                            rust_trie.insert(t, lp, 0)
-                        for chunk, count in chunk_counts.items():
-                            if chunk in required_tokens and (chunk.startswith("<|") and chunk.endswith("|>")):
-                                expected_counts[chunk] = expected_counts.get(chunk, 0.0) + count
-                                continue
-                            chunk_exp, chunk_log_lik = caliper_core.rust_forward_backward_expectations(
-                                chunk, rust_trie, 1.0
-                            )
-                            total_corpus_log_lik += chunk_log_lik * count
-                            for tok, exp_val in chunk_exp.items():
-                                expected_counts[tok] = expected_counts.get(tok, 0.0) + (exp_val * count)
-                    except Exception:
-                        can_use_rust_em = False
-                        expected_counts.clear()
-                        total_corpus_log_lik = 0.0
-
-                if not can_use_rust_em:
-                    trie = PrefixTrie.from_vocab(current_vocab_log_probs)
-                    for chunk, count in chunk_counts.items():
-                        if chunk in required_tokens and (chunk.startswith("<|") and chunk.endswith("|>")):
-                            expected_counts[chunk] = expected_counts.get(chunk, 0.0) + count
-                            continue
-
-                        lattice = UnigramLattice(
-                            text=chunk,
-                            vocab_log_probs=current_vocab_log_probs,
-                            max_subword_len=self.max_ngram_length,
-                            byte_fallback=self.byte_fallback,
-                            trie=trie,
-                            max_edges_per_node=self.max_edges_per_node,
-                            min_edge_log_prob=self.min_edge_log_prob,
-                        )
-
-                        chunk_exp, chunk_log_lik = lattice.forward_backward()
-                        total_corpus_log_lik += chunk_log_lik * count
-
-                        for tok, exp_val in chunk_exp.items():
-                            expected_counts[tok] = expected_counts.get(tok, 0.0) + (exp_val * count)
-
-                total_expected = sum(expected_counts.values())
-                if total_expected <= 0:
-                    break
-
-                delta_log_lik = abs(total_corpus_log_lik - prev_log_lik)
-                prev_log_lik = total_corpus_log_lik
-                em_elapsed = time.perf_counter() - em_start
-                em_throughput = (total_corpus_bytes / (1024 * 1024)) / em_elapsed if em_elapsed > 0 else 0.0
-
-                if math.isinf(delta_log_lik):
-                    delta_str = "init"
-                elif delta_log_lik >= 1.0:
-                    delta_str = f"{delta_log_lik:.4f}"
-                else:
-                    delta_str = f"{delta_log_lik:.4e}"
-
+        try:
+            # Step 4: Iterative EM Optimization & Pruning Loop
+            while len(current_vocab_log_probs) > self.target_vocab_size:
+                num_candidates = sum(1 for tok in current_vocab_log_probs if tok not in required_tokens)
                 if pbar is not None:
                     pbar.set_postfix(
                         {
@@ -571,84 +492,168 @@ class UnigramTrainer:
                         },
                         refresh=False,
                     )
-                    pbar.refresh()
 
-                current_vocab_log_probs = {
-                    tok: math.log(max(expected_counts.get(tok, 1e-12) / total_expected, 1e-12))
-                    for tok in current_vocab_log_probs
-                }
+                # --- E-STEP & M-STEP SUB-ITERATIONS ---
+                prev_log_lik = -float("inf")
+                round_em_start = time.perf_counter()
+                for sub_iter in range(self.em_sub_iterations):
+                    expected_counts: Dict[str, float] = {}
+                    total_corpus_log_lik = 0.0
+                    can_use_rust_em = (
+                        _HAS_CALIPER_CORE
+                        and self.min_edge_log_prob is None
+                        and self.max_edges_per_node is None
+                        and self.max_ngram_length >= 16
+                    )
+                    if can_use_rust_em:
+                        try:
+                            rust_trie = caliper_core.RustPrefixTrie(self.max_ngram_length)
+                            for t, lp in current_vocab_log_probs.items():
+                                rust_trie.insert(t, lp, 0)
+                            for chunk, count in chunk_counts.items():
+                                if chunk in required_tokens and (chunk.startswith("<|") and chunk.endswith("|>")):
+                                    expected_counts[chunk] = expected_counts.get(chunk, 0.0) + count
+                                    continue
+                                chunk_exp, chunk_log_lik = caliper_core.rust_forward_backward_expectations(
+                                    chunk, rust_trie, 1.0
+                                )
+                                total_corpus_log_lik += chunk_log_lik * count
+                                for tok, exp_val in chunk_exp.items():
+                                    expected_counts[tok] = expected_counts.get(tok, 0.0) + (exp_val * count)
+                        except Exception:
+                            can_use_rust_em = False
+                            expected_counts.clear()
+                            total_corpus_log_lik = 0.0
 
-                if sub_iter > 0 and delta_log_lik < self.convergence_tolerance:
+                    if not can_use_rust_em:
+                        trie = PrefixTrie.from_vocab(current_vocab_log_probs)
+                        for chunk, count in chunk_counts.items():
+                            if chunk in required_tokens and (chunk.startswith("<|") and chunk.endswith("|>")):
+                                expected_counts[chunk] = expected_counts.get(chunk, 0.0) + count
+                                continue
+
+                            lattice = UnigramLattice(
+                                text=chunk,
+                                vocab_log_probs=current_vocab_log_probs,
+                                max_subword_len=self.max_ngram_length,
+                                byte_fallback=self.byte_fallback,
+                                trie=trie,
+                                max_edges_per_node=self.max_edges_per_node,
+                                min_edge_log_prob=self.min_edge_log_prob,
+                            )
+
+                            chunk_exp, chunk_log_lik = lattice.forward_backward()
+                            total_corpus_log_lik += chunk_log_lik * count
+
+                            for tok, exp_val in chunk_exp.items():
+                                expected_counts[tok] = expected_counts.get(tok, 0.0) + (exp_val * count)
+
+                    total_expected = sum(expected_counts.values())
+                    if total_expected <= 0:
+                        break
+
+                    delta_log_lik = abs(total_corpus_log_lik - prev_log_lik)
+                    prev_log_lik = total_corpus_log_lik
+                    em_elapsed = time.perf_counter() - round_em_start
+                    bytes_processed = total_corpus_bytes * (sub_iter + 1)
+                    em_throughput = (bytes_processed / (1024 * 1024)) / em_elapsed if em_elapsed > 0 else 0.0
+
+                    if math.isinf(delta_log_lik):
+                        delta_str = "init"
+                    elif delta_log_lik >= 1.0:
+                        delta_str = f"{delta_log_lik:.4f}"
+                    else:
+                        delta_str = f"{delta_log_lik:.4e}"
+
+                    if pbar is not None:
+                        pbar.set_postfix(
+                            {
+                                "vocab": len(current_vocab_log_probs),
+                                "ΔL": delta_str,
+                                "candidates": num_candidates,
+                                "throughput": f"{em_throughput:.2f} MB/s",
+                                "round": round_num,
+                            },
+                            refresh=False,
+                        )
+                        pbar.refresh()
+
+                    current_vocab_log_probs = {
+                        tok: math.log(max(expected_counts.get(tok, 1e-12) / total_expected, 1e-12))
+                        for tok in current_vocab_log_probs
+                    }
+
+                    if sub_iter > 0 and delta_log_lik < self.convergence_tolerance:
+                        break
+
+                # --- PRUNING STEP ---
+                if not expected_counts or total_expected <= 0:
+                    if verbose:
+                        _log("  No expectations computed; terminating EM pruning.")
                     break
 
-            # --- PRUNING STEP ---
-            if not expected_counts or total_expected <= 0:
-                if verbose:
-                    _log("  No expectations computed; terminating EM pruning.")
-                break
+                current_size = len(current_vocab_log_probs)
+                if current_size <= self.target_vocab_size:
+                    break
 
-            current_size = len(current_vocab_log_probs)
-            if current_size <= self.target_vocab_size:
-                break
-
-            excess = current_size - self.target_vocab_size
-            if excess <= 500 or round_num >= 3:
-                num_to_prune = excess
-            else:
-                num_to_prune = max(1, int(excess * self.prune_rate))
-            # Candidates are scored by their contribution to corpus likelihood with length regularization beta
-            # Score(t) = E[count(t)] * log p(t) * (byte_len ^ beta).
-            # When beta > 0, longer subwords receive higher survival pressure (more negative score).
-            candidate_scores: List[Tuple[str, float]] = []
-
-            for tok, log_p in current_vocab_log_probs.items():
-                if tok in required_tokens:
-                    continue  # Required tokens are immune to pruning
-                exp_c = expected_counts.get(tok, 0.0)
-                if self.pruning_length_exponent > 0.0:
-                    byte_len = max(len(tok.encode("utf-8")), 1)
-                    score = exp_c * log_p * (float(byte_len) ** self.pruning_length_exponent)
+                excess = current_size - self.target_vocab_size
+                if excess <= 500 or round_num >= 3:
+                    num_to_prune = excess
                 else:
-                    score = exp_c * log_p
-                candidate_scores.append((tok, score))
+                    num_to_prune = max(1, int(excess * self.prune_rate))
+                # Candidates are scored by their contribution to corpus likelihood with length regularization beta
+                # Score(t) = E[count(t)] * log p(t) * (byte_len ^ beta).
+                # When beta > 0, longer subwords receive higher survival pressure (more negative score).
+                candidate_scores: List[Tuple[str, float]] = []
 
-            pruning_candidate_count = len(candidate_scores)
+                for tok, log_p in current_vocab_log_probs.items():
+                    if tok in required_tokens:
+                        continue  # Required tokens are immune to pruning
+                    exp_c = expected_counts.get(tok, 0.0)
+                    if self.pruning_length_exponent > 0.0:
+                        byte_len = max(len(tok.encode("utf-8")), 1)
+                        score = exp_c * log_p * (float(byte_len) ** self.pruning_length_exponent)
+                    else:
+                        score = exp_c * log_p
+                    candidate_scores.append((tok, score))
 
-            # Deterministic: remove the least negative scores before valuable
-            # high-count tokens whose contribution is strongly negative.
-            candidate_scores.sort(key=lambda x: (-x[1], x[0]))
+                pruning_candidate_count = len(candidate_scores)
 
-            # Prune lowest candidates
-            tokens_to_remove = set(tok for tok, _ in candidate_scores[:num_to_prune])
+                # Deterministic: remove the least negative scores before valuable
+                # high-count tokens whose contribution is strongly negative.
+                candidate_scores.sort(key=lambda x: (-x[1], x[0]))
 
-            new_vocab_log_probs: Dict[str, float] = {
-                tok: log_p for tok, log_p in current_vocab_log_probs.items() if tok not in tokens_to_remove
-            }
+                # Prune lowest candidates
+                tokens_to_remove = set(tok for tok, _ in candidate_scores[:num_to_prune])
 
-            current_vocab_log_probs = new_vocab_log_probs
-            new_candidate_count = sum(1 for tok in current_vocab_log_probs if tok not in required_tokens)
+                new_vocab_log_probs: Dict[str, float] = {
+                    tok: log_p for tok, log_p in current_vocab_log_probs.items() if tok not in tokens_to_remove
+                }
 
+                current_vocab_log_probs = new_vocab_log_probs
+                new_candidate_count = sum(1 for tok in current_vocab_log_probs if tok not in required_tokens)
+
+                if pbar is not None:
+                    pbar.update(len(tokens_to_remove))
+                    pbar.set_postfix(
+                        {
+                            "vocab": len(current_vocab_log_probs),
+                            "ΔL": delta_str,
+                            "candidates": new_candidate_count,
+                            "throughput": f"{em_throughput:.2f} MB/s",
+                            "round": round_num,
+                        }
+                    )
+
+                if verbose:
+                    _log(
+                        f"[EM Round {round_num:>2}] Vocab: {len(current_vocab_log_probs):>5} | Pruned: {len(tokens_to_remove):>4} | Candidates: {pruning_candidate_count:>5} | ΔL: {delta_str} | Corpus LogLik: {total_corpus_log_lik:.2f}"
+                    )
+
+                round_num += 1
+        finally:
             if pbar is not None:
-                pbar.update(len(tokens_to_remove))
-                pbar.set_postfix(
-                    {
-                        "vocab": len(current_vocab_log_probs),
-                        "ΔL": delta_str,
-                        "candidates": new_candidate_count,
-                        "throughput": f"{em_throughput:.2f} MB/s",
-                        "round": round_num,
-                    }
-                )
-
-            if verbose:
-                _log(
-                    f"[EM Round {round_num:>2}] Vocab: {len(current_vocab_log_probs):>5} | Pruned: {len(tokens_to_remove):>4} | Candidates: {pruning_candidate_count:>5} | ΔL: {delta_str} | Corpus LogLik: {total_corpus_log_lik:.2f}"
-                )
-
-            round_num += 1
-
-        if pbar is not None:
-            pbar.close()
+                pbar.close()
 
         # Step 5: Final Probability Re-normalization
         total_p = sum(math.exp(log_p) for log_p in current_vocab_log_probs.values())

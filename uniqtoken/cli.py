@@ -94,32 +94,33 @@ def train_command(args: argparse.Namespace) -> int:
     start_time = time.perf_counter()
     bytes_read = 0
 
-    for path in args.corpus:
-        p = Path(path)
-        decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
-        doc_parts: List[str] = []
-        with open(p, "rb") as f:
-            while True:
-                block = f.read(256 * 1024)
-                if not block:
-                    break
-                bytes_read += len(block)
-                doc_parts.append(decoder.decode(block))
-                if read_pbar is not None:
-                    read_pbar.update(len(block))
-                    elapsed = time.perf_counter() - start_time
-                    mb_per_sec = (bytes_read / (1024 * 1024)) / elapsed if elapsed > 0 else 0.0
-                    read_pbar.set_postfix({"throughput": f"{mb_per_sec:.2f} MB/s"})
+    try:
+        for path in args.corpus:
+            p = Path(path)
+            decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
+            doc_parts: List[str] = []
+            with open(p, "rb") as f:
+                while True:
+                    block = f.read(256 * 1024)
+                    if not block:
+                        break
+                    bytes_read += len(block)
+                    doc_parts.append(decoder.decode(block))
+                    if read_pbar is not None:
+                        read_pbar.update(len(block))
+                        elapsed = time.perf_counter() - start_time
+                        mb_per_sec = (bytes_read / (1024 * 1024)) / elapsed if elapsed > 0 else 0.0
+                        read_pbar.set_postfix({"throughput": f"{mb_per_sec:.2f} MB/s"})
 
-        doc_parts.append(decoder.decode(b"", final=True))
-        document = "".join(doc_parts)
-        if document:
-            # A corpus file is one document. Preserve indentation, blank lines,
-            # and trailing whitespace because they are meaningful training data.
-            corpus.append(document)
-
-    if read_pbar is not None:
-        read_pbar.close()
+            doc_parts.append(decoder.decode(b"", final=True))
+            document = "".join(doc_parts)
+            if document:
+                # A corpus file is one document. Preserve indentation, blank lines,
+                # and trailing whitespace because they are meaningful training data.
+                corpus.append(document)
+    finally:
+        if read_pbar is not None:
+            read_pbar.close()
 
     if not corpus:
         print("Error: Corpus is empty.", file=sys.stderr)
@@ -158,13 +159,10 @@ def train_command(args: argparse.Namespace) -> int:
             model=sbp_model,
         )
 
-    if args.out:
-        out_dir = Path(args.out)
-        out_dir.mkdir(parents=True, exist_ok=True)
-        tok.save(str(out_dir))
-        _print_msg(f"Saved trained tokenizer model to: {out_dir.resolve()} (Vocab size: {tok.vocab_size})")
-    else:
-        _print_msg(f"Training completed successfully. (Vocab size: {tok.vocab_size})")
+    out_dir = Path(args.out)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    tok.save(str(out_dir))
+    _print_msg(f"Saved trained tokenizer model to: {out_dir.resolve()} (Vocab size: {tok.vocab_size})")
     return 0
 
 
@@ -317,7 +315,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_train = subparsers.add_parser("train", help="Train tokenizer from text corpus")
     p_train.add_argument("--corpus", nargs="+", required=True, help="One or more text corpus files")
     p_train.add_argument("--vocab-size", type=int, default=8000, help="Target vocabulary size (default: 8000)")
-    p_train.add_argument("--out", type=str, default=None, help="Directory to save trained model files (default: None)")
+    p_train.add_argument("--out", type=str, required=True, help="Directory to save trained model files")
     p_train.add_argument(
         "--ranking-strategy",
         choices=["char_savings", "byte_savings", "frequency", "pmi"],

@@ -49,7 +49,7 @@ jobs:
       - name: Install Build & Test Tooling
         run: |
           python -m pip install --upgrade pip setuptools wheel build
-          python -m pip install ruff mypy pytest coverage maturin regex tokenizers transformers sentencepiece
+          python -m pip install ruff mypy pytest coverage maturin regex tokenizers transformers sentencepiece torch
 
       - name: Build & Install Native Extension (fresh from source)
         run: |
