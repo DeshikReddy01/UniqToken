@@ -118,9 +118,9 @@ class CustomTokenizer:
         """
         if self._cross_word_set is None or self._cross_word_model_id != id(self.model):
             sc = self.normalizer.space_char
-            # Only internal metaspace (SuperBPE merges like "the▁quick"); leading
+            # Only internal metaspace (SuperBPE merges like "the▁quick" or "▁the▁quick"); leading
             # metaspace tokens (e.g. "▁quick" from pre-tokenization) are normal chunks.
-            self._cross_word_set = frozenset(t for t in self.model.vocab if sc in t and t.index(sc) > 0 and t.strip(sc))
+            self._cross_word_set = frozenset(t for t in self.model.vocab if sc in t[1:] and t.strip(sc))
             self._cross_word_model_id = id(self.model)
         return self._cross_word_set
 

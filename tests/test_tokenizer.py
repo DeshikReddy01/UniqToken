@@ -1064,6 +1064,60 @@ class SuperBPETests(unittest.TestCase):
         reassigned_cw = base_tok._cross_word_tokens()
         self.assertGreater(len(reassigned_cw), 0)
 
+    def test_superbpe_leading_metaspace_cross_word_tokens_recognized_and_emitted(self):
+        """Cross-word tokens with a leading metaspace (e.g. "\u2581over\u2581the")
+        must be recognized by _cross_word_tokens() and emitted by encode() (Issue #9)."""
+        vocab = {
+            "over": log(0.25),
+            self.SPACE + "the": log(0.25),
+            self.SPACE + "over": log(0.25),
+            self.SPACE + "over" + self.SPACE + "the": log(0.25),
+        }
+        token_to_id = {token: index for index, token in enumerate(vocab)}
+        model = UnigramModel(
+            vocab=vocab,
+            token_to_id=token_to_id,
+            id_to_token={index: token for token, index in token_to_id.items()},
+            special_tokens=[],
+            max_subword_len=12,
+            byte_fallback=False,
+        )
+        tokenizer = CustomTokenizer(Normalizer(normalize_unicode=False), RegexPreTokenizer(), model)
+        leading_cw = self.SPACE + "over" + self.SPACE + "the"
+        self.assertIn(leading_cw, tokenizer._cross_word_tokens())
+
+        # When encoding " over the", the two chunks are "\u2581over" and "\u2581the",
+        # which must be fused into "\u2581over\u2581the" by _apply_cross_word_merges.
+        encoded = tokenizer.encode(" over the")
+        self.assertEqual(encoded, [leading_cw])
+
+    def test_superbpe_cem_does_not_create_intra_word_dead_merges(self):
+        """CEM in cross_word mode must only accept pairs whose concatenation has
+        an internal metaspace (at index > 0), avoiding dead intra-word merges (Issue #9)."""
+        vocab = {
+            self.SPACE: log(0.2),
+            "quick": log(0.2),
+            self.SPACE + "quick": log(0.2),
+            self.SPACE + "fox": log(0.2),
+            self.SPACE + "quick" + self.SPACE + "fox": log(0.2),
+        }
+        token_to_id = {token: index for index, token in enumerate(vocab)}
+        model = UnigramModel(
+            vocab=vocab,
+            token_to_id=token_to_id,
+            id_to_token={index: token for token, index in token_to_id.items()},
+            special_tokens=[],
+            max_subword_len=16,
+            byte_fallback=False,
+        )
+        optimizer = CrossEntropyMerging(max_merges=10, cross_word=True)
+        chunks = [self.SPACE + "quick", self.SPACE + "fox"] * 10
+        improved = optimizer.optimize(model, chunks)
+        tokenizer = CustomTokenizer(Normalizer(normalize_unicode=False), RegexPreTokenizer(), improved)
+        for _, _, merged, _, _ in optimizer.merges:
+            self.assertIn(self.SPACE, merged[1:], f"Merge {merged!r} should have an internal metaspace")
+            self.assertIn(merged, tokenizer._cross_word_tokens(), f"Merge {merged!r} must not be dead")
+
     def test_image_patcher_empty_nested_pixels(self):
         from uniqtoken.multimodal.image_patcher import DynamicImagePatcher
 
