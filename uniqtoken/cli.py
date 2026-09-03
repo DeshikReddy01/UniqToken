@@ -12,6 +12,7 @@ Provides unified command-line entry points:
 from __future__ import annotations
 
 import argparse
+import codecs
 import json
 import os
 import sys
@@ -31,6 +32,14 @@ from .indentation_compressor import IndentationCompressor
 from .tokenizer import CustomTokenizer
 
 
+def _print_msg(msg: str) -> None:
+    """Print a message via tqdm.write if available, preserving active progress bars."""
+    if tqdm is not None and hasattr(tqdm, "write"):
+        tqdm.write(msg)
+    else:
+        print(msg)
+
+
 def _reconfigure_stdio() -> None:
     """Force UTF-8 on stdio so non-ASCII text survives piped stdin/stdout (Windows)."""
     for stream in (sys.stdin, sys.stdout, sys.stderr):
@@ -43,7 +52,7 @@ def _reconfigure_stdio() -> None:
 
 
 def train_command(args: argparse.Namespace) -> int:
-    """Handles 'caliper train'."""
+    """Handles 'uniqtoken train' to train Unigram and SuperBPE tokenizers from corpus files."""
     if args.vocab_size < 1:
         print("Error: --vocab-size must be a positive integer.", file=sys.stderr)
         return 1
@@ -59,8 +68,6 @@ def train_command(args: argparse.Namespace) -> int:
 
     if getattr(args, "no_progress", False):
         os.environ["UNIQTOKEN_NO_PROGRESS"] = "1"
-    else:
-        os.environ.pop("UNIQTOKEN_NO_PROGRESS", None)
 
     total_bytes = 0
     for path in args.corpus:
@@ -89,21 +96,23 @@ def train_command(args: argparse.Namespace) -> int:
 
     for path in args.corpus:
         p = Path(path)
-        chunks: List[bytes] = []
+        decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
+        doc_parts: List[str] = []
         with open(p, "rb") as f:
             while True:
                 block = f.read(256 * 1024)
                 if not block:
                     break
-                chunks.append(block)
                 bytes_read += len(block)
+                doc_parts.append(decoder.decode(block))
                 if read_pbar is not None:
                     read_pbar.update(len(block))
                     elapsed = time.perf_counter() - start_time
                     mb_per_sec = (bytes_read / (1024 * 1024)) / elapsed if elapsed > 0 else 0.0
                     read_pbar.set_postfix({"throughput": f"{mb_per_sec:.2f} MB/s"})
 
-        document = b"".join(chunks).decode("utf-8", errors="replace")
+        doc_parts.append(decoder.decode(b"", final=True))
+        document = "".join(doc_parts)
         if document:
             # A corpus file is one document. Preserve indentation, blank lines,
             # and trailing whitespace because they are meaningful training data.
@@ -115,12 +124,6 @@ def train_command(args: argparse.Namespace) -> int:
     if not corpus:
         print("Error: Corpus is empty.", file=sys.stderr)
         return 1
-
-    def _print_msg(msg: str) -> None:
-        if tqdm is not None and hasattr(tqdm, "write"):
-            tqdm.write(msg)
-        else:
-            print(msg)
 
     _print_msg(f"Training Caliper tokenizer on {len(corpus)} documents (Target Vocab: {args.vocab_size})...")
     tok = CustomTokenizer.train_from_corpus(

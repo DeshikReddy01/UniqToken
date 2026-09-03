@@ -342,6 +342,28 @@ class UnigramTrainer:
         pruning_length_exponent: float = 0.0,
         show_progress: bool = True,
     ):
+        """Initializes the Unigram EM and Iterative Likelihood Pruning Trainer.
+
+        Args:
+            target_vocab_size: Target final vocabulary size.
+            seed_multiplier: Multiplier for seed candidate vocabulary pool size.
+            max_ngram_length: Maximum character length for candidate subwords.
+            min_frequency: Minimum occurrence count for seed token candidates.
+            byte_fallback: Enable fallback to raw byte tokens for unknown characters.
+            prune_rate: Proportion of excess vocabulary to eliminate per EM round.
+            em_sub_iterations: Number of E-step / M-step sub-iterations per round.
+            special_tokens: Optional list of special token strings.
+            ranking_strategy: Scoring heuristic for seed vocabulary candidate ranking.
+            adaptive_multiplier: Adapt seed pool multiplier dynamically by corpus entropy.
+            max_edges_per_node: Lattice edge pruning threshold.
+            min_edge_log_prob: Minimum log probability threshold for lattice edges.
+            convergence_tolerance: Delta log-likelihood threshold for EM convergence.
+            script_balance_temperature: Temperature for script-balanced quota allocation.
+            min_boundary_entropy: Minimum branch entropy threshold for seed candidates.
+            length_exponent: Length exponent for seed vocabulary scoring regularization.
+            pruning_length_exponent: Length regularization exponent for pruning candidate scoring.
+            show_progress: Display real-time progress indicators during training.
+        """
         if target_vocab_size <= 0:
             raise ValueError("target_vocab_size must be greater than zero")
         if seed_multiplier <= 0:
@@ -379,8 +401,16 @@ class UnigramTrainer:
         verbose: bool = True,
         show_progress: Optional[bool] = None,
     ) -> UnigramModel:
-        """
-        Runs the full EM training and pruning loop with convergence checks and beam pruning.
+        """Runs the full EM training and pruning loop with convergence checks and beam pruning.
+
+        Args:
+            pre_tokenized_chunks: Stream or collection of pre-tokenized text segments.
+            verbose: Print detailed per-round status logs.
+            show_progress: Display dynamic real-time progress indicators.
+                If None, defaults to the trainer's show_progress configuration.
+
+        Returns:
+            Trained UnigramModel containing vocabulary, token IDs, and special tokens.
         """
         if show_progress is None:
             show_progress = self.show_progress
@@ -391,9 +421,7 @@ class UnigramTrainer:
 
         # Step 1: Pre-aggregate chunk frequencies
         chunk_counts = Counter(pre_tokenized_chunks)
-        total_corpus_bytes = sum(
-            len(c.encode("utf-8", errors="replace")) * count for c, count in chunk_counts.items()
-        )
+        total_corpus_bytes = sum(len(c.encode("utf-8", errors="replace")) * count for c, count in chunk_counts.items())
 
         # Step 2: Build Seed Vocabulary
         seed_builder = SeedVocabularyBuilder(
@@ -431,6 +459,7 @@ class UnigramTrainer:
             )
 
         def _log(msg: str) -> None:
+            """Log progress message using tqdm.write to avoid interrupting progress bar."""
             if pbar is not None and hasattr(tqdm, "write"):
                 tqdm.write(msg)
             else:
@@ -619,8 +648,6 @@ class UnigramTrainer:
             round_num += 1
 
         if pbar is not None:
-            if pbar.n < pbar.total:
-                pbar.update(pbar.total - pbar.n)
             pbar.close()
 
         # Step 5: Final Probability Re-normalization

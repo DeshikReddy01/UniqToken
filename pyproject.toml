@@ -38,6 +38,9 @@ requires-python = ">=3.9"
 dependencies = []
 
 [project.optional-dependencies]
+progress = [
+    "tqdm>=4.65.0"
+]
 torch = [
     "torch>=2.0.0"
 ]
@@ -74,7 +77,8 @@ all = [
     "tiktoken>=0.7.0",
     "pytest>=7.0.0",
     "ruff>=0.4.0",
-    "mypy>=1.8.0"
+    "mypy>=1.8.0",
+    "tqdm>=4.65.0"
 ]
 
 [project.urls]
