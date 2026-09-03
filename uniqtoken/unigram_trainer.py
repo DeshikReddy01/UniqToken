@@ -1,9 +1,16 @@
 from __future__ import annotations
 
 import math
+import os
+import time
 from collections import Counter
 from dataclasses import dataclass
 from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
+
+try:
+    from tqdm import tqdm
+except ImportError:
+    tqdm = None
 
 from .seed_builder import SeedToken, SeedVocabularyBuilder
 from .trie import PrefixTrie
@@ -333,6 +340,7 @@ class UnigramTrainer:
         min_boundary_entropy: Optional[float] = None,
         length_exponent: float = 1.0,
         pruning_length_exponent: float = 0.0,
+        show_progress: bool = True,
     ):
         if target_vocab_size <= 0:
             raise ValueError("target_vocab_size must be greater than zero")
@@ -363,13 +371,29 @@ class UnigramTrainer:
         self.min_boundary_entropy = min_boundary_entropy
         self.length_exponent = length_exponent
         self.pruning_length_exponent = pruning_length_exponent
+        self.show_progress = show_progress
 
-    def train(self, pre_tokenized_chunks: Iterable[str], verbose: bool = True) -> UnigramModel:
+    def train(
+        self,
+        pre_tokenized_chunks: Iterable[str],
+        verbose: bool = True,
+        show_progress: Optional[bool] = None,
+    ) -> UnigramModel:
         """
         Runs the full EM training and pruning loop with convergence checks and beam pruning.
         """
+        if show_progress is None:
+            show_progress = self.show_progress
+        if os.environ.get("UNIQTOKEN_NO_PROGRESS", "0") == "1":
+            show_progress = False
+        if tqdm is None:
+            show_progress = False
+
         # Step 1: Pre-aggregate chunk frequencies
         chunk_counts = Counter(pre_tokenized_chunks)
+        total_corpus_bytes = sum(
+            len(c.encode("utf-8", errors="replace")) * count for c, count in chunk_counts.items()
+        )
 
         # Step 2: Build Seed Vocabulary
         seed_builder = SeedVocabularyBuilder(
@@ -395,18 +419,51 @@ class UnigramTrainer:
             t.token: math.log(max(t.frequency, 1) / total_seed_freq) for t in seed_tokens
         }
 
+        total_to_prune = max(1, len(current_vocab_log_probs) - self.target_vocab_size)
+        pbar = None
+        if show_progress:
+            pbar = tqdm(
+                total=total_to_prune,
+                desc="EM Training & Pruning",
+                unit="tok",
+                dynamic_ncols=True,
+                leave=True,
+            )
+
+        def _log(msg: str) -> None:
+            if pbar is not None and hasattr(tqdm, "write"):
+                tqdm.write(msg)
+            else:
+                print(msg)
+
         if verbose:
-            print(
+            _log(
                 f"[EM Trainer] Seed Vocab Size: {len(current_vocab_log_probs)} (Target: {self.target_vocab_size}, Required: {len(required_tokens)})"
             )
 
         round_num = 1
+        delta_str = "init"
+        em_throughput = 0.0
 
         # Step 4: Iterative EM Optimization & Pruning Loop
         while len(current_vocab_log_probs) > self.target_vocab_size:
+            num_candidates = sum(1 for tok in current_vocab_log_probs if tok not in required_tokens)
+            if pbar is not None:
+                pbar.set_postfix(
+                    {
+                        "vocab": len(current_vocab_log_probs),
+                        "ΔL": delta_str,
+                        "candidates": num_candidates,
+                        "throughput": f"{em_throughput:.2f} MB/s",
+                        "round": round_num,
+                    },
+                    refresh=False,
+                )
+
             # --- E-STEP & M-STEP SUB-ITERATIONS ---
             prev_log_lik = -float("inf")
             for sub_iter in range(self.em_sub_iterations):
+                em_start = time.perf_counter()
                 expected_counts: Dict[str, float] = {}
                 total_corpus_log_lik = 0.0
                 can_use_rust_em = (
@@ -464,6 +521,28 @@ class UnigramTrainer:
 
                 delta_log_lik = abs(total_corpus_log_lik - prev_log_lik)
                 prev_log_lik = total_corpus_log_lik
+                em_elapsed = time.perf_counter() - em_start
+                em_throughput = (total_corpus_bytes / (1024 * 1024)) / em_elapsed if em_elapsed > 0 else 0.0
+
+                if math.isinf(delta_log_lik):
+                    delta_str = "init"
+                elif delta_log_lik >= 1.0:
+                    delta_str = f"{delta_log_lik:.4f}"
+                else:
+                    delta_str = f"{delta_log_lik:.4e}"
+
+                if pbar is not None:
+                    pbar.set_postfix(
+                        {
+                            "vocab": len(current_vocab_log_probs),
+                            "ΔL": delta_str,
+                            "candidates": num_candidates,
+                            "throughput": f"{em_throughput:.2f} MB/s",
+                            "round": round_num,
+                        },
+                        refresh=False,
+                    )
+                    pbar.refresh()
 
                 current_vocab_log_probs = {
                     tok: math.log(max(expected_counts.get(tok, 1e-12) / total_expected, 1e-12))
@@ -476,7 +555,7 @@ class UnigramTrainer:
             # --- PRUNING STEP ---
             if not expected_counts or total_expected <= 0:
                 if verbose:
-                    print("  No expectations computed; terminating EM pruning.")
+                    _log("  No expectations computed; terminating EM pruning.")
                 break
 
             current_size = len(current_vocab_log_probs)
@@ -504,6 +583,8 @@ class UnigramTrainer:
                     score = exp_c * log_p
                 candidate_scores.append((tok, score))
 
+            pruning_candidate_count = len(candidate_scores)
+
             # Deterministic: remove the least negative scores before valuable
             # high-count tokens whose contribution is strongly negative.
             candidate_scores.sort(key=lambda x: (-x[1], x[0]))
@@ -516,13 +597,31 @@ class UnigramTrainer:
             }
 
             current_vocab_log_probs = new_vocab_log_probs
+            new_candidate_count = sum(1 for tok in current_vocab_log_probs if tok not in required_tokens)
+
+            if pbar is not None:
+                pbar.update(len(tokens_to_remove))
+                pbar.set_postfix(
+                    {
+                        "vocab": len(current_vocab_log_probs),
+                        "ΔL": delta_str,
+                        "candidates": new_candidate_count,
+                        "throughput": f"{em_throughput:.2f} MB/s",
+                        "round": round_num,
+                    }
+                )
 
             if verbose:
-                print(
-                    f"[EM Round {round_num:>2}] Vocab: {len(current_vocab_log_probs):>5} | Pruned: {len(tokens_to_remove):>4} | Corpus LogLik: {total_corpus_log_lik:.2f}"
+                _log(
+                    f"[EM Round {round_num:>2}] Vocab: {len(current_vocab_log_probs):>5} | Pruned: {len(tokens_to_remove):>4} | Candidates: {pruning_candidate_count:>5} | ΔL: {delta_str} | Corpus LogLik: {total_corpus_log_lik:.2f}"
                 )
 
             round_num += 1
+
+        if pbar is not None:
+            if pbar.n < pbar.total:
+                pbar.update(pbar.total - pbar.n)
+            pbar.close()
 
         # Step 5: Final Probability Re-normalization
         total_p = sum(math.exp(log_p) for log_p in current_vocab_log_probs.values())
