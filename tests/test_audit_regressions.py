@@ -115,8 +115,18 @@ class CEMOrderingTests(unittest.TestCase):
         self.assertGreaterEqual(len(cem.merges), 0)
 
 
+try:
+    import uniqtoken_core
+
+    HAS_RUST = True
+except ImportError:
+    HAS_RUST = False
+
+
 class EngineDivergenceRegressionTests(unittest.TestCase):
     def test_seed_script_detection_parity(self):
+        if not HAS_RUST:
+            self.skipTest("uniqtoken_core is not compiled")
         from uniqtoken.seed_builder import SeedVocabularyBuilder
         import uniqtoken_core
 
@@ -128,6 +138,8 @@ class EngineDivergenceRegressionTests(unittest.TestCase):
         self.assertTrue(any("中文" in k for k in mined))
 
     def test_rust_trie_respects_max_subword_len(self):
+        if not HAS_RUST:
+            self.skipTest("uniqtoken_core is not compiled")
         import uniqtoken_core
 
         trie = uniqtoken_core.RustPrefixTrie(4)
@@ -140,6 +152,8 @@ class EngineDivergenceRegressionTests(unittest.TestCase):
         self.assertIn("supe", matched_tokens)
 
     def test_normalizer_strip_c0_whitespace_parity(self):
+        if not HAS_RUST:
+            self.skipTest("uniqtoken_core is not compiled")
         from uniqtoken.pre_tokenizer import Normalizer
         import uniqtoken_core
 
