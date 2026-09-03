@@ -86,9 +86,15 @@ class BPETrainer:
             while heap:
                 neg_f, _, p = heapq.heappop(heap)
                 cur_f = pair_counts.get(p, 0)
-                if cur_f > 0 and cur_f == -neg_f:
-                    best_pair = p
-                    break
+                if cur_f <= 0:
+                    continue
+                if cur_f != -neg_f:
+                    # Count drifted since entry was pushed; re-insert with current
+                    # frequency so the pair remains an active merge candidate.
+                    heapq.heappush(heap, (-cur_f, p[0] + p[1], p))
+                    continue
+                best_pair = p
+                break
 
             if best_pair is None or pair_counts[best_pair] < 1:
                 break
