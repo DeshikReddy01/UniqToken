@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import struct
+import tempfile
 import warnings
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
@@ -227,6 +228,88 @@ class HuggingFaceExporter:
 
         with open(out_path / "tokenizer_config.json", "w", encoding="utf-8") as f:
             json.dump(config_json, f, ensure_ascii=False, indent=2)
+
+    @classmethod
+    def push_to_hub(
+        cls,
+        tokenizer: CustomTokenizer,
+        repo_id: str,
+        token: Optional[str] = None,
+        commit_message: str = "Upload UniqToken model",
+        private: bool = False,
+        **kwargs: Any,
+    ) -> str:
+        """Uploads the HuggingFace-compatible tokenizer files directly to the Hugging Face Hub.
+
+        Args:
+            tokenizer: Trained tokenizer to export and upload.
+            repo_id: Hub repository id of the form ``"owner/model"``.
+            token: Optional Hub access token used for authentication.
+            commit_message: Commit message recorded for the upload commit.
+            private: Repository visibility applied when the repo is created. Has no
+                effect on an already existing repo; use the Hub UI or
+                ``update_repo_visibility`` to change an existing repo.
+            **kwargs: Forwarded to ``HfApi.upload_folder`` (e.g. ``allow_patterns``,
+                ``revision``).
+
+        Returns:
+            The commit URL of the completed synchronous upload, or the PR URL
+            string when ``multi_commits=True`` is passed (that mode returns the
+            PR URL instead of a ``CommitInfo``).
+
+        Raises:
+            ValueError: If ``repo_id`` is not exactly ``"owner/model"`` (two nonempty parts),
+                or if ``run_as_future=True`` is passed.
+            ImportError: If ``huggingface_hub`` is not installed. Run
+                ``pip install "uniqtoken[huggingface]"``.
+        """
+        if not isinstance(repo_id, str) or repo_id.count("/") != 1 or any(not part for part in repo_id.split("/")):
+            raise ValueError(f"repo_id must look like 'owner/model', got {repo_id!r}")
+        if kwargs.get("run_as_future"):
+            raise ValueError(
+                "push_to_hub does not support run_as_future=True: the background upload would read "
+                "from a temporary staging directory that is deleted before it completes."
+            )
+        try:
+            from huggingface_hub import HfApi
+        except ImportError as exc:
+            raise ImportError(
+                'huggingface_hub is required for push_to_hub. Run `pip install "uniqtoken[huggingface]"`.'
+            ) from exc
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            cls.save_hf_pretrained(tokenizer, tmp_dir)
+            model_card = (
+                "---\n"
+                "library_name: uniqtoken\n"
+                "tags:\n"
+                "- tokenizer\n"
+                "- unigram\n"
+                "---\n"
+                f"# {repo_id}\n\n"
+                "UniqToken tokenizer exported with `HuggingFaceExporter.save_hf_pretrained`.\n\n"
+                f"- vocab_size: {tokenizer.vocab_size}\n"
+                f"- byte_fallback: {tokenizer.model.byte_fallback}\n"
+                f"- unk_token: {tokenizer.model.unk_token}\n\n"
+                "## Usage\n\n"
+                "```python\n"
+                "from transformers import AutoTokenizer\n\n"
+                f'tokenizer = AutoTokenizer.from_pretrained("{repo_id}")\n'
+                "```\n"
+            )
+            Path(tmp_dir, "README.md").write_text(model_card, encoding="utf-8")
+            api = HfApi(token=token)
+            # Repository visibility is set at creation time: upload_folder accepts no `private` argument.
+            api.create_repo(repo_id=repo_id, exist_ok=True, private=private)
+            # Synchronous upload returns CommitInfo (a Future only with run_as_future=True,
+            # rejected above since it would outlive the temporary staging directory).
+            # With multi_commits=True the API instead returns the PR URL string directly.
+            commit_info = api.upload_folder(
+                repo_id=repo_id, folder_path=tmp_dir, commit_message=commit_message, **kwargs
+            )
+            if isinstance(commit_info, str):
+                return commit_info
+            return commit_info.commit_url
 
     @staticmethod
     def export_to_gguf_dict(tokenizer: CustomTokenizer, model_name: str = "llama") -> Dict[str, Any]:
