@@ -119,11 +119,17 @@ class CrossEntropyMerging:
             score = f * (log_prob(a) + log_prob(b) - log_p_hat)
             return score, log_p_hat, a + b
 
+        def is_valid_pair(a_tok: str, b_tok: str) -> bool:
+            if not self.cross_word:
+                return True
+            concat = a_tok + b_tok
+            return self.space_char in concat[1:] and bool(concat.strip(self.space_char))
+
         heap: List[Tuple[float, int, float, Tuple[str, str]]] = []
         for (a, b), f in pair_counts.items():
             if f < 2:
                 continue
-            if self.cross_word and (self.space_char not in a and self.space_char not in b):
+            if not is_valid_pair(a, b):
                 continue
             if not mergeable(a) or not mergeable(b):
                 continue
@@ -161,6 +167,8 @@ class CrossEntropyMerging:
                         heapq.heappush(heap, (sc2, cur_f, lp2, (a, b)))
                     continue
                 if cur_f >= 2 and cur_f == f_in_heap:
+                    if not is_valid_pair(a, b):
+                        continue
                     if not mergeable(a) or not mergeable(b):
                         continue
                     m = a + b
@@ -222,9 +230,7 @@ class CrossEntropyMerging:
                     pair_counts[p] += 1
                     pair_to_streams[p].add(s_idx)
                     a_p, b_p = p
-                    if pair_counts[p] >= 2 and (
-                        not self.cross_word or self.space_char in a_p or self.space_char in b_p
-                    ):
+                    if pair_counts[p] >= 2 and is_valid_pair(a_p, b_p):
                         if mergeable(a_p) and mergeable(b_p):
                             sc, lp_hat, _ = compute_pair_score(a_p, b_p, pair_counts[p], total_pairs)
                             if sc < self.max_score:
