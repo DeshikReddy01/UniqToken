@@ -1095,11 +1095,10 @@ class SuperBPETests(unittest.TestCase):
         """CEM in cross_word mode must only accept pairs whose concatenation has
         an internal metaspace (at index > 0), avoiding dead intra-word merges (Issue #9)."""
         vocab = {
-            self.SPACE: log(0.2),
-            "quick": log(0.2),
-            self.SPACE + "quick": log(0.2),
-            self.SPACE + "fox": log(0.2),
-            self.SPACE + "quick" + self.SPACE + "fox": log(0.2),
+            self.SPACE: log(0.25),
+            "quick": log(0.25),
+            self.SPACE + "fox": log(0.25),
+            "other": log(0.25),
         }
         token_to_id = {token: index for index, token in enumerate(vocab)}
         model = UnigramModel(
@@ -1111,9 +1110,12 @@ class SuperBPETests(unittest.TestCase):
             byte_fallback=False,
         )
         optimizer = CrossEntropyMerging(max_merges=10, cross_word=True)
-        chunks = [self.SPACE + "quick", self.SPACE + "fox"] * 10
+        # "\u2581quick" encodes as ["\u2581", "quick"], generating the candidate pair
+        # ("\u2581", "quick") alongside the valid cross-word candidate ("quick", "\u2581fox").
+        chunks = [self.SPACE + "quick", self.SPACE + "fox"] * 20
         improved = optimizer.optimize(model, chunks)
         tokenizer = CustomTokenizer(Normalizer(normalize_unicode=False), RegexPreTokenizer(), improved)
+        self.assertGreater(len(optimizer.merges), 0, "Expected at least one valid cross-word merge")
         for _, _, merged, _, _ in optimizer.merges:
             self.assertIn(self.SPACE, merged[1:], f"Merge {merged!r} should have an internal metaspace")
             self.assertIn(merged, tokenizer._cross_word_tokens(), f"Merge {merged!r} must not be dead")
