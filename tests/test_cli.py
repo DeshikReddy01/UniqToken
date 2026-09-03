@@ -5,9 +5,15 @@ Unit and Integration Tests for UniqToken CLI.
 from __future__ import annotations
 
 import json
+import sys
 import unittest
+from contextlib import redirect_stdout
+from io import StringIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from types import SimpleNamespace
+from typing import Any
+from unittest.mock import patch
 
 import uniqtoken.cli as cli
 
@@ -276,6 +282,142 @@ class CLITests(unittest.TestCase):
             )
             self.assertEqual(ret_no_prog, 0)
             self.assertTrue((no_prog_dir / "tokenizer.json").exists())
+
+
+class CLICompareTests(unittest.TestCase):
+    model_dir: Path
+    _tmpdir: TemporaryDirectory[str]
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls._tmpdir = TemporaryDirectory()
+        cls.addClassCleanup(cls._tmpdir.cleanup)
+        tmp = Path(cls._tmpdir.name)
+        corpus_file = tmp / "compare_corpus.txt"
+        cls.model_dir = tmp / "compare_model"
+        corpus_file.write_text("the quick brown fox jumps over the lazy dog\n", encoding="utf-8")
+        ret = cli.main(["train", "--corpus", str(corpus_file), "--vocab-size", "320", "--out", str(cls.model_dir)])
+        assert ret == 0
+
+    def _run_compare(self, argv: list[str]) -> tuple[int, str]:
+        buffer = StringIO()
+        with redirect_stdout(buffer):
+            ret = cli.main(argv)
+        return ret, buffer.getvalue()
+
+    def test_compare_parsing_defaults(self):
+        parser = cli.build_parser()
+        args = parser.parse_args(["compare", "--input", "hello"])
+        self.assertEqual(args.models, "uniqtoken,tiktoken")
+        self.assertIsNone(args.model)
+        self.assertFalse(args.no_color)
+        self.assertIs(args.func, cli.compare_command)
+
+    def test_compare_uniqtoken_no_color(self):
+        ret, output = self._run_compare(
+            [
+                "compare",
+                "--model",
+                str(self.model_dir),
+                "--input",
+                "the quick brown fox",
+                "--models",
+                "uniqtoken",
+                "--no-color",
+            ]
+        )
+        self.assertEqual(ret, 0)
+        self.assertIn("UniqToken:", output)
+        self.assertRegex(output, r"\(\d+ tokens\)")
+        self.assertNotIn("\033[", output)
+
+    def test_compare_colored_output_has_ansi(self):
+        ret, output = self._run_compare(
+            ["compare", "--model", str(self.model_dir), "--input", "hello world", "--models", "uniqtoken"]
+        )
+        self.assertEqual(ret, 0)
+        self.assertIn("\033[", output)
+
+    def test_compare_unknown_engine_rejected(self):
+        ret, _ = self._run_compare(["compare", "--model", str(self.model_dir), "--input", "hi", "--models", "wat"])
+        self.assertEqual(ret, 1)
+
+    def test_compare_missing_tiktoken_skips_gracefully(self):
+        with patch.object(cli, "_tiktoken_tokens", return_value=None):
+            ret, output = self._run_compare(
+                [
+                    "compare",
+                    "--model",
+                    str(self.model_dir),
+                    "--input",
+                    "hello world",
+                    "--models",
+                    "uniqtoken,tiktoken",
+                    "--no-color",
+                ]
+            )
+        self.assertEqual(ret, 0)
+        self.assertIn("UniqToken:", output)
+        self.assertIn("skipping tiktoken", output)
+
+    def test_compare_tiktoken_only_unavailable_exits_nonzero(self):
+        with patch.object(cli, "_tiktoken_tokens", return_value=None):
+            ret, _ = self._run_compare(["compare", "--input", "hello", "--models", "tiktoken", "--no-color"])
+        self.assertEqual(ret, 1)
+
+    def test_compare_two_engines_prints_savings(self):
+        with patch.object(cli, "_tiktoken_tokens", return_value=["Hello", " world"]):
+            ret, output = self._run_compare(
+                [
+                    "compare",
+                    "--model",
+                    str(self.model_dir),
+                    "--input",
+                    "hello world",
+                    "--models",
+                    "uniqtoken,tiktoken",
+                    "--no-color",
+                ]
+            )
+        self.assertEqual(ret, 0)
+        self.assertIn("Tiktoken", output)
+        self.assertIn("Token Savings:", output)
+
+    def test_compare_tiktoken_uses_bytes_and_treats_specials_literally(self) -> None:
+        captured: dict[str, Any] = {}
+
+        class FakeEncoding:
+            def encode(self, text: str, disallowed_special: Any = None) -> list[int]:
+                captured["text"] = text
+                captured["disallowed_special"] = disallowed_special
+                return [0, 1]
+
+            def decode_tokens_bytes(self, token_ids: list[int]) -> list[bytes]:
+                captured["token_ids"] = list(token_ids)
+                return [b"hel", b"lo\xff"]
+
+        fake_tiktoken: Any = SimpleNamespace(get_encoding=lambda name: FakeEncoding())
+        with patch.dict(sys.modules, {"tiktoken": fake_tiktoken}):
+            pieces = cli._tiktoken_tokens("hello <|endoftext|>")
+        self.assertEqual(captured["text"], "hello <|endoftext|>")
+        self.assertEqual(captured["disallowed_special"], ())
+        self.assertEqual(captured["token_ids"], [0, 1])
+        # Lone 0xff byte is escaped, never replaced with U+FFFD.
+        self.assertEqual(pieces, ["hel", "lo\\xff"])
+        assert pieces is not None
+        self.assertNotIn("\ufffd", "".join(pieces))
+
+    def test_compare_without_model_trains_demo_tokenizer(self):
+        ret, output = self._run_compare(["compare", "--input", "hello world", "--models", "uniqtoken", "--no-color"])
+        self.assertEqual(ret, 0)
+        self.assertIn("UniqToken:", output)
+
+    def test_colorize_tokens_unit(self):
+        self.assertEqual(cli._colorize_tokens(["a", "b"], False), "[a][b]")
+        colored = cli._colorize_tokens(["a", "b"], True)
+        self.assertIn("\033[", colored)
+        self.assertIn("[a]", colored)
+        self.assertIn("[b]", colored)
 
 
 if __name__ == "__main__":

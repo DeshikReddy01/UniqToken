@@ -5,6 +5,7 @@ Provides unified command-line entry points:
 - uniqtoken train: Train Unigram / SuperBPE models from corpus files.
 - uniqtoken encode: Tokenize text inputs to subword tokens or integer IDs with metrics.
 - uniqtoken decode: Reconstruct original text losslessly from token IDs.
+- uniqtoken compare: Side-by-side color-coded token comparison across engines.
 - uniqtoken benchmark: Run the multilingual empirical benchmark suite.
 - uniqtoken eval-downstream: Run downstream LLM context efficiency evaluations.
 """
@@ -18,7 +19,7 @@ import os
 import sys
 import time
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 try:
     from tqdm import tqdm
@@ -282,6 +283,132 @@ def decode_command(args: argparse.Namespace) -> int:
     return 0
 
 
+COMPARE_BG_COLORS = (41, 42, 43, 44, 45, 46)
+COMPARE_RESET = "\033[0m"
+COMPARE_ENGINES = ("uniqtoken", "tiktoken")
+
+# Small generic corpus so `compare` works without a saved model by training a throwaway demo tokenizer.
+COMPARE_DEMO_CORPUS = [
+    "the quick brown fox jumps over the lazy dog",
+    "machine learning and natural language processing",
+    "def calculate_fibonacci(n: int) -> int:",
+]
+
+
+def _colorize_tokens(tokens: List[str], use_color: bool) -> str:
+    """Renders tokens as `[pill]` segments with alternating ANSI background colors."""
+    pills: List[str] = []
+    for index, token in enumerate(tokens):
+        text = token.replace("\n", "\\n").replace("\t", "\\t")
+        if use_color:
+            color = COMPARE_BG_COLORS[index % len(COMPARE_BG_COLORS)]
+            pills.append(f"\033[{color}m[{text}]{COMPARE_RESET}")
+        else:
+            pills.append(f"[{text}]")
+    return "".join(pills)
+
+
+def _escape_token_bytes(raw: bytes) -> str:
+    """Renders raw token bytes as text, escaping incomplete UTF-8 sequences instead of replacing them."""
+    return raw.decode("utf-8", errors="backslashreplace")
+
+
+def _tiktoken_tokens(text: str, encoding_name: str = "cl100k_base") -> Optional[List[str]]:
+    """Tokenizes with tiktoken, returning None when the optional dependency is missing.
+
+    Decodes each token's raw bytes: decoding single IDs as text would replace
+    incomplete UTF-8 sequences with U+FFFD. Literal special-token text is treated
+    as ordinary input.
+    """
+    try:
+        import tiktoken
+    except ImportError:
+        return None
+    encoding = tiktoken.get_encoding(encoding_name)
+    token_ids = encoding.encode(text, disallowed_special=())
+    return [_escape_token_bytes(raw) for raw in encoding.decode_tokens_bytes(token_ids)]
+
+
+def _demo_tokenizer(text: str) -> CustomTokenizer:
+    """Trains a small throwaway tokenizer so `compare` works without `--model`."""
+    corpus = list(COMPARE_DEMO_CORPUS)
+    if text:
+        corpus.append(text)
+    previous_flag = os.environ.get("UNIQTOKEN_NO_PROGRESS")
+    os.environ["UNIQTOKEN_NO_PROGRESS"] = "1"
+    try:
+        return CustomTokenizer.train_from_corpus(corpus, target_vocab_size=320, verbose=False)
+    finally:
+        if previous_flag is None:
+            os.environ.pop("UNIQTOKEN_NO_PROGRESS", None)
+        else:
+            os.environ["UNIQTOKEN_NO_PROGRESS"] = previous_flag
+
+
+def compare_command(args: argparse.Namespace) -> int:
+    """Handles 'uniqtoken compare'."""
+    text_input = _load_input(args)
+    requested: List[str] = []
+    for name in args.models.split(","):
+        engine = name.strip().lower()
+        if engine and engine not in requested:
+            requested.append(engine)
+    unknown = [engine for engine in requested if engine not in COMPARE_ENGINES]
+    if unknown:
+        print(
+            f"Error: Unknown tokenizer engine(s): {', '.join(unknown)}. Supported: {', '.join(COMPARE_ENGINES)}",
+            file=sys.stderr,
+        )
+        return 1
+    if not requested:
+        print("Error: --models must list at least one tokenizer engine.", file=sys.stderr)
+        return 1
+
+    use_color = not args.no_color
+    results: List[Tuple[str, List[str]]] = []
+    for engine in requested:
+        if engine == "uniqtoken":
+            if args.model:
+                model_path = Path(args.model)
+                if not model_path.exists():
+                    print(f"Error: Model directory not found: {args.model}", file=sys.stderr)
+                    return 1
+                try:
+                    tok = CustomTokenizer.load(str(model_path))
+                except (OSError, json.JSONDecodeError, KeyError, TypeError) as e:
+                    print(f"Error: Failed to load model from {args.model}: {e}", file=sys.stderr)
+                    return 1
+            else:
+                _print_msg("No --model given; training a small demo tokenizer for comparison...")
+                tok = _demo_tokenizer(text_input)
+            results.append(("UniqToken", tok.encode(text_input)))
+        elif engine == "tiktoken":
+            pieces = _tiktoken_tokens(text_input)
+            if pieces is None:
+                _print_msg("tiktoken is not installed; skipping tiktoken (pip install tiktoken).")
+                continue
+            results.append(("Tiktoken", pieces))
+
+    if not results:
+        print("Error: No tokenizer engines available to compare.", file=sys.stderr)
+        return 1
+
+    width = max(len(label) for label, _ in results)
+    for label, tokens in results:
+        print(f"{label:<{width}}: {_colorize_tokens(tokens, use_color)} ({len(tokens)} tokens)")
+
+    if len(results) >= 2:
+        best = min(results, key=lambda item: len(item[1]))
+        worst = max(results, key=lambda item: len(item[1]))
+        if len(best[1]) == len(worst[1]):
+            print("Token counts are identical across engines.")
+        else:
+            saving = (len(worst[1]) - len(best[1])) / len(worst[1]) * 100
+            print(f"Token Savings: +{saving:.1f}% fewer tokens with {best[0]}")
+
+    return 0
+
+
 def benchmark_command(args: argparse.Namespace) -> int:
     """Handles 'caliper benchmark'."""
     suite = TokenizerBenchmarkSuite()
@@ -366,6 +493,24 @@ def build_parser() -> argparse.ArgumentParser:
     p_decode.add_argument("--input", type=str, default=None, help="Input ID sequence or path to file")
     p_decode.add_argument("--out", type=str, default=None, help="Output file path (default: stdout)")
     p_decode.set_defaults(func=decode_command)
+
+    # Compare
+    p_compare = subparsers.add_parser("compare", help="Side-by-side token comparison across engines")
+    p_compare.add_argument("--input", type=str, default=None, help="Input string or path to text file")
+    p_compare.add_argument(
+        "--models",
+        type=str,
+        default="uniqtoken,tiktoken",
+        help="Comma-separated engines to compare (uniqtoken,tiktoken)",
+    )
+    p_compare.add_argument(
+        "--model",
+        type=str,
+        default=None,
+        help="Path to saved UniqToken model directory (trains a small demo tokenizer if omitted)",
+    )
+    p_compare.add_argument("--no-color", action="store_true", help="Disable ANSI colors in token pills")
+    p_compare.set_defaults(func=compare_command)
 
     # Benchmark
     p_bench = subparsers.add_parser("benchmark", help="Run benchmark suite")
