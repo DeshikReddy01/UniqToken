@@ -59,7 +59,9 @@ UniqToken         : 5 tokens (58.3% context window expansion)
 
 ## Overview
 
-Most production tokenizers lean on a compiled C++ or Rust backend (SentencePiece, HuggingFace `tokenizers`) and treat character-offset alignment, control-token injection defense, and vocabulary extension as afterthoughts. **UniqToken** is a single, dependency-free Python package that treats all three as first-class design constraints, while implementing the same core algorithms — Unigram Language Model segmentation, Byte-Pair Encoding, and post-training vocabulary merging — that back today's production LLM tokenizers.
+> 🗺️ **Architecture & Contributor Roadmap**: See [ROADMAP.md](ROADMAP.md) for the active 8-stage execution ledger and live GitHub issue tracking across the Compatibility Engine and Research Engine.
+
+Most production tokenizers lean on a compiled C++ or Rust backend (SentencePiece, HuggingFace `tokenizers`) and treat character-offset alignment, control-token injection defense, and vocabulary extension as afterthoughts. **UniqToken** is an open-source high-efficiency subword tokenizer that treats all three as first-class design constraints, while implementing the same core algorithms — Unigram Language Model segmentation, Byte-Pair Encoding, and post-training vocabulary merging — that back today's production LLM tokenizers.
 
 What distinguishes UniqToken from standard subword tokenizers is its **script-aware candidate generation** and **entropy-guided vocabulary construction**, which produce higher byte efficiency than Boundary-BPE while retaining lower token-level cross-entropy than SentencePiece under controlled compute and capacity regimes.
 
