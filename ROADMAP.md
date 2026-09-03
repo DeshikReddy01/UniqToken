@@ -60,7 +60,7 @@ Contributors and maintainers can pick up tasks from the structured queue below. 
 ### Stage 2: Canonical Native Rust Engine
 - [ ] **[#42](https://github.com/umran666/UniqToken/issues/42)** [P0-critical] Full native batch pipeline in Rust to eliminate PyO3 FFI boundary overhead.
 - [ ] **[#41](https://github.com/umran666/UniqToken/issues/41)** [P0-critical] Implement UAX #29 grapheme cluster boundaries to prevent Indic/Thai glyph splitting.
-- [ ] **[#43](https://github.com/umran666/UniqToken/issues/43)** [P1-high] Restrict number clumping to 1–3 digits ([0-9]{1,3}) for LLM arithmetic reasoning.
+- [x] **[#43](https://github.com/umran666/UniqToken/issues/43)** [P1-high] Restrict number clumping to 1–3 digits (\d{1,3}) for LLM arithmetic reasoning. (Resolved in commit `9b193e3`)
 - [ ] **[#36](https://github.com/umran666/UniqToken/issues/36)** [P1-high] Memory-mapped binary model format (mmap) for sub-millisecond cold starts.
 
 ### Stage 3: Differential Compatibility & Exception Matrix
