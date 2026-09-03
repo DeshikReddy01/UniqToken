@@ -466,6 +466,16 @@ class BPETests(unittest.TestCase):
         joined = bpe_model.decode([bpe_model.token_to_id.get(t, 0) for t in result])
         self.assertEqual(joined, "café")
 
+    def test_bpe_stale_heap_repush_preserves_live_merges(self):
+        """When a merge decrements pair counts in affected words, pairs that are
+        still alive elsewhere in the corpus must not be dropped when their stale
+        heap entries are popped (Issue #8)."""
+        trainer = BPETrainer(target_vocab_size=300, num_merges=10)
+        model = trainer.train(["ab", "abc", "bcd", "bc"])
+        self.assertIn(("a", "b"), model.merges)
+        self.assertIn("ab", model.vocab)
+        self.assertEqual(model.encode("ab"), ["ab"])
+
 
 class DecodeBatchTests(unittest.TestCase):
     def setUp(self):
