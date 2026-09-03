@@ -165,8 +165,12 @@ class EngineDivergenceRegressionTests(unittest.TestCase):
         self.assertGreater(len(model.vocab), 0)
 
     def test_neural_visual_codec_1d_indices(self):
+        from uniqtoken.multimodal.neural_codecs import HAS_TORCH, NeuralVisualCodec
+
+        if not HAS_TORCH:
+            self.skipTest("PyTorch is not installed")
+
         import torch
-        from uniqtoken.multimodal.neural_codecs import NeuralVisualCodec
 
         vcodec = NeuralVisualCodec(in_channels=3, hidden_dim=16, latent_dim=16, num_tokens=32)
         flat_indices = torch.tensor([0, 1, 2, 3])
