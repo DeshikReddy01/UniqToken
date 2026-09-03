@@ -218,6 +218,7 @@ Evaluated on 10,000 sentences (~0.88 MB text) comparing single-string Python dis
 
 **Tokenization**
 - Three trainable algorithms: Unigram LM (DAG + Viterbi + EM + FFBS), BPE, and CEM/SuperBPE vocabulary extension
+- Native Rust acceleration core (`crates/uniqtoken_core`) with Rayon parallel batching and fused Viterbi dynamic programming
 - Byte-fallback codec for 0% OOV across all Unicode
 - FFBS subword regularization for training-time augmentation
 - PrefixTrie for O(L) single-pass lattice edge mining
@@ -238,6 +239,7 @@ Evaluated on 10,000 sentences (~0.88 MB text) comparing single-string Python dis
 - BatchCollator with padding, attention masks, BOS/EOS injection
 - PyTorch tensor output via `to_torch()`
 - HuggingFace-compatible export (`tokenizer.json` schema)
+- GGUF v3 binary format export (`export_to_gguf()`) for `llama.cpp`
 
 </td><td>
 
@@ -255,9 +257,12 @@ Evaluated on 10,000 sentences (~0.88 MB text) comparing single-string Python dis
 ## Installation
 
 ```bash
-git clone https://github.com/umran666/caliper.git
-cd caliper
+git clone https://github.com/umran666/UniqToken.git
+cd UniqToken
 pip install -e .
+
+# Optional: compile native Rust acceleration engine with maturin
+maturin develop --manifest-path crates/uniqtoken_core/Cargo.toml --release
 ```
 
 **Optional extras** (defined in [`pyproject.toml`](pyproject.toml)):
@@ -277,7 +282,7 @@ pip install -e .
 ### Train a Unigram tokenizer
 
 ```python
-from tokenizer import CustomTokenizer
+from uniqtoken import CustomTokenizer
 
 corpus = [...]  # list of training documents
 
@@ -304,19 +309,20 @@ for token in tok.encode_with_offsets("fix in 2024"):
 ### Train a BPE tokenizer
 
 ```python
-from bpe_trainer import BPETrainer
+from uniqtoken import BPETrainer
 
 trainer = BPETrainer(target_vocab_size=32_000, byte_fallback=True)
 model = trainer.train(chunks=corpus, verbose=True)
 
 tokens = model.encode("tokenization")
+token_ids = model.encode_to_ids("tokenization")
 text = model.decode(token_ids)
 ```
 
 ### Extend vocabulary with CEM / SuperBPE
 
 ```python
-from cem_merger import CrossEntropyMerging
+from uniqtoken import CrossEntropyMerging
 
 # Standard CEM: greedily add merges that minimize cross-entropy increase
 cem = CrossEntropyMerging(max_merges=200, verbose=True)
@@ -327,14 +333,18 @@ superbpe = CrossEntropyMerging(max_merges=200, cross_word=True)
 superbpe_model = superbpe.optimize(tok.model, chunks=corpus)
 ```
 
-### Export to HuggingFace format
+### Export to HuggingFace and GGUF format
 
 ```python
+# Export to canonical HuggingFace tokenizer.json and tokenizer_config.json
 tok.export_to_huggingface("hf_export/")
 
 # Then load with transformers:
 # from transformers import AutoTokenizer
 # hf_tok = AutoTokenizer.from_pretrained("hf_export/")
+
+# Export to LLaMA.cpp GGUF v3 binary format
+tok.export_to_gguf("model.gguf", model_name="llama")
 ```
 
 ### Streaming decode
@@ -351,7 +361,7 @@ output += decoder.flush()
 ### Sanitize untrusted input
 
 ```python
-from security_shield import SecurityShield
+from uniqtoken import SecurityShield
 
 shield = SecurityShield(special_tokens=["<|endoftext|>", "<|system|>", "<|user|>"])
 safe = shield.sanitize(
@@ -366,7 +376,7 @@ safe = shield.sanitize(
 ### Compress structured whitespace
 
 ```python
-from indentation_compressor import IndentationCompressor
+from uniqtoken import IndentationCompressor
 
 compact = IndentationCompressor.compress_indents(source_code)
 restored = IndentationCompressor.decompress_indents(compact)
@@ -376,6 +386,8 @@ assert restored == source_code
 ### Save and load
 
 ```python
+from uniqtoken import CustomTokenizer
+
 tok.save("saved_model/")
 tok2 = CustomTokenizer.load("saved_model/")
 
@@ -386,7 +398,7 @@ assert tok2.encode_to_ids("test") == tok.encode_to_ids("test")
 
 ## Command-Line Interface (CLI)
 
-UniqToken ships with a production CLI executable (`caliper`) for training, encoding, decoding, and evaluation:
+UniqToken ships with a production CLI executable (`uniqtoken`, with backwards-compatible `caliper` alias) for training, encoding, decoding, and evaluation:
 
 ```bash
 # 1. Train a tokenizer with PMI ranking and SuperBPE optimization
@@ -434,96 +446,115 @@ flowchart LR
 ### Project Structure
 
 ```
-caliper/
-├── cli.py                    # Unified production CLI interface
-├── tokenizer.py              # CustomTokenizer — unified facade + parallel batching
-├── pre_tokenizer.py           # Normalizer + RegexPreTokenizer (10 patterns)
-├── byte_codec.py              # ByteFallbackEngine — UTF-8 ↔ <0xHH> codec
-├── trie.py                    # PrefixTrie — slots-optimized O(L) prefix matching
+UniqToken/
+├── uniqtoken/                     # Core Python package
+│   ├── __init__.py                # Public package namespace & lazy exports
+│   ├── cli.py                     # Unified production CLI interface
+│   ├── tokenizer.py               # CustomTokenizer — unified facade + parallel batching
+│   ├── pre_tokenizer.py           # Normalizer + RegexPreTokenizer (10 patterns)
+│   ├── byte_codec.py              # ByteFallbackEngine — UTF-8 ↔ <0xHH> codec
+│   ├── trie.py                    # PrefixTrie — slots-optimized O(L) prefix matching
+│   ├── seed_builder.py            # SeedVocabularyBuilder — PMI + script balancing + entropy
+│   ├── unigram_lattice.py         # UnigramLattice — DAG, beam pruning, EM stats, FFBS
+│   ├── unigram_trainer.py         # UnigramTrainer — EM early-stopping + Viterbi memoization
+│   ├── vocab_adapter.py           # VocabularyAdapter — non-destructive vocab expansion
+│   ├── cem_merger.py              # CrossEntropyMerging — CEM / SuperBPE extension
+│   ├── bpe_trainer.py             # BPETrainer — classic greedy pairwise-merge training
+│   ├── bpe_model.py               # BPEModel — rank-based merge inference (tiktoken-style)
+│   ├── batch_collator.py          # BatchCollator — padding, masks, BOS/EOS, to_torch()
+│   ├── streaming_decoder.py       # StreamingDecoder — incremental UTF-8-safe decode
+│   ├── hf_exporter.py             # HuggingFaceExporter & GGUFExporter — HF JSON + GGUF v3
+│   ├── hf_importer.py             # HuggingFace tokenizer.json importer (Unigram + ByteLevel BPE)
+│   ├── sentencepiece_importer.py  # Dependency-free SentencePiece .model protobuf importer
+│   ├── tiktoken_adapter.py        # TiktokenEncoding — ranks file loader & exact-ID parity
+│   ├── security_shield.py         # SecurityShield — control-token injection defense
+│   ├── indentation_compressor.py  # IndentationCompressor — reversible whitespace codec
+│   ├── uniqtoken_core.pyi         # Static typing stub for PyO3 native extension
+│   └── multimodal/                # Multimodal tokenization package
+│       ├── __init__.py
+│       ├── multimodal_tokenizer.py  # MultimodalTokenizer — text + image + audio
+│       ├── visual_codebook.py       # VisualCodebook — VQ codebook for image patches
+│       ├── image_patcher.py         # DynamicImagePatcher — grid-based patch extraction
+│       ├── audio_codec.py           # ResidualVectorQuantizer — RVQ for audio
+│       └── neural_codecs.py         # NeuralVisualCodec / NeuralAudioCodec (PyTorch)
 │
-├── uniqtoken_core/              # Native Rust acceleration crate (PyO3 C-extension)
-│   ├── Cargo.toml             # Rust package manifest (pyo3, rayon, ahash)
-│   ├── src/trie.rs            # Native Double-Array / PrefixTrie matching
-│   ├── src/viterbi.rs         # Native dynamic programming Viterbi & EM expectations
-│   └── src/lib.rs             # PyO3 module interface
-│
-├── seed_builder.py            # SeedVocabularyBuilder — PMI + script balancing + entropy
-├── unigram_lattice.py         # UnigramLattice — DAG, beam pruning, EM stats, FFBS
-├── unigram_trainer.py         # UnigramTrainer — EM early-stopping + Viterbi memoization
-├── vocab_adapter.py           # VocabularyAdapter — non-destructive vocab expansion
-├── cem_merger.py              # CrossEntropyMerging — CEM / SuperBPE extension
-│
-├── bpe_trainer.py             # BPETrainer — classic greedy pairwise-merge training
-├── bpe_model.py               # BPEModel — rank-based merge inference (tiktoken-style)
-│
-├── batch_collator.py          # BatchCollator — padding, masks, BOS/EOS, to_torch()
-├── streaming_decoder.py       # StreamingDecoder — incremental UTF-8-safe decode
-├── hf_exporter.py             # HuggingFaceExporter — tokenizer.json + config export
-│
-├── security_shield.py         # SecurityShield — control-token injection defense
-├── indentation_compressor.py  # IndentationCompressor — reversible whitespace codec
-│
-├── multimodal/
-│   ├── multimodal_tokenizer.py  # MultimodalTokenizer — text + image + audio
-│   ├── visual_codebook.py       # VisualCodebook — VQ codebook for image patches
-│   ├── image_patcher.py         # ImagePatcher — grid-based patch extraction
-│   ├── audio_codec.py           # ResidualVectorQuantizer — RVQ for audio
-│   └── neural_codecs.py         # NeuralVisualCodec / NeuralAudioCodec (PyTorch)
+├── crates/
+│   └── uniqtoken_core/            # Native Rust acceleration crate (PyO3 C-extension)
+│       ├── Cargo.toml             # Rust package manifest (pyo3, rayon, ahash, regex)
+│       └── src/
+│           ├── lib.rs             # PyO3 module interface
+│           ├── trie.rs            # Native PrefixTrie with AHashMap & prefix search
+│           ├── viterbi.rs         # Dynamic programming Viterbi & EM expectations
+│           ├── normalizer.rs      # Native Unicode normalization & space handling
+│           ├── pipeline.rs        # Fused Rayon batch encoding pipeline
+│           ├── rust_tokenizer.rs  # Standalone RustTokenizer engine
+│           └── seed.rs            # Native n-gram mining & candidate generation
 │
 ├── benchmarks/
-│   ├── benchmark_suite.py               # TokenizerBenchmarkSuite — 7-axis evaluation
-│   ├── vocab_quality_race.py            # Matched-budget vocab quality race (Phase 3 experiment)
-│   ├── downstream_eval.py               # DownstreamEvaluator — context efficiency & BPB
-│   ├── train_toy_transformer.py         # Downstream LLM pretraining & BPB validation
-│   ├── run_final_paper_audit.py         # Phase 15 publication audit & Pareto analysis
-│   ├── run_phase_fourteen_confirmatory.py  # Phase 14B 5-seed factorial ANOVA
-│   └── phase_fifteen_final_paper_records.json  # Frozen audited dataset (27 conditions)
+│   ├── benchmark_suite.py                 # TokenizerBenchmarkSuite — 7-axis evaluation
+│   ├── benchmark_throughput.py            # End-to-end throughput & bandwidth benchmark
+│   ├── downstream_eval.py                 # DownstreamEvaluator — context efficiency & BPB
+│   ├── train_toy_transformer.py           # Downstream LLM pretraining & BPB validation
+│   ├── vocab_quality_race.py              # Matched-budget vocab quality race (Phase 3)
+│   ├── flop_counter.py                    # Matched FLOP calculation utilities
+│   ├── run_final_paper_audit.py           # Phase 15 publication audit & Pareto analysis
+│   ├── run_phase_fourteen_confirmatory.py # Phase 14B 5-seed factorial ANOVA
+│   └── phase_fifteen_final_paper_records.json # Frozen audited dataset (27 conditions)
 │
-├── uniqtoken_core.pyi           # Static typing stub for PyO3 C-extension
-├── PAPER_DRAFT.md             # Research manuscript draft
+├── tests/
+│   ├── test_tokenizer.py              # 89 unit tests covering end-to-end functionality
+│   ├── test_adversarial_stress.py     # 7 pathological input & 100K-char stress tests
+│   ├── test_audit_regressions.py      # 14 external-audit regression tests
+│   ├── test_batch_parity.py           # 4 batch vs single encoding parity tests
+│   ├── test_cli.py                    # 8 CLI integration & roundtrip tests
+│   ├── test_downstream_model.py       # 4 Downstream transformer pretraining tests
+│   ├── test_fuzz_properties.py        # 7 property-based fuzz tests
+│   ├── test_hf_importer.py            # 10 HuggingFace importer differential tests
+│   ├── test_metric_audit.py           # 2 metric accounting invariant tests
+│   ├── test_native_pipeline.py        # 9 Native Rust pipeline verification tests
+│   ├── test_rust_parity.py            # 2 Rust native extension / Python parity tests
+│   ├── test_sentencepiece_importer.py # 11 SentencePiece importer differential tests
+│   ├── test_tiktoken_adapter.py       # 8 tiktoken adapter differential tests
+│   └── test_vocab_quality_race.py     # 6 Vocab quality race harness tests
 │
-├── test_tokenizer.py          # 68 unit tests across 19 test classes
-├── test_adversarial_stress.py # 7 pathological input & 100K-char stress tests
-├── test_batch_parity.py       # 4 batch vs single encoding parity tests
-├── test_cli.py                # 6 CLI integration & roundtrip tests
-├── test_downstream_model.py   # 4 Downstream transformer pretraining & BPB tests
-├── test_fuzz_properties.py    # 7 property-based fuzz tests
-├── test_metric_audit.py       # 2 metric accounting invariant tests
-├── test_rust_parity.py        # 2 Rust/Python parity verification tests
-├── pyproject.toml             # Package config, CLI console_scripts, extras
-└── .github/workflows/ci.yml  # CI: 3 OS × 4 Python versions = 12-cell matrix
+├── assets/banner.jpeg             # Project banner asset
+├── CONTRIBUTING.md                # Developer setup and contribution guidelines
+├── PAPER_DRAFT.md                 # Research manuscript draft
+├── pyproject.toml                 # Package metadata, CLI console_scripts, extras
+└── .github/workflows/ci.yml       # CI: 3 OS × 4 Python versions = 12-cell matrix
 ```
 
 ### Module Dependency Graph
 
 ```mermaid
 graph TD
-    CLI["cli.py<br/>CLI Commands"] --> T["tokenizer.py<br/>CustomTokenizer"]
-    T --> N["pre_tokenizer.py<br/>Normalizer · RegexPreTokenizer"]
-    T --> UL["unigram_lattice.py<br/>UnigramLattice"]
-    T --> UT["unigram_trainer.py<br/>UnigramTrainer · UnigramModel"]
-    T --> SS["security_shield.py<br/>SecurityShield"]
-    T --> IC["indentation_compressor.py<br/>IndentationCompressor"]
-    T --> SD["streaming_decoder.py<br/>StreamingDecoder"]
-    T --> HF["hf_exporter.py<br/>HuggingFaceExporter"]
+    CLI["uniqtoken.cli<br/>CLI Commands"] --> T["uniqtoken.tokenizer<br/>CustomTokenizer"]
+    T --> N["uniqtoken.pre_tokenizer<br/>Normalizer · RegexPreTokenizer"]
+    T --> UL["uniqtoken.unigram_lattice<br/>UnigramLattice"]
+    T --> UT["uniqtoken.unigram_trainer<br/>UnigramTrainer · UnigramModel"]
+    T --> SS["uniqtoken.security_shield<br/>SecurityShield"]
+    T --> IC["uniqtoken.indentation_compressor<br/>IndentationCompressor"]
+    T --> SD["uniqtoken.streaming_decoder<br/>StreamingDecoder"]
+    T --> HF["uniqtoken.hf_exporter<br/>HuggingFaceExporter · GGUFExporter"]
 
     UT --> UL
-    UT --> SB["seed_builder.py<br/>SeedVocabularyBuilder"]
-    UT --> BC["byte_codec.py<br/>ByteFallbackEngine"]
-    UT --> TR["trie.py<br/>PrefixTrie"]
+    UT --> SB["uniqtoken.seed_builder<br/>SeedVocabularyBuilder"]
+    UT --> BC["uniqtoken.byte_codec<br/>ByteFallbackEngine"]
+    UT --> TR["uniqtoken.trie<br/>PrefixTrie"]
     UL --> BC
     UL --> TR
-    TR -.-> RC["uniqtoken_core<br/>Rust Native Extension"]
+    TR -.-> RC["crates/uniqtoken_core<br/>Rust Native Extension"]
     UL -.-> RC
+    T -.-> RC
 
-    CEM["cem_merger.py<br/>CrossEntropyMerging"] --> UT
-    VA["vocab_adapter.py<br/>VocabularyAdapter"] --> UT
+    CEM["uniqtoken.cem_merger<br/>CrossEntropyMerging"] --> UT
+    VA["uniqtoken.vocab_adapter<br/>VocabularyAdapter"] --> UT
 
-    BT["bpe_trainer.py<br/>BPETrainer"] --> BC
+    BT["uniqtoken.bpe_trainer<br/>BPETrainer"] --> BC
     BT --> N
-    BM["bpe_model.py<br/>BPEModel"] --> BC
+    BM["uniqtoken.bpe_model<br/>BPEModel"] --> BC
 
-    MM["multimodal/<br/>MultimodalTokenizer"] --> T
+    MM["uniqtoken.multimodal<br/>MultimodalTokenizer"] --> T
 ```
 
 ---
@@ -564,7 +595,7 @@ The `allowed_special` parameter accepts `"all"`, `"none"`, or a specific `set` o
 UniqToken loads any tiktoken `.tiktoken` rank file (e.g. `cl100k_base.tiktoken`, `o200k_base.tiktoken`, `gpt2` via tiktoken's file dump) and produces **exactly the same integer IDs** as tiktoken — no tiktoken package required, only the lightweight `regex` module for pattern fidelity:
 
 ```python
-from tiktoken_adapter import TiktokenEncoding
+from uniqtoken import TiktokenEncoding
 
 enc = TiktokenEncoding.from_file(
     "cl100k_base.tiktoken",
@@ -586,7 +617,7 @@ text = enc.decode(ids)
 - WordPiece is rejected with a clear error (UniqToken has no WordPiece engine).
 
 ```python
-from hf_importer import import_hf_tokenizer
+from uniqtoken import import_hf_tokenizer
 
 cal = import_hf_tokenizer("path/to/tokenizer.json")  # Unigram -> CustomTokenizer
 gpt2 = import_hf_tokenizer("gpt2/tokenizer.json")  # BPE -> HFByteLevelBPE
@@ -598,7 +629,7 @@ ids = gpt2.encode("Hello, world!")  # same IDs as HF
 UniqToken can read SentencePiece Unigram models with **zero `protobuf` dependency** (raw wire-format parser) and **byte-for-byte vocab/ID preservation** vs the real `sentencepiece` package. The first word of every encode is subject to a known SPM/UniqToken divergence (SPM's `add_dummy_prefix=True` prepends a metaspace that UniqToken does not); the importer emits a `UserWarning` for it, and the rest of the encode is byte-for-byte identical:
 
 ```python
-from sentencepiece_importer import import_sentencepiece
+from uniqtoken import import_sentencepiece
 
 tok = import_sentencepiece("sp.model")  # Unigram -> CustomTokenizer
 ids = tok.encode_to_ids("hello world")  # IDs preserved; leading-word may differ
@@ -612,7 +643,7 @@ ids = tok.encode_to_ids("hello world")  # IDs preserved; leading-word may differ
 
 | Suite | Tests | Scope |
 |:------|------:|:------|
-| `test_tokenizer.py` | 87 | 20+ test classes covering normalization, byte-fallback, encoding/decoding, lattice construction, training validation, batch collation, multimodal, trie, BPE (rank + heap encode), fast-path parity, HuggingFace export, security shield, indentation compression, streaming decode, audio codecs, neural codecs, CEM, SuperBPE, PMI ranking, and parallel batching |
+| `test_tokenizer.py` | 89 | 20+ test classes covering normalization, byte-fallback, encoding/decoding, lattice construction, training validation, batch collation, multimodal, trie, BPE (rank + heap encode), fast-path parity, HuggingFace export, security shield, indentation compression, streaming decode, audio codecs, neural codecs, CEM, SuperBPE, PMI ranking, and parallel batching |
 | `test_adversarial_stress.py` | 7 | Pathological inputs: 100K-char repetitions, nested delimiter injections, Indic ZWJ/ZWNJ ligatures, raw binary streams, memoization cache invariance |
 | `test_audit_regressions.py` | 14 | External-audit regressions: BPE inter-word space roundtrip, batch single/batch security parity, tab/newline batch parity, CEM deterministic merge order, strict BPE decode |
 | `test_batch_parity.py` | 4 | Batch vs single-sentence encoding parity, offset span consistency, Rust batch acceleration parity |
@@ -626,7 +657,7 @@ ids = tok.encode_to_ids("hello world")  # IDs preserved; leading-word may differ
 | `test_sentencepiece_importer.py` | 11 | SentencePiece `.model` importer: dependency-free protobuf parser, differential vocab/ID/encode parity vs real `sentencepiece` package (Unigram + byte fallback), `add_dummy_prefix` warning, decode round-trip, BPE rejection |
 | `test_tiktoken_adapter.py` | 8 | tiktoken ranks importer: exact-ID parity vs real cl100k_base, synthetic rank files, specials policy, byte fallback |
 | `test_vocab_quality_race.py` | 6 | Matched-budget vocab quality race harness: report shape, BPB invariant, category tagging, JSON serialization, dataclass invariants |
-| **Total** | **179 (174 passed, 5 skipped)** | 100% test pass rate across all runnable suites; verify with `pytest` |
+| **Total** | **181 (180 passed, 1 skipped)** | 100% test pass rate across all runnable suites; verify with `pytest` |
 
 ### CI Pipeline
 
@@ -669,7 +700,7 @@ The `multimodal/` package extends UniqToken to handle text, image, and audio inp
 |:-------|:--------|
 | `multimodal_tokenizer.py` | `MultimodalTokenizer` — unified text + image + audio tokenization with cross-modal token interleaving |
 | `visual_codebook.py` | `VisualCodebook` — vector-quantized codebook for mapping image patches to discrete tokens |
-| `image_patcher.py` | `ImagePatcher` — grid-based patch extraction from pixel arrays |
+| `image_patcher.py` | `DynamicImagePatcher` — grid-based patch extraction from pixel arrays |
 | `audio_codec.py` | `ResidualVectorQuantizer` — multi-layer residual VQ for audio waveform discretization |
 | `neural_codecs.py` | `NeuralVisualCodec` / `NeuralAudioCodec` — PyTorch-based learned codecs (requires `[torch]` extra) |
 
