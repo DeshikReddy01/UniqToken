@@ -5,7 +5,7 @@ import os
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, Set, Tuple, Union
+from typing import Any, Dict, List, Literal, Optional, Sequence, Set, Tuple, Union
 
 from .bpe_model import BPEModel
 from .byte_codec import ByteFallbackEngine
@@ -284,6 +284,7 @@ class CustomTokenizer:
         split_digits: bool = False,
         hex_literals: bool = True,
         digit_chunk_size: Optional[int] = None,
+        digit_chunking: Literal["block3", "single", "greedy"] = "block3",
         preset: Optional[str] = None,
         special_tokens: Optional[List[str]] = None,
         compress_indents: bool = False,
@@ -303,6 +304,7 @@ class CustomTokenizer:
             split_digits=split_digits,
             hex_literals=hex_literals,
             digit_chunk_size=digit_chunk_size,
+            digit_chunking=digit_chunking,
             preset=preset,
         )
 
@@ -767,6 +769,7 @@ class CustomTokenizer:
                 "special_token_pattern": self.pre_tokenizer.special_token_pattern,
                 "hex_literals": self.pre_tokenizer.hex_literals,
                 "digit_chunk_size": self.pre_tokenizer.digit_chunk_size,
+                "digit_chunking": self.pre_tokenizer.digit_chunking,
                 "preset": self.pre_tokenizer.preset,
             },
         }
@@ -816,6 +819,12 @@ class CustomTokenizer:
             special_token_pattern=pre_tokenizer_config.get("special_token_pattern", r"<\|[^\s|]+\|>"),
             hex_literals=pre_tokenizer_config.get("hex_literals", True),
             digit_chunk_size=pre_tokenizer_config.get("digit_chunk_size"),
+            # Legacy configs predate digit_chunking: they trained with greedy
+            # digits (digit_chunk_size=None) or an explicit chunk size.
+            digit_chunking=pre_tokenizer_config.get(
+                "digit_chunking",
+                "greedy" if pre_tokenizer_config.get("digit_chunk_size") is None else "block3",
+            ),
             preset=pre_tokenizer_config.get("preset"),
         )
 

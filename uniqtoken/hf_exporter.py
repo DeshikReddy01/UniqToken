@@ -158,6 +158,8 @@ class HuggingFaceExporter:
             unrepresentable.append("hex_literals")
         if pre.digit_chunk_size is not None:
             unrepresentable.append("digit_chunk_size")
+        elif pre.digit_chunking != "greedy" and not (pre.digit_chunking == "single" and pre.split_digits):
+            unrepresentable.append("digit_chunking")
         if pre.preset is not None:
             unrepresentable.append("preset")
         if not pre.keep_special_tokens:

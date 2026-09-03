@@ -138,6 +138,7 @@ def train_command(args: argparse.Namespace) -> int:
         split_digits=args.split_digits,
         hex_literals=not args.no_hex_literals,
         digit_chunk_size=args.digit_chunk_size,
+        digit_chunking=args.digit_chunking,
         preset=args.preset,
         compress_indents=args.compress_indents,
         verbose=args.verbose,
@@ -334,6 +335,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_train.add_argument("--split-digits", action="store_true", help="Split individual digits into discrete tokens")
     p_train.add_argument("--digit-chunk-size", type=int, default=None, help="Max digits per numeric token (e.g. 3)")
+    p_train.add_argument(
+        "--digit-chunking",
+        choices=["block3", "single", "greedy"],
+        default="block3",
+        help="Digit chunking mode: block3 (default, 1-3 digits per token), single, or greedy (legacy)",
+    )
     p_train.add_argument("--no-hex-literals", action="store_true", help="Disable hexadecimal/binary literal matching")
     p_train.add_argument("--compress-indents", action="store_true", help="Enable whitespace indentation compression")
     p_train.add_argument("--no-byte-fallback", action="store_true", help="Disable UTF-8 byte fallback")

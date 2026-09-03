@@ -16,7 +16,9 @@ static PRETOK_FULL_REGEX: OnceLock<Regex> = OnceLock::new();
 fn get_pretok_regex() -> &'static Regex {
     PRETOK_REGEX.get_or_init(|| {
         // High-speed unicode-aware word/punctuation/whitespace splitting regex
-        Regex::new(r"<\|[^\s|]+\|>|\p{L}+(?:['’]\p{L}+)*|\p{N}+|[^\s\p{L}\p{N}\u{2581}]+|\u{2581}+|\s+").unwrap()
+        // Issue #43: keep the fast pre-tokenizer consistent with the full one
+        // (1-3 digit number chunks instead of unbounded runs).
+        Regex::new(r"<\|[^\s|]+\|>|\p{L}+(?:['’]\p{L}+)*|\p{N}{1,3}|[^\s\p{L}\p{N}\u{2581}]+|\u{2581}+|\s+").unwrap()
     })
 }
 
@@ -32,7 +34,10 @@ pub(crate) fn get_full_pretok_regex() -> &'static Regex {
         let cjk = format!(r"{}?[\u4e00-\u9fff\u3400-\u4dbf\u3040-\u30ff\uac00-\ud7af]+", escaped_space);
         let word = format!(r"{}?[\p{{L}}\p{{Nl}}\p{{No}}]+(?:['’][\p{{L}}\p{{Nl}}\p{{No}}]+)*", escaped_space);
         let hex_number = format!(r"{}?0[xX][0-9a-fA-F]+|{}?0[bB][01]+", escaped_space, escaped_space);
-        let number = format!(r"{}?\d+", escaped_space);
+        // Issue #43: chunk numbers into 1-3 digit blocks (LLaMA-3/GPT-4 style).
+        // \d is Unicode \p{Nd} in the regex crate, matching Python's \d exactly;
+        // ASCII-only [0-9] would drop non-ASCII decimal digits entirely.
+        let number = format!(r"{}?\d{{1,3}}", escaped_space);
         let space_marker = format!(r"{}+", escaped_space);
         let whitespace = r"[\s\x1c-\x1f]+";
         let punctuation = format!(r"{}?[^\p{{L}}\p{{N}}_\s\x1c-\x1f{}]|{}?_", escaped_space, escaped_space, escaped_space);

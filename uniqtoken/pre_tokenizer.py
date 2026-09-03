@@ -5,7 +5,9 @@ import re
 import unicodedata
 import difflib
 from dataclasses import dataclass
-from typing import Iterator, List, Optional, Sequence, Tuple, Union
+from typing import Iterator, List, Literal, Optional, Sequence, Tuple, Union
+
+DigitChunking = Literal["block3", "single", "greedy"]
 
 try:
     import uniqtoken_core as _caliper_core
@@ -301,8 +303,11 @@ class RegexPreTokenizer:
         special_token_pattern: str = r"<\|[^\s|]+\|>",
         hex_literals: bool = True,
         digit_chunk_size: Optional[int] = None,
+        digit_chunking: DigitChunking = "block3",
         preset: Optional[str] = None,
     ):
+        if digit_chunking not in ("block3", "single", "greedy"):
+            raise ValueError(f"digit_chunking must be one of 'block3', 'single', 'greedy', got {digit_chunking!r}")
         if preset == "code":
             split_digits = False
             hex_literals = True
@@ -323,6 +328,7 @@ class RegexPreTokenizer:
         self.special_token_pattern = special_token_pattern
         self.hex_literals = hex_literals
         self.digit_chunk_size = digit_chunk_size
+        self.digit_chunking = digit_chunking
         self.preset = preset
 
         escaped_space = re.escape(self.space_char)
@@ -348,12 +354,19 @@ class RegexPreTokenizer:
         # Code hexadecimal / binary literals (e.g. 0xDEADBEEF, 0b1010)
         hex_number = rf"{escaped_space}?0[xX][0-9a-fA-F]+|{escaped_space}?0[bB][01]+" if self.hex_literals else None
 
-        if self.split_digits:
+        # Issue #43: numbers are chunked into 1-3 digit blocks by default
+        # (LLaMA-3 / GPT-4 style) so place-value arithmetic works per chunk.
+        # Unicode-aware \d (== \p{Nd}) rather than [0-9]: ASCII-only [0-9]
+        # would silently drop non-ASCII decimal digits (e.g. Arabic-Indic),
+        # breaking roundtrip; \d matches identically in Python and Rust.
+        if self.split_digits or self.digit_chunking == "single":
             number = rf"{escaped_space}?\d"
+        elif self.digit_chunking == "greedy":
+            number = rf"{escaped_space}?\d+"
         elif self.digit_chunk_size is not None and self.digit_chunk_size > 0:
             number = rf"{escaped_space}?\d{{1,{self.digit_chunk_size}}}"
-        else:
-            number = rf"{escaped_space}?\d+"
+        else:  # digit_chunking == "block3"
+            number = rf"{escaped_space}?\d{{1,3}}"
 
         space_marker = rf"{escaped_space}+"
         whitespace = r"\s+"
@@ -430,6 +443,7 @@ class RegexPreTokenizer:
             and self.special_token_pattern == r"<\|[^\s|]+\|>"
             and self.hex_literals
             and self.digit_chunk_size is None
+            and self.digit_chunking == "block3"
         )
 
     def pre_tokenize(self, text: str) -> List[str]:
