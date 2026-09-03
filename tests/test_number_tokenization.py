@@ -129,6 +129,8 @@ class RustParityTests(unittest.TestCase):
 
 
 class TokenizerOffsetTests(unittest.TestCase):
+    tokenizer: CustomTokenizer
+
     @classmethod
     def setUpClass(cls) -> None:
         cls.tokenizer = CustomTokenizer.train_from_corpus(
