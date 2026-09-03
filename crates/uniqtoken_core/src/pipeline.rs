@@ -26,16 +26,16 @@ pub(crate) fn get_full_pretok_regex() -> &'static Regex {
         let special_token = r"<\|[^\s|]+\|>";
         let url = r"https?://[a-zA-Z0-9][-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b(?:[-a-zA-Z0-9()@:%_\+.~#?&/=]*)";
         let email = r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+";
-        let hashtag = format!(r"{}?#\w+", escaped_space);
-        let mention = format!(r"{}?@\w+", escaped_space);
+        let hashtag = format!(r"{}?#[\p{{L}}\p{{N}}_]+", escaped_space);
+        let mention = format!(r"{}?@[\p{{L}}\p{{N}}_]+", escaped_space);
         let emoji = r"(?:[\U0001F300-\U0001FAFF]|[\u2600-\u26FF]|[\u2700-\u27BF])(?:[\uFE0E\uFE0F])?(?:[\U0001F3FB-\U0001F3FF])?(?:\u200D(?:[\U0001F300-\U0001FAFF]|[\u2600-\u26FF]|[\u2700-\u27BF])(?:[\uFE0E\uFE0F])?(?:[\U0001F3FB-\U0001F3FF])?)*";
         let cjk = format!(r"{}?[\u4e00-\u9fff\u3400-\u4dbf\u3040-\u30ff\uac00-\ud7af]+", escaped_space);
-        let word = format!(r"{}?[^\W\d_\s{}]+(?:['’][^\W\d_\s{}]+)*", escaped_space, escaped_space, escaped_space);
+        let word = format!(r"{}?[\p{{L}}\p{{Nl}}\p{{No}}]+(?:['’][\p{{L}}\p{{Nl}}\p{{No}}]+)*", escaped_space);
         let hex_number = format!(r"{}?0[xX][0-9a-fA-F]+|{}?0[bB][01]+", escaped_space, escaped_space);
         let number = format!(r"{}?\d+", escaped_space);
         let space_marker = format!(r"{}+", escaped_space);
-        let whitespace = r"\s+";
-        let punctuation = format!(r"{}?[^\w\s{}]|{}?_", escaped_space, escaped_space, escaped_space);
+        let whitespace = r"[\s\x1c-\x1f]+";
+        let punctuation = format!(r"{}?[^\p{{L}}\p{{N}}_\s\x1c-\x1f{}]|{}?_", escaped_space, escaped_space, escaped_space);
         let patterns = vec![
             special_token.to_string(),
             url.to_string(),

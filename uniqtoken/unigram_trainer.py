@@ -71,7 +71,7 @@ class UnigramModel:
         self._sync_cache()
         rust_trie = self.__dict__.get("_rust_trie")
         if rust_trie is None:
-            rust_trie = caliper_core.RustPrefixTrie()
+            rust_trie = caliper_core.RustPrefixTrie(self.max_subword_len)
             for token, log_p in self.vocab.items():
                 tid = self.token_to_id.get(token)
                 if tid is None:
@@ -409,21 +409,33 @@ class UnigramTrainer:
             for sub_iter in range(self.em_sub_iterations):
                 expected_counts: Dict[str, float] = {}
                 total_corpus_log_lik = 0.0
-                if _HAS_CALIPER_CORE:
-                    rust_trie = caliper_core.RustPrefixTrie()
-                    for t, lp in current_vocab_log_probs.items():
-                        rust_trie.insert(t, lp, 0)
-                    for chunk, count in chunk_counts.items():
-                        if chunk in required_tokens and (chunk.startswith("<|") and chunk.endswith("|>")):
-                            expected_counts[chunk] = expected_counts.get(chunk, 0.0) + count
-                            continue
-                        chunk_exp, chunk_log_lik = caliper_core.rust_forward_backward_expectations(
-                            chunk, rust_trie, 1.0
-                        )
-                        total_corpus_log_lik += chunk_log_lik * count
-                        for tok, exp_val in chunk_exp.items():
-                            expected_counts[tok] = expected_counts.get(tok, 0.0) + (exp_val * count)
-                else:
+                can_use_rust_em = (
+                    _HAS_CALIPER_CORE
+                    and self.min_edge_log_prob is None
+                    and self.max_edges_per_node is None
+                    and self.max_ngram_length >= 16
+                )
+                if can_use_rust_em:
+                    try:
+                        rust_trie = caliper_core.RustPrefixTrie(self.max_ngram_length)
+                        for t, lp in current_vocab_log_probs.items():
+                            rust_trie.insert(t, lp, 0)
+                        for chunk, count in chunk_counts.items():
+                            if chunk in required_tokens and (chunk.startswith("<|") and chunk.endswith("|>")):
+                                expected_counts[chunk] = expected_counts.get(chunk, 0.0) + count
+                                continue
+                            chunk_exp, chunk_log_lik = caliper_core.rust_forward_backward_expectations(
+                                chunk, rust_trie, 1.0
+                            )
+                            total_corpus_log_lik += chunk_log_lik * count
+                            for tok, exp_val in chunk_exp.items():
+                                expected_counts[tok] = expected_counts.get(tok, 0.0) + (exp_val * count)
+                    except Exception:
+                        can_use_rust_em = False
+                        expected_counts.clear()
+                        total_corpus_log_lik = 0.0
+
+                if not can_use_rust_em:
                     trie = PrefixTrie.from_vocab(current_vocab_log_probs)
                     for chunk, count in chunk_counts.items():
                         if chunk in required_tokens and (chunk.startswith("<|") and chunk.endswith("|>")):
@@ -462,6 +474,11 @@ class UnigramTrainer:
                     break
 
             # --- PRUNING STEP ---
+            if not expected_counts or total_expected <= 0:
+                if verbose:
+                    print("  No expectations computed; terminating EM pruning.")
+                break
+
             current_size = len(current_vocab_log_probs)
             if current_size <= self.target_vocab_size:
                 break

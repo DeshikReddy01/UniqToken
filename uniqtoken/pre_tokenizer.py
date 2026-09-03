@@ -107,18 +107,28 @@ class Normalizer:
         if normalized == text:
             return [(char, (i, i + 1)) for i, char in enumerate(text)]
 
-        units: List[Tuple[str, Tuple[int, int]]] = []
-        matcher = difflib.SequenceMatcher(a=text, b=normalized, autojunk=False)
-        for tag, source_start, source_end, output_start, output_end in matcher.get_opcodes():
-            if tag == "equal":
-                units.extend(
-                    (normalized[i], (source_start + i - output_start, source_start + i - output_start + 1))
-                    for i in range(output_start, output_end)
-                )
-                continue
-            source_span = (source_start, source_end)
-            units.extend((normalized[i], source_span) for i in range(output_start, output_end))
-        return units
+        chars = list(text)
+        n = len(chars)
+        prefix_lengths = [0]
+        for i in range(n):
+            prefix = "".join(chars[: i + 1])
+            prefix_lengths.append(len(unicodedata.normalize("NFKC", prefix)))
+        normalized_chars = list(normalized)
+        spans = [(0, 0)] * len(normalized_chars)
+        for i in range(n):
+            start = prefix_lengths[i]
+            end = prefix_lengths[i + 1]
+            if end > start:
+                for idx in range(start, end):
+                    spans[idx] = (i, i + 1)
+            elif start > 0:
+                for idx in range(start):
+                    if spans[idx][1] == i:
+                        spans[idx] = (spans[idx][0], i + 1)
+        for idx in range(len(spans)):
+            if spans[idx][0] == spans[idx][1]:
+                spans[idx] = (0, 0) if n == 0 else (0, n)
+        return list(zip(normalized_chars, spans))
 
     def normalize_with_alignment(self, text: str) -> Tuple[str, List[Tuple[int, int]]]:
         """Normalizes text and maps every output character to its raw source span."""

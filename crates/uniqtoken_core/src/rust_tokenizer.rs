@@ -16,7 +16,7 @@ impl RustTokenizer {
     #[new]
     #[pyo3(signature = (vocab=None, space_char='\u{2581}', byte_fallback=true))]
     fn new(vocab: Option<Vec<(String, f64, u32)>>, space_char: char, byte_fallback: bool) -> PyResult<Self> {
-        let mut trie = RustPrefixTrie::new();
+        let mut trie = RustPrefixTrie::new(None);
         if let Some(v) = vocab {
             for (tok, logp, id) in v {
                 trie.insert(&tok, logp, Some(id))?;
@@ -27,7 +27,7 @@ impl RustTokenizer {
 
     #[allow(clippy::wrong_self_convention)]
     fn from_vocab(&mut self, vocab: Vec<(String, f64, u32)>) -> PyResult<()> {
-        self.trie = RustPrefixTrie::new();
+        self.trie = RustPrefixTrie::new(None);
         for (tok, logp, id) in vocab {
             self.trie.insert(&tok, logp, Some(id))?;
         }

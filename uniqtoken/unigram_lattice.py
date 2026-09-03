@@ -112,7 +112,10 @@ class UnigramLattice:
             if not has_edge_at_i:
                 if self.byte_fallback:
                     char = self.text[i]
-                    byte_tokens = ByteFallbackEngine.char_to_byte_tokens(char)
+                    try:
+                        byte_tokens = ByteFallbackEngine.char_to_byte_tokens(char)
+                    except (ValueError, UnicodeEncodeError):
+                        byte_tokens = ByteFallbackEngine.char_to_byte_tokens("\ufffd")
                     total_log_p = sum(self.vocab.get(b, -self.DEFAULT_BYTE_PENALTY) for b in byte_tokens)
                     edge = LatticeEdge(
                         start=i,

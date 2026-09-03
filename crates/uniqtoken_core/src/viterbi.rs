@@ -540,7 +540,7 @@ mod tests {
 
     #[test]
     fn multibyte_fallback_emits_every_byte_with_one_character_span() {
-        let trie = RustPrefixTrie::new();
+        let trie = RustPrefixTrie::new(None);
         let spans = rust_viterbi_decode("éa", &trie, true, None).unwrap();
         let tokens: Vec<&str> = spans.iter().map(|span| span.token.as_str()).collect();
         assert_eq!(tokens, vec!["<0xC3>", "<0xA9>", "<0x61>"]);
@@ -551,7 +551,7 @@ mod tests {
 
     #[test]
     fn pruning_keeps_stable_backpointers() {
-        let mut trie = RustPrefixTrie::new();
+        let mut trie = RustPrefixTrie::new(None);
         trie.insert("a", -1.0, Some(1)).unwrap();
         trie.insert("ba", -0.1, Some(2)).unwrap();
         trie.insert("ab", -0.2, Some(3)).unwrap();
@@ -563,7 +563,7 @@ mod tests {
 
     #[test]
     fn rejects_zero_beam_size() {
-        let trie = RustPrefixTrie::new();
+        let trie = RustPrefixTrie::new(None);
         assert!(rust_viterbi_decode("a", &trie, true, Some(0)).is_err());
     }
 }

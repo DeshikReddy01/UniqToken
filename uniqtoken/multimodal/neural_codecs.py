@@ -148,7 +148,9 @@ if HAS_TORCH:
             Reconstructs the continuous image tensor from discrete code indices.
             """
             device = self.embedding.weight.device
-            if indices.dim() == 3:
+            if indices.dim() == 1 and indices.numel() == grid_h * grid_w:
+                b = 1
+            elif indices.dim() == 3:
                 b = indices.shape[0]
             elif indices.dim() == 2 and indices.shape[1] == grid_h * grid_w:
                 b = indices.shape[0]  # [B, H*W] per-batch flat indices
@@ -383,10 +385,12 @@ if HAS_TORCH:
             b, t_prime, n_q = indices.shape
             if n_q != self.num_quantizers:
                 raise ValueError(f"expected {self.num_quantizers} quantizer stages in indices, got {n_q}")
-            device = next(self.parameters()).device
+            param = next(self.parameters())
+            device = param.device
+            dtype = param.dtype
             if indices.device != device:
                 indices = indices.to(device)
-            z_q_total = torch.zeros(b * t_prime, self.latent_dim, device=device)
+            z_q_total = torch.zeros(b * t_prime, self.latent_dim, device=device, dtype=dtype)
 
             flat_indices = indices.view(b * t_prime, n_q)
             for q_idx in range(n_q):

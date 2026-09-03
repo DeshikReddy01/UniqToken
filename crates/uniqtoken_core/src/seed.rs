@@ -32,10 +32,9 @@ fn detect_script(token: &str) -> &'static str {
             return "cyrillic";
         } else if (0x0E00..=0x0E7F).contains(&cp) {
             return "thai";
-        } else if ch.is_ascii_digit() || token.starts_with("0x") || token.starts_with("SYS_") {
+        } else if ch.is_numeric() || token.starts_with("0x") || token.starts_with("SYS_") {
             return "numeric";
         }
-        return "symbol";
     }
     "symbol"
 }

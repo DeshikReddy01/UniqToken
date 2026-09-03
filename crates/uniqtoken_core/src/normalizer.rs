@@ -20,6 +20,11 @@ fn is_unicode_space(c: char) -> bool {
     )
 }
 
+#[inline]
+pub(crate) fn is_python_whitespace(ch: char) -> bool {
+    ch.is_whitespace() || matches!(ch as u32, 0x1C..=0x1F | 0x85)
+}
+
 fn validate_space_char(space_char: char) -> PyResult<()> {
     if space_char == ESCAPE_PREFIX || space_char == ESCAPED_METASPACE {
         return Err(pyo3::exceptions::PyValueError::new_err(
@@ -81,8 +86,9 @@ pub fn rust_normalize(
         }
         s = out;
     }
+
     if strip_whitespace {
-        s = s.trim().to_string();
+        s = s.trim_matches(is_python_whitespace).to_string();
     }
     // metaspace escape
     let mut out = String::with_capacity(s.len() + 4);
@@ -223,10 +229,10 @@ pub fn rust_normalize_with_alignment(
     if strip_whitespace {
         let mut start = 0usize;
         let mut end = units.len();
-        while start < end && units[start].0.is_whitespace() {
+        while start < end && is_python_whitespace(units[start].0) {
             start += 1;
         }
-        while end > start && units[end - 1].0.is_whitespace() {
+        while end > start && is_python_whitespace(units[end - 1].0) {
             end -= 1;
         }
         units = units[start..end].to_vec();

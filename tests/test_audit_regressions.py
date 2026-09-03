@@ -115,6 +115,66 @@ class CEMOrderingTests(unittest.TestCase):
         self.assertGreaterEqual(len(cem.merges), 0)
 
 
+class EngineDivergenceRegressionTests(unittest.TestCase):
+    def test_seed_script_detection_parity(self):
+        from uniqtoken.seed_builder import SeedVocabularyBuilder
+        import uniqtoken_core
+
+        # #中文 should both detect cjk, ²x should both detect numeric
+        py_cjk = SeedVocabularyBuilder._detect_script("#中文")
+        self.assertEqual(py_cjk, "cjk")
+        # Test mine_ngrams with chunk counts containing #中文
+        mined = uniqtoken_core.rust_mine_ngrams({"#中文": 5}, 16, set())
+        self.assertTrue(any("中文" in k for k in mined))
+
+    def test_rust_trie_respects_max_subword_len(self):
+        import uniqtoken_core
+
+        trie = uniqtoken_core.RustPrefixTrie(4)
+        trie.insert("supercali", -1.0, 100)
+        trie.insert("supe", -2.0, 101)
+        matches = trie.common_prefix_search("supercalifragilistic")
+        # "supercali" is 9 chars, so with max_subword_len=4 it must not match
+        matched_tokens = [m[0] for m in matches]
+        self.assertNotIn("supercali", matched_tokens)
+        self.assertIn("supe", matched_tokens)
+
+    def test_normalizer_strip_c0_whitespace_parity(self):
+        from uniqtoken.pre_tokenizer import Normalizer
+        import uniqtoken_core
+
+        norm = Normalizer(strip_whitespace=True)
+        raw = "\x1chello\x1d"
+        self.assertEqual(norm.normalize(raw), "hello")
+        res_rust, _ = uniqtoken_core.rust_normalize_with_alignment(raw, "▁", True, True, False, False, False, True)
+        self.assertEqual(res_rust, "hello")
+
+    def test_lone_surrogate_graceful_fallback(self):
+        tok = _train_unigram(vocab_size=300)
+        # Must not raise ValueError on lone surrogate
+        tokens = tok.encode("hello \ud800 world")
+        self.assertIsInstance(tokens, list)
+        self.assertGreater(len(tokens), 0)
+
+    def test_unigram_trainer_empty_expectations_no_alphabetical_pruning(self):
+        from uniqtoken.unigram_trainer import UnigramTrainer
+
+        trainer = UnigramTrainer(target_vocab_size=300)
+        # Empty input must terminate cleanly without alphabetical destruction
+        model = trainer.train([])
+        self.assertGreater(len(model.vocab), 0)
+
+    def test_neural_visual_codec_1d_indices(self):
+        import torch
+        from uniqtoken.multimodal.neural_codecs import NeuralVisualCodec
+
+        vcodec = NeuralVisualCodec(in_channels=3, hidden_dim=16, latent_dim=16, num_tokens=32)
+        flat_indices = torch.tensor([0, 1, 2, 3])
+        reconstructed = vcodec.decode_from_indices(flat_indices, grid_h=2, grid_w=2)
+        self.assertEqual(reconstructed.shape[0], 1)
+        self.assertEqual(reconstructed.shape[1], 3)
+
+
 if __name__ == "__main__":
     random.seed(0)
     unittest.main()

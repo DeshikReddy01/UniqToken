@@ -25,6 +25,7 @@ pub struct TrieNode {
 #[derive(Default, Clone)]
 pub struct RustPrefixTrie {
     root: TrieNode,
+    pub max_subword_len: Option<usize>,
     /// Word-level segmentation memoization, shared across Rayon workers.
     /// Lives on the trie itself so it is invalidated automatically whenever
     /// the vocabulary changes (Python builds a fresh RustPrefixTrie per vocab).
@@ -34,11 +35,23 @@ pub struct RustPrefixTrie {
 #[pymethods]
 impl RustPrefixTrie {
     #[new]
-    pub fn new() -> Self {
+    #[pyo3(signature = (max_subword_len=None))]
+    pub fn new(max_subword_len: Option<usize>) -> Self {
         Self {
             root: TrieNode::default(),
+            max_subword_len,
             seg_cache: Arc::new(Mutex::new(AHashMap::with_capacity(8192))),
         }
+    }
+
+    #[getter]
+    pub fn max_subword_len(&self) -> Option<usize> {
+        self.max_subword_len
+    }
+
+    #[setter]
+    pub fn set_max_subword_len(&mut self, val: Option<usize>) {
+        self.max_subword_len = val;
     }
 
     /// Inserts a non-empty subword with a finite log probability.
@@ -67,8 +80,12 @@ impl RustPrefixTrie {
         let mut results = Vec::with_capacity(8);
         let mut curr = &self.root;
         let mut char_count = 0;
+        let max_len = self.max_subword_len.unwrap_or(usize::MAX);
 
         for ch in text.chars() {
+            if char_count >= max_len {
+                break;
+            }
             if let Some(next_node) = curr.children.get(&ch) {
                 curr = next_node;
                 char_count += 1;
@@ -111,8 +128,11 @@ impl RustPrefixTrie {
     ) -> Vec<(String, Option<u32>, f64, usize)> {
         let mut results = Vec::with_capacity(8);
         let mut current = &self.root;
-
+        let max_len = self.max_subword_len.unwrap_or(usize::MAX);
         for (offset, ch) in chars[start..].iter().enumerate() {
+            if offset >= max_len {
+                break;
+            }
             let Some(next) = current.children.get(ch) else {
                 break;
             };
