@@ -239,6 +239,44 @@ class CLITests(unittest.TestCase):
         ret = cli.main(["eval-downstream", "--smoke-test"])
         self.assertEqual(ret, 0)
 
+    def test_cli_train_sample_corpus_with_progress_and_no_progress(self):
+        sample_path = Path(__file__).parent / "sample.txt"
+        self.assertTrue(sample_path.exists(), "tests/sample.txt fixture must exist")
+
+        with TemporaryDirectory() as tmp_dir:
+            model_dir = Path(tmp_dir) / "sample_model"
+            # 1. Train with progress on sample corpus
+            ret = cli.main(
+                [
+                    "train",
+                    "--corpus",
+                    str(sample_path),
+                    "--vocab-size",
+                    "500",
+                    "--out",
+                    str(model_dir),
+                ]
+            )
+            self.assertEqual(ret, 0)
+            self.assertTrue((model_dir / "tokenizer.json").exists())
+
+            # 2. Train with --no-progress flag
+            no_prog_dir = Path(tmp_dir) / "no_prog_model"
+            ret_no_prog = cli.main(
+                [
+                    "train",
+                    "--corpus",
+                    str(sample_path),
+                    "--vocab-size",
+                    "500",
+                    "--no-progress",
+                    "--out",
+                    str(no_prog_dir),
+                ]
+            )
+            self.assertEqual(ret_no_prog, 0)
+            self.assertTrue((no_prog_dir / "tokenizer.json").exists())
+
 
 if __name__ == "__main__":
     unittest.main()
