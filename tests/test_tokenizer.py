@@ -382,6 +382,26 @@ class MultimodalTests(unittest.TestCase):
         # Absent code 0 must decay by ema_decay
         self.assertAlmostEqual(size_0_after_step2, size_0_after_step1 * 0.9, places=9)
 
+    def test_visual_codebook_absent_code_with_zero_cluster_size_decays_embed_sum(self):
+        """EMA embedding sum must decay for absent codes even when cluster size is 0."""
+        state = {
+            "num_embeddings": 4,
+            "embedding_dim": 2,
+            "seed": 42,
+            "ema_decay": 0.9,
+            "epsilon": 1e-5,
+            "codebook": [[0.0, 0.0] for _ in range(4)],
+            "ema_cluster_size": [0.0, 0.0, 0.0, 0.0],
+            "ema_embed_sum": [[10.0, 20.0], [0.0, 0.0], [0.0, 0.0], [0.0, 0.0]],
+            "update_count": 0,
+        }
+        cb = VisualCodebook.from_state(state)
+        # Update code 1 (code 0 is absent, has cluster size 0.0 and nonzero embed sum)
+        cb.update_ema([[1.0, 1.0]], [1])
+        self.assertAlmostEqual(cb._ema_embed_sum[0][0], 9.0, places=9)
+        self.assertAlmostEqual(cb._ema_embed_sum[0][1], 18.0, places=9)
+        self.assertEqual(cb._ema_cluster_size[0], 0.0)
+
     def test_visual_codebook_save_and_load_roundtrip(self):
         cb = VisualCodebook(num_embeddings=8, embedding_dim=4, ema_decay=0.95, epsilon=1e-5)
         cb.update_ema([[1.0, 1.0, 1.0, 1.0]], [2])

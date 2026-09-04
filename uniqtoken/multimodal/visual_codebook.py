@@ -154,11 +154,12 @@ class VisualCodebook:
                 e_sum[d] = decay * e_sum[d] + batch_weight * b_sum[d]
 
         for idx in range(self.num_embeddings):
-            if idx not in counts and self._ema_cluster_size[idx] > 0.0:
+            if idx not in counts:
                 self._ema_cluster_size[idx] *= decay
                 e_sum = self._ema_embed_sum[idx]
-                for d in range(self.embedding_dim):
-                    e_sum[d] *= decay
+                if any(e_sum):
+                    for d in range(self.embedding_dim):
+                        e_sum[d] *= decay
 
         # Periodically re-normalize codebook vectors from EMA statistics
         # This is done lazily to avoid overhead on every update
