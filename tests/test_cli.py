@@ -419,6 +419,12 @@ class CLICompareTests(unittest.TestCase):
         self.assertIn("[a]", colored)
         self.assertIn("[b]", colored)
 
+    def test_colorize_tokens_escapes_terminal_controls(self):
+        hostile = cli._colorize_tokens(["\x1b[31mok", "a\rb"], False)
+        self.assertEqual(hostile, "[\\x1b[31mok][a\\rb]")
+        self.assertNotIn("\x1b", hostile)
+        self.assertNotIn("\r", hostile)
+
 
 if __name__ == "__main__":
     unittest.main()

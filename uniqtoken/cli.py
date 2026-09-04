@@ -296,10 +296,14 @@ COMPARE_DEMO_CORPUS = [
 
 
 def _colorize_tokens(tokens: List[str], use_color: bool) -> str:
-    """Renders tokens as `[pill]` segments with alternating ANSI background colors."""
+    """Renders tokens as `[pill]` segments with alternating ANSI background colors.
+
+    ESC, CR, newline, and tab are shown escaped so token bytes can never inject
+    terminal sequences through either rendering path.
+    """
     pills: List[str] = []
     for index, token in enumerate(tokens):
-        text = token.replace("\n", "\\n").replace("\t", "\\t")
+        text = token.replace("\x1b", "\\x1b").replace("\r", "\\r").replace("\n", "\\n").replace("\t", "\\t")
         if use_color:
             color = COMPARE_BG_COLORS[index % len(COMPARE_BG_COLORS)]
             pills.append(f"\033[{color}m[{text}]{COMPARE_RESET}")
