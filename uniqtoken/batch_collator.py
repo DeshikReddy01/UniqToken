@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
+from .byte_codec import validate_dropout_prob
 from .tokenizer import CustomTokenizer
 
 
@@ -68,14 +69,20 @@ class BatchCollator:
         add_special_tokens: bool = True,
         sample: bool = False,
         alpha: float = 0.5,
+        dropout_prob: float = 0.0,
     ) -> BatchEncoding:
         """
         Batch encodes a list of texts into aligned 2D token ID matrices and attention masks.
+
+        ``dropout_prob`` propagates to the underlying tokenizer on every
+        row; non-zero values bypass native fused batch paths so each
+        candidate merge is dropped exactly once per encode call.
         """
         if max_length is not None and max_length < 0:
             raise ValueError("max_length must not be negative")
         if padding and self.pad_id is None:
             raise ValueError(f"padding token {self.pad_token!r} is not in the vocabulary")
+        validate_dropout_prob(dropout_prob)
 
         batch_ids: List[List[int]] = []
         batch_tokens: List[List[str]] = []
@@ -84,8 +91,10 @@ class BatchCollator:
         # Native fused batch path: one FFI for normalize+pre-tokenize+Viterbi
         # across all texts (see CustomTokenizer._encode_tokens_native_batch).
         # Only used when the native pipeline is provably identical to the
-        # per-text Python path and sampling is not requested.
-        native_tokens = self.tokenizer._encode_tokens_native_batch(texts) if not sample else None
+        # per-text Python path and neither sampling nor dropout is requested.
+        native_tokens = (
+            self.tokenizer._encode_tokens_native_batch(texts) if (not sample and dropout_prob == 0.0) else None
+        )
 
         # Keep this path identical to tokenizer.encode/sample, including
         # security policy, normalization, pre-tokenization, and cross-word
@@ -94,8 +103,10 @@ class BatchCollator:
         for idx, text in enumerate(texts):
             if native_tokens is not None:
                 tokens = native_tokens[idx]
+            elif sample:
+                tokens = self.tokenizer.sample(text, alpha=alpha, dropout_prob=dropout_prob)
             else:
-                tokens = self.tokenizer.sample(text, alpha=alpha) if sample else self.tokenizer.encode(text)
+                tokens = self.tokenizer.encode(text, dropout_prob=dropout_prob)
             ids = [self.tokenizer.model.token_to_id.get(t, unk_id) for t in tokens]
 
             # Truncate content FIRST (reserving room for specials), so BOS/EOS

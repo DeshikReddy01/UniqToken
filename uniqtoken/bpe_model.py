@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import heapq
+import random
 from typing import Dict, List, Optional, Set, Tuple
 
-from .byte_codec import ByteFallbackEngine
+from .byte_codec import ByteFallbackEngine, validate_dropout_prob
 
 
 class BPEModel:
@@ -68,7 +69,7 @@ class BPEModel:
                 symbols.append(char)
         return symbols
 
-    def _encode_word_heap(self, symbols: List[str]) -> List[str]:
+    def _encode_word_heap(self, symbols: List[str], dropout_prob: float = 0.0) -> List[str]:
         """Rank-priority BPE encode using a min-heap of adjacent pairs.
 
         Each heap entry is ``(rank, counter, left, right)``. Popping the
@@ -79,6 +80,12 @@ class BPEModel:
         already happened are removed lazily: a stale entry is detected
         by comparing the popped rank against the live ``self.merges`` value
         for the popped pair, which is a fast dict lookup.
+
+        With ``dropout_prob > 0`` each live merge candidate is skipped
+        with that probability (BPE dropout, Provilkov et al. 2020) without
+        mutating the symbol list, so the constituent symbols stay intact.
+        A dropped candidate is discarded, making the drop final for this
+        call: a later merge of a neighbouring pair never resurrects it.
         """
         if len(symbols) <= 1:
             return list(symbols)
@@ -111,6 +118,9 @@ class BPEModel:
             if live_rank != rank:
                 continue
 
+            if dropout_prob > 0.0 and random.random() < dropout_prob:
+                continue  # BPE dropout: keep both constituent symbols intact
+
             syms[left_idx] += syms[right_idx]
             alive[right_idx] = False
             right_next = next_pos[right_idx]
@@ -137,16 +147,22 @@ class BPEModel:
             index = next_pos[index]
         return result
 
-    def _encode_word(self, word: str) -> List[str]:
+    def _encode_word(self, word: str, dropout_prob: float = 0.0) -> List[str]:
         symbols = self._build_symbols(word)
         if len(symbols) <= 1:
             return symbols
-        return self._encode_word_heap(symbols)
+        return self._encode_word_heap(symbols, dropout_prob=dropout_prob)
 
-    def encode(self, text: str) -> List[str]:
+    def encode(self, text: str, dropout_prob: float = 0.0) -> List[str]:
         """
         Segments text by applying BPE merges on whitespace-delimited word tokens.
+
+        With ``dropout_prob > 0`` each eligible merge candidate is
+        independently skipped with that probability (BPE dropout,
+        Provilkov et al. 2020); a dropped merge is final for the call.
+        ``0.0`` (default) keeps tokenization fully deterministic.
         """
+        validate_dropout_prob(dropout_prob)
         if not text:
             return []
 
@@ -155,11 +171,12 @@ class BPEModel:
         for idx, word in enumerate(words):
             if idx > 0:
                 tokens.append(self._space_token)
-            tokens.extend(self._encode_word(word))
+            tokens.extend(self._encode_word(word, dropout_prob=dropout_prob))
         return tokens
 
-    def encode_to_ids(self, text: str) -> List[int]:
-        tokens = self.encode(text)
+    def encode_to_ids(self, text: str, dropout_prob: float = 0.0) -> List[int]:
+        """Encodes text to token IDs; ``dropout_prob`` behaves as in :meth:`encode`."""
+        tokens = self.encode(text, dropout_prob=dropout_prob)
         unk_id = self.token_to_id.get("<|unk|>", 0)
         return [self.token_to_id.get(t, unk_id) for t in tokens]
 

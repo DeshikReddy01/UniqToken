@@ -4,6 +4,19 @@ import re
 from typing import List
 
 
+def validate_dropout_prob(dropout_prob: float) -> None:
+    """Validate a BPE/SuperBPE dropout probability (Provilkov et al., 2020).
+
+    Single shared definition used by ``tokenizer``, ``bpe_model`` and
+    ``batch_collator``. Raises ``ValueError`` for anything outside
+    ``[0.0, 1.0)``, including non-numeric values such as strings and
+    booleans (``bool`` is an ``int`` subclass, so it is rejected
+    explicitly before the numeric range check).
+    """
+    if isinstance(dropout_prob, bool) or not isinstance(dropout_prob, (int, float)) or not (0.0 <= dropout_prob < 1.0):
+        raise ValueError(f"dropout_prob must be in range [0.0, 1.0), got {dropout_prob!r}")
+
+
 class ByteFallbackEngine:
     """
     Executable Byte-Fallback codec.
