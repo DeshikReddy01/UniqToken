@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import json
 import math
+from pathlib import Path
 import random
 import re
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Union
 
 
 class VisualCodebook:
@@ -143,15 +145,33 @@ class VisualCodebook:
 
         self._update_count += 1
         batch_weight = 1 - self.ema_decay
+        decay = self.ema_decay
         for idx, count in counts.items():
-            self._ema_cluster_size[idx] = self.ema_decay * self._ema_cluster_size[idx] + batch_weight * count
-            for d, value in enumerate(sums[idx]):
-                self._ema_embed_sum[idx][d] = self.ema_decay * self._ema_embed_sum[idx][d] + batch_weight * value
+            self._ema_cluster_size[idx] = decay * self._ema_cluster_size[idx] + batch_weight * count
+            b_sum = sums[idx]
+            e_sum = self._ema_embed_sum[idx]
+            for d in range(self.embedding_dim):
+                e_sum[d] = decay * e_sum[d] + batch_weight * b_sum[d]
+
+        for idx in range(self.num_embeddings):
+            if idx not in counts and self._ema_cluster_size[idx] > 0.0:
+                self._ema_cluster_size[idx] *= decay
+                e_sum = self._ema_embed_sum[idx]
+                for d in range(self.embedding_dim):
+                    e_sum[d] *= decay
 
         # Periodically re-normalize codebook vectors from EMA statistics
         # This is done lazily to avoid overhead on every update
         if self._update_count % 100 == 0:
             self._rebuild_from_ema()
+
+    def finalize(self) -> None:
+        """Flushes accumulated EMA statistics and rebuilds codebook vectors."""
+        self._rebuild_from_ema()
+
+    def flush(self) -> None:
+        """Alias for finalize()."""
+        self.finalize()
 
     def _rebuild_from_ema(self) -> None:
         """Rebuilds codebook vectors from EMA statistics with Laplace smoothing."""
@@ -254,18 +274,33 @@ class VisualCodebook:
         self._update_count = 0
 
     def get_codebook_state(self) -> Dict:
-        """Returns serializable codebook state for saving."""
+        """Returns serializable codebook state for saving, rebuilding from EMA first."""
+        self.finalize()
         return {
             "num_embeddings": self.num_embeddings,
             "embedding_dim": self.embedding_dim,
             "seed": self.seed,
             "ema_decay": self.ema_decay,
             "epsilon": self.epsilon,
-            "codebook": self.codebook,
-            "ema_cluster_size": self._ema_cluster_size,
-            "ema_embed_sum": self._ema_embed_sum,
+            "codebook": [vector[:] for vector in self.codebook],
+            "ema_cluster_size": list(self._ema_cluster_size),
+            "ema_embed_sum": [vector[:] for vector in self._ema_embed_sum],
             "update_count": self._update_count,
         }
+
+    def save(self, path: Union[str, Path]) -> None:
+        """Saves codebook state to a JSON file, rebuilding from EMA first."""
+        file_path = Path(path)
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(file_path, "w", encoding="utf-8") as f:
+            json.dump(self.get_codebook_state(), f, ensure_ascii=False, indent=2)
+
+    @classmethod
+    def load(cls, path: Union[str, Path]) -> "VisualCodebook":
+        """Loads codebook from a saved JSON file."""
+        with open(Path(path), "r", encoding="utf-8") as f:
+            state = json.load(f)
+        return cls.from_state(state)
 
     @classmethod
     def from_state(cls, state: Dict) -> "VisualCodebook":

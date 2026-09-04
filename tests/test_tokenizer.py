@@ -16,6 +16,7 @@ from uniqtoken.unigram_trainer import UnigramModel, UnigramTrainer
 from uniqtoken.unigram_lattice import UnigramLattice
 from uniqtoken.vocab_adapter import VocabularyAdapter
 from uniqtoken.multimodal.multimodal_tokenizer import MultimodalTokenizer, ImageElement
+from uniqtoken.multimodal.visual_codebook import VisualCodebook
 from uniqtoken.multimodal.audio_codec import ResidualVectorQuantizer, AudioSegment
 from uniqtoken.trie import PrefixTrie
 from uniqtoken.bpe_trainer import BPETrainer
@@ -342,6 +343,57 @@ class MultimodalTests(unittest.TestCase):
         with self.assertRaises(KeyError):
             self.mm_tok._assign_id("<|unregistered_metadata_token|>")
         self.assertEqual(self.mm_tok.vocab_size, initial_vocab_size)
+
+    def test_visual_codebook_finalize_rebuilds_below_100_updates(self):
+        cb = VisualCodebook(num_embeddings=16, embedding_dim=8, ema_decay=0.9, epsilon=1e-5)
+        init = [row[:] for row in cb.codebook]
+        vectors = [[0.5] * 8]
+        indices = [0]
+
+        # Under 100 updates without finalize, codebook remains initial random vectors
+        for _ in range(5):
+            cb.update_ema(vectors, indices)
+        self.assertEqual(cb.codebook, init)
+
+        # finalize() flushes EMA state and rebuilds codebook vectors
+        cb.finalize()
+        self.assertNotEqual(cb.codebook, init)
+        self.assertNotEqual(cb.codebook[0], init[0])
+
+        # get_codebook_state() also flushes EMA state before export
+        cb2 = VisualCodebook(num_embeddings=16, embedding_dim=8, ema_decay=0.9, epsilon=1e-5)
+        init2 = [row[:] for row in cb2.codebook]
+        for _ in range(5):
+            cb2.update_ema(vectors, indices)
+        state = cb2.get_codebook_state()
+        self.assertNotEqual(state["codebook"], init2)
+        self.assertNotEqual(cb2.codebook, init2)
+
+    def test_visual_codebook_absent_codes_decay_each_update(self):
+        cb = VisualCodebook(num_embeddings=4, embedding_dim=2, ema_decay=0.9, epsilon=1e-5)
+        # Update code 0 in step 1
+        cb.update_ema([[1.0, 2.0]], [0])
+        size_0_after_step1 = cb._ema_cluster_size[0]
+        self.assertGreater(size_0_after_step1, 0.0)
+
+        # Update code 1 in step 2 (code 0 absent)
+        cb.update_ema([[3.0, 4.0]], [1])
+        size_0_after_step2 = cb._ema_cluster_size[0]
+        # Absent code 0 must decay by ema_decay
+        self.assertAlmostEqual(size_0_after_step2, size_0_after_step1 * 0.9, places=9)
+
+    def test_visual_codebook_save_and_load_roundtrip(self):
+        cb = VisualCodebook(num_embeddings=8, embedding_dim=4, ema_decay=0.95, epsilon=1e-5)
+        cb.update_ema([[1.0, 1.0, 1.0, 1.0]], [2])
+        with TemporaryDirectory() as td:
+            save_path = Path(td) / "codebook.json"
+            cb.save(save_path)
+            loaded = VisualCodebook.load(save_path)
+            self.assertEqual(loaded.codebook, cb.codebook)
+            self.assertEqual(loaded.num_embeddings, cb.num_embeddings)
+            self.assertEqual(loaded.embedding_dim, cb.embedding_dim)
+            self.assertEqual(loaded._update_count, cb._update_count)
+            self.assertEqual(loaded._ema_cluster_size, cb._ema_cluster_size)
 
 
 class TrieTests(unittest.TestCase):
