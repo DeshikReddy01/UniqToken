@@ -106,17 +106,6 @@ impl RustTokenizer {
             }).collect()
         })
     }
-
-    fn encode_ids_flat_batch(&self, py: Python<'_>, texts: Vec<String>) -> CoreResult<(Vec<u32>, Vec<usize>)> {
-        let nested = self.encode_ids_batch(py, texts)?;
-        let lengths: Vec<usize> = nested.iter().map(|seq| seq.len()).collect();
-        let total_len: usize = lengths.iter().sum();
-        let mut flat_ids = Vec::with_capacity(total_len);
-        for seq in nested {
-            flat_ids.extend(seq);
-        }
-        Ok((flat_ids, lengths))
-    }
 }
 
 #[cfg(feature = "python")]

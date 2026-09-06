@@ -568,46 +568,6 @@ pub fn rust_encode_text_native_ids_batch(
     })
 }
 
-/// Fused batch encode returning flat contiguous ID buffer and sequence offsets: (flat_ids, seq_lengths).
-#[cfg(feature = "python")]
-#[pyfunction]
-#[allow(clippy::too_many_arguments)]
-#[pyo3(signature = (texts, trie, byte_fallback=true, space_char='\u{2581}', normalize_unicode=true, normalize_unicode_spaces=true, normalize_punctuation=false, lowercase=false, collapse_whitespaces=false, strip_whitespace=false))]
-pub fn rust_encode_text_native_ids_flat_batch(
-    py: Python<'_>,
-    texts: Vec<String>,
-    trie: &RustPrefixTrie,
-    byte_fallback: bool,
-    space_char: char,
-    normalize_unicode: bool,
-    normalize_unicode_spaces: bool,
-    normalize_punctuation: bool,
-    lowercase: bool,
-    collapse_whitespaces: bool,
-    strip_whitespace: bool,
-) -> CoreResult<(Vec<u32>, Vec<usize>)> {
-    let nested = rust_encode_text_native_ids_batch(
-        py,
-        texts,
-        trie,
-        byte_fallback,
-        space_char,
-        normalize_unicode,
-        normalize_unicode_spaces,
-        normalize_punctuation,
-        lowercase,
-        collapse_whitespaces,
-        strip_whitespace,
-    )?;
-    let lengths: Vec<usize> = nested.iter().map(|seq| seq.len()).collect();
-    let total_len: usize = lengths.iter().sum();
-    let mut flat_ids = Vec::with_capacity(total_len);
-    for seq in nested {
-        flat_ids.extend(seq);
-    }
-    Ok((flat_ids, lengths))
-}
-
 #[cfg(all(test, feature = "python"))]
 mod tests {
     use super::*;

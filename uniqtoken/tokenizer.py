@@ -224,23 +224,6 @@ class CustomTokenizer:
         except (ValueError, TypeError, AttributeError):
             return None
 
-    def _encode_ids_native_flat_batch(self, texts: Sequence[str]) -> Optional[Tuple[List[int], List[int]]]:
-        """Batch-encode to flat token IDs buffer and sequence lengths via fused native pipeline.
-        Returns None whenever the caller must use the Python pipeline."""
-        kwargs = self._native_pipeline_kwargs()
-        if kwargs is None or not hasattr(_native_core, "rust_encode_text_native_ids_flat_batch"):
-            return None
-        assert _native_core is not None
-        rust_trie = self.model._get_rust_trie()
-        if rust_trie is None:
-            return None
-        try:
-            return _native_core.rust_encode_text_native_ids_flat_batch(
-                list(texts), rust_trie, self.model.byte_fallback, **kwargs
-            )
-        except (ValueError, TypeError, AttributeError):
-            return None
-
     def _apply_cross_word_merges(self, tokens: List[str], dropout_prob: float = 0.0) -> List[str]:
         """Greedily fuses adjacent tokens until no SuperBPE merge remains.
 
