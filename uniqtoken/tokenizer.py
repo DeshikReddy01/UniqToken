@@ -20,16 +20,12 @@ from .seed_builder import SeedVocabularyBuilder
 from .streaming_decoder import StreamingDecoder
 from .unigram_trainer import UnigramModel, UnigramTrainer
 
-# Native Rust core, preferring the repo's own crate name. Kept at module level
-# so inner functions never `import caliper_core` (the stale site-packages
-# module has incompatible class identity).
+# Native Rust core. Kept at module level so inner functions never re-import
+# it: a stale site-packages copy would have an incompatible class identity.
 try:
     import uniqtoken_core as _native_core
 except ImportError:
-    try:
-        import caliper_core as _native_core  # type: ignore[no-redef]
-    except ImportError:
-        _native_core = None  # type: ignore[assignment]
+    _native_core = None  # type: ignore[assignment]
 
 
 @lru_cache(maxsize=32)
