@@ -289,6 +289,43 @@ class StreamingCounterTests(unittest.TestCase):
         # Peak memory difference should be well bounded (< 15MB)
         self.assertLess(total_diff, 15 * 1024 * 1024)
 
+    def test_prefinalize_reads_observe_totals(self):
+        """Reads must never return buffer-only partials after runs spill.
+
+        Regression test: __getitem__/get/__contains__ used to read only the
+        in-memory buffer when unfinalized, silently undercounting spilled
+        keys. Reads now finalize first, matching __len__/iteration.
+        """
+        with StreamingChunkCounter(chunk_size_bytes=1024) as counter:
+            for i in range(3000):
+                counter.add(f"chunk_{i % 100:03d}")
+            # Force spills so most counts live on disk, not just the buffer.
+            self.assertGreaterEqual(len(counter._run_files), 1)
+            counter.update(["chunk_000"] * 5)
+            expected = 30 + 5  # 3000/100 base occurrences plus the top-up
+            # No explicit finalize() call: reads must observe totals anyway.
+            self.assertEqual(counter["chunk_000"], expected)
+            self.assertEqual(counter.get("chunk_000"), expected)
+            self.assertIn("chunk_000", counter)
+            self.assertNotIn("no_such_chunk", counter)
+            self.assertTrue(counter._finalized)
+
+    def test_use_after_close_raises(self):
+        """Operations after close() fail loudly instead of crashing on missing files."""
+        counter = StreamingChunkCounter(chunk_size_bytes=1024)
+        counter.add("hello")
+        counter.close()
+        for op in (
+            lambda: counter.add("world"),
+            lambda: counter.update(["world"]),
+            lambda: counter.__setitem__("world", 1),
+            lambda: counter.finalize(),
+            lambda: counter["hello"],
+        ):
+            with self.assertRaises(RuntimeError):
+                op()
+        counter.close()  # double close stays safe
+
 
 if __name__ == "__main__":
     unittest.main()

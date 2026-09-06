@@ -4,7 +4,8 @@ Disk-backed external chunk counter for TB-scale out-of-core tokenizer training.
 Provides StreamingChunkCounter (aliased as DiskChunkCounter) which accumulates
 token counts in configurable in-memory buffers (default 500MB), flushes sorted
 binary runs to disk, and executes an external k-way min-heap tournament merge
-to support repeated, sequential EM iteration with O(1) peak RAM.
+to support repeated, sequential EM iteration with bounded RAM (one buffer plus
+one sparse-index entry per ``sparse_index_step`` records, not the corpus).
 """
 
 from __future__ import annotations
@@ -40,13 +41,24 @@ def _cleanup_all_active_counters() -> None:
                 pass
 
 
-def _install_signal_handlers() -> None:
-    """Installs process-level cleanup handlers for atexit, SIGINT, and SIGTERM."""
+def _ensure_atexit_cleanup() -> None:
+    """Registers the atexit temp-dir cleanup exactly once (always safe)."""
     global _CLEANUP_HANDLERS_REGISTERED
     if _CLEANUP_HANDLERS_REGISTERED:
         return
-
     atexit.register(_cleanup_all_active_counters)
+    _CLEANUP_HANDLERS_REGISTERED = True
+
+
+def _install_signal_handlers() -> None:
+    """Chains SIGINT/SIGTERM handlers that clean up temp files on kill.
+
+    Explicit opt-in only (see ``install_signal_handlers``): installing from a
+    constructor would otherwise mutate process-global signal state behind the
+    caller's back, changing exit codes (SIG_DFL becomes SystemExit) and
+    fighting host frameworks' own handlers.
+    """
+    _ensure_atexit_cleanup()
     try:
         for sig in (signal.SIGINT, signal.SIGTERM):
             prev_handler = signal.getsignal(sig)
@@ -68,8 +80,6 @@ def _install_signal_handlers() -> None:
     except (ValueError, AttributeError):
         # Platform does not support signal or not running in main thread
         pass
-
-    _CLEANUP_HANDLERS_REGISTERED = True
 
 
 class _BinaryRunReader:
@@ -165,6 +175,12 @@ class StreamingChunkCounter(Mapping[str, int]):
 
     Implements ``Mapping[str, int]`` so it directly substitutes for ``Counter[str]``
     in vocabulary building and EM training loops with zero in-memory re-materialization.
+
+    Read/freeze contract: accumulating (``add``/``update``/``__setitem__``) must
+    finish before reading. The first read (``__getitem__``/``get``/
+    ``__contains__``/``__len__``/iteration/``total``/``most_common``) finalizes
+    the counter — merging spilled runs and freezing further accumulation
+    (later writes raise ``RuntimeError``). Accumulate fully, then read.
     """
 
     def __init__(
@@ -174,13 +190,28 @@ class StreamingChunkCounter(Mapping[str, int]):
         max_open_runs: int = 64,
         io_buffer_size: int = 256 * 1024,
         sparse_index_step: int = 256,
+        install_signal_handlers: bool = False,
     ) -> None:
+        """Args:
+        temp_dir: Parent directory for the counter's temp workspace (created if missing).
+        chunk_size_bytes: In-memory buffer budget before spilling a sorted run to disk.
+        max_open_runs: Max run files merged in one pass (cascade above this).
+        io_buffer_size: File buffering for run I/O.
+        sparse_index_step: Index every Nth merged record for lookups.
+        install_signal_handlers: When True, chain process SIGINT/SIGTERM
+            handlers that clean up temp files on kill. Off by default:
+            constructing a counter must not mutate process-global signal
+            state (atexit cleanup is always installed and covers normal
+            exit paths).
+        """
         if chunk_size_bytes <= 0:
             raise ValueError(f"chunk_size_bytes must be positive, got {chunk_size_bytes}")
         if max_open_runs < 2:
             raise ValueError(f"max_open_runs must be at least 2, got {max_open_runs}")
 
-        _install_signal_handlers()
+        _ensure_atexit_cleanup()
+        if install_signal_handlers:
+            _install_signal_handlers()
 
         if temp_dir is not None:
             base_dir = Path(temp_dir)
@@ -217,8 +248,14 @@ class StreamingChunkCounter(Mapping[str, int]):
         """Path to the underlying temporary directory."""
         return self._dir
 
+    def _ensure_open(self) -> None:
+        """Raises if the counter was closed (use-after-close is a bug, fail loudly)."""
+        if self._closed:
+            raise RuntimeError("StreamingChunkCounter is closed.")
+
     def add(self, chunk: str, count: int = 1) -> None:
         """Adds occurrences of ``chunk``."""
+        self._ensure_open()
         if self._finalized:
             raise RuntimeError("Cannot add items to StreamingChunkCounter after finalization.")
         if count <= 0:
@@ -237,6 +274,7 @@ class StreamingChunkCounter(Mapping[str, int]):
 
     def update(self, iterable: Union[Iterable[str], Mapping[str, int]]) -> None:
         """Accumulates counts from an iterable of strings or a Mapping."""
+        self._ensure_open()
         if self._finalized:
             raise RuntimeError("Cannot update StreamingChunkCounter after finalization.")
 
@@ -248,7 +286,13 @@ class StreamingChunkCounter(Mapping[str, int]):
                 self.add(item, 1)
 
     def __setitem__(self, key: str, value: int) -> None:
-        """Sets count for ``key`` before finalization."""
+        """Sets the buffered count for ``key`` before finalization.
+
+        Note: only the in-memory buffer entry is replaced. If ``key`` already
+        spilled to a run file, the merge sums both records — prefer ``add``
+        for accumulation and treat ``__setitem__`` as buffer-local.
+        """
+        self._ensure_open()
         if self._finalized:
             raise RuntimeError("Cannot set items on StreamingChunkCounter after finalization.")
         old = self._buffer.get(key)
@@ -336,6 +380,7 @@ class StreamingChunkCounter(Mapping[str, int]):
 
     def finalize(self) -> None:
         """Consolidates all runs into a single merged binary run file."""
+        self._ensure_open()
         if self._finalized:
             return
 
@@ -441,29 +486,36 @@ class StreamingChunkCounter(Mapping[str, int]):
         return None
 
     def __getitem__(self, key: str) -> int:
-        """Returns count of ``key``, or 0 if missing (matching collections.Counter)."""
+        """Returns count of ``key``, or 0 if missing (matching collections.Counter).
+
+        Finalizes first (see class docstring): reads observe total counts,
+        never buffer-only partials.
+        """
         if not isinstance(key, str):
             return 0
-        if not self._finalized:
-            return self._buffer.get(key, 0)
+        self._ensure_open()
+        self.finalize()
         cnt = self._lookup_count(key)
         return cnt if cnt is not None else 0
 
     def get(self, key: str, default: Any = None) -> Any:
-        """Returns count of ``key``, or ``default`` if missing (matching collections.Counter.get)."""
+        """Returns count of ``key``, or ``default`` if missing (matching collections.Counter.get).
+
+        Finalizes first (see class docstring).
+        """
         if not isinstance(key, str):
             return default
-        if not self._finalized:
-            return self._buffer.get(key, default)
+        self._ensure_open()
+        self.finalize()
         cnt = self._lookup_count(key)
         return cnt if cnt is not None else default
 
     def __contains__(self, key: object) -> bool:
-        """Returns True if ``key`` has occurrence >= 1."""
+        """Returns True if ``key`` has occurrence >= 1. Finalizes first (see class docstring)."""
         if not isinstance(key, str):
             return False
-        if not self._finalized:
-            return key in self._buffer and self._buffer[key] > 0
+        self._ensure_open()
+        self.finalize()
         return self._lookup_count(key) is not None
 
     def __len__(self) -> int:
@@ -524,8 +576,13 @@ class StreamingChunkCounter(Mapping[str, int]):
             return
         self._closed = True
         _ACTIVE_COUNTERS.pop(id(self), None)
-        if os.path.exists(self._dir):
-            shutil.rmtree(self._dir, ignore_errors=True)
+        try:
+            if os.path.exists(self._dir):
+                shutil.rmtree(self._dir, ignore_errors=True)
+        except Exception:
+            # Best-effort: close() also runs from __del__/atexit during
+            # interpreter shutdown, where even os.path may be torn down.
+            pass
 
     def __enter__(self) -> StreamingChunkCounter:
         return self

@@ -66,6 +66,18 @@ def train_command(args: argparse.Namespace) -> int:
     if args.min_boundary_entropy is not None and args.min_boundary_entropy < 0:
         print("Error: --min-boundary-entropy must not be negative.", file=sys.stderr)
         return 1
+    is_streaming = getattr(args, "streaming", False)
+    chunk_size_mb = getattr(args, "chunk_size_mb", 500)
+    if chunk_size_mb is None or chunk_size_mb <= 0:
+        print("Error: --chunk-size-mb must be a positive integer.", file=sys.stderr)
+        return 1
+    chunk_size_bytes = chunk_size_mb * 1024 * 1024
+    if is_streaming and args.superbpe_merges > 0:
+        print(
+            "Error: --streaming cannot be combined with --superbpe-merges (SuperBPE needs the full in-memory corpus).",
+            file=sys.stderr,
+        )
+        return 1
 
     if getattr(args, "no_progress", False):
         os.environ["UNIQTOKEN_NO_PROGRESS"] = "1"
@@ -92,10 +104,43 @@ def train_command(args: argparse.Namespace) -> int:
         )
 
     corpus: List[str] = []
-    start_time = time.perf_counter()
-    bytes_read = 0
+    if not is_streaming:
+        start_time = time.perf_counter()
+        bytes_read = 0
 
-    try:
+        try:
+            for path in args.corpus:
+                p = Path(path)
+                decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
+                doc_parts: List[str] = []
+                with open(p, "rb") as f:
+                    while True:
+                        block = f.read(256 * 1024)
+                        if not block:
+                            break
+                        bytes_read += len(block)
+                        doc_parts.append(decoder.decode(block))
+                        if read_pbar is not None:
+                            read_pbar.update(len(block))
+                            elapsed = time.perf_counter() - start_time
+                            mb_per_sec = (bytes_read / (1024 * 1024)) / elapsed if elapsed > 0 else 0.0
+                            read_pbar.set_postfix({"throughput": f"{mb_per_sec:.2f} MB/s"})
+
+                doc_parts.append(decoder.decode(b"", final=True))
+                document = "".join(doc_parts)
+                if document:
+                    # A corpus file is one document. Preserve indentation, blank lines,
+                    # and trailing whitespace because they are meaningful training data.
+                    corpus.append(document)
+        finally:
+            if read_pbar is not None:
+                read_pbar.close()
+
+    def _corpus_doc_stream():
+        # One document per file, identical to non-streaming mode (whole-file
+        # decode, not line-split), so streaming never changes training input.
+        # Only one file is resident at a time: RAM stays bounded by the
+        # largest single file instead of the whole corpus.
         for path in args.corpus:
             p = Path(path)
             decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
@@ -105,36 +150,17 @@ def train_command(args: argparse.Namespace) -> int:
                     block = f.read(256 * 1024)
                     if not block:
                         break
-                    bytes_read += len(block)
                     doc_parts.append(decoder.decode(block))
-                    if read_pbar is not None:
-                        read_pbar.update(len(block))
-                        elapsed = time.perf_counter() - start_time
-                        mb_per_sec = (bytes_read / (1024 * 1024)) / elapsed if elapsed > 0 else 0.0
-                        read_pbar.set_postfix({"throughput": f"{mb_per_sec:.2f} MB/s"})
-
             doc_parts.append(decoder.decode(b"", final=True))
             document = "".join(doc_parts)
             if document:
-                # A corpus file is one document. Preserve indentation, blank lines,
-                # and trailing whitespace because they are meaningful training data.
-                corpus.append(document)
-    finally:
-        if read_pbar is not None:
-            read_pbar.close()
+                yield document
 
-    is_streaming = getattr(args, "streaming", False)
-    chunk_size_bytes = getattr(args, "chunk_size_mb", 500) * 1024 * 1024
-
-    def _corpus_doc_stream():
-        for path in args.corpus:
-            p = Path(path)
-            with open(p, "r", encoding="utf-8", errors="replace") as f:
-                for line in f:
-                    if line:
-                        yield line
-
-    if not is_streaming and not corpus:
+    if is_streaming:
+        if total_bytes == 0:
+            print("Error: Corpus is empty.", file=sys.stderr)
+            return 1
+    elif not corpus:
         print("Error: Corpus is empty.", file=sys.stderr)
         return 1
 

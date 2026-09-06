@@ -426,5 +426,67 @@ class CLICompareTests(unittest.TestCase):
         self.assertNotIn("\r", hostile)
 
 
+class CLIStreamingTrainTests(unittest.TestCase):
+    """Streaming train mode must not materialize the corpus and must agree with standard training."""
+
+    def _write_corpus(self, tmp: Path) -> Path:
+        corpus_file = tmp / "corpus.txt"
+        corpus_file.write_text(
+            "the quick brown fox jumps over the lazy dog\nmachine learning and natural language processing\n",
+            encoding="utf-8",
+        )
+        return corpus_file
+
+    def test_streaming_train_matches_non_streaming_vocab(self):
+        with TemporaryDirectory() as tmp_dir:
+            tmp = Path(tmp_dir)
+            corpus_file = self._write_corpus(tmp)
+            std_dir = tmp / "model_std"
+            stream_dir = tmp / "model_stream"
+            base_args = ["train", "--corpus", str(corpus_file), "--vocab-size", "320", "--no-progress"]
+            self.assertEqual(cli.main([*base_args, "--out", str(std_dir)]), 0)
+            self.assertEqual(cli.main([*base_args, "--streaming", "--out", str(stream_dir)]), 0)
+            std_ids = json.loads((std_dir / "tokenizer.json").read_text(encoding="utf-8"))["token_to_id"]
+            stream_ids = json.loads((stream_dir / "tokenizer.json").read_text(encoding="utf-8"))["token_to_id"]
+            self.assertEqual(std_ids, stream_ids)
+
+    def test_streaming_rejects_superbpe_combo(self):
+        with TemporaryDirectory() as tmp_dir:
+            corpus_file = self._write_corpus(Path(tmp_dir))
+            ret = cli.main(
+                [
+                    "train",
+                    "--corpus",
+                    str(corpus_file),
+                    "--out",
+                    str(Path(tmp_dir) / "m"),
+                    "--streaming",
+                    "--superbpe-merges",
+                    "5",
+                    "--no-progress",
+                ]
+            )
+            self.assertEqual(ret, 1)
+
+    def test_streaming_rejects_bad_chunk_size(self):
+        with TemporaryDirectory() as tmp_dir:
+            corpus_file = self._write_corpus(Path(tmp_dir))
+            for bad in ("0", "-5"):
+                ret = cli.main(
+                    [
+                        "train",
+                        "--corpus",
+                        str(corpus_file),
+                        "--out",
+                        str(Path(tmp_dir) / "m"),
+                        "--streaming",
+                        "--chunk-size-mb",
+                        bad,
+                        "--no-progress",
+                    ]
+                )
+                self.assertEqual(ret, 1)
+
+
 if __name__ == "__main__":
     unittest.main()
