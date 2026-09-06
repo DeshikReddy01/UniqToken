@@ -780,6 +780,9 @@ class CustomTokenizer:
         dropout_prob: float = 0.0,
     ) -> List[int]:
         """Encodes text to token IDs; ``dropout_prob`` behaves as in :meth:`encode`."""
+        if not isinstance(text, str):
+            raise TypeError(f"text must be a string, got {type(text).__name__}")
+        _validate_dropout_prob(dropout_prob)
         if not text:
             return []
 

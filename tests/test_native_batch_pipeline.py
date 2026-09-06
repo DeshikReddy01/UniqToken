@@ -68,7 +68,9 @@ class NativeBatchPipelineTests(unittest.TestCase):
     def test_batch_sizes_scaling(self) -> None:
         """Batch encode works reliably across single-item, boundary, and large batch sizes."""
         for size in (1, 15, 32, 64, 128, 256):
-            subset = self.test_sentences[:size]
+            multiplier = (size // len(self.test_sentences)) + 1
+            subset = (self.test_sentences * multiplier)[:size]
+            self.assertEqual(len(subset), size)
             expected = [self.tokenizer.encode_to_ids(t) for t in subset]
             actual = self.tokenizer.encode_to_ids_batch(subset)
             self.assertEqual(actual, expected, f"Failed for batch size {size}")
