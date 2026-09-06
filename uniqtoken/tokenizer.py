@@ -349,6 +349,8 @@ class CustomTokenizer:
         length_exponent: float = 1.0,
         pruning_length_exponent: float = 0.0,
         verbose: bool = True,
+        streaming: bool = False,
+        chunk_size_bytes: int = 500 * 1024 * 1024,
     ) -> CustomTokenizer:
         normalizer = Normalizer()
         pre_tokenizer = RegexPreTokenizer(
@@ -367,20 +369,6 @@ class CustomTokenizer:
                 if it not in combined_special:
                     combined_special.append(it)
 
-        chunks: List[str] = []
-        for doc in corpus:
-            if compress_indents:
-                doc = IndentationCompressor.compress_indents(doc)
-            norm = normalizer.normalize(doc)
-            chunks.extend(pre_tokenizer.pre_tokenize(norm))
-
-        if not chunks:
-            raise ValueError(
-                "Empty corpus: no pre-tokenized chunks were produced. "
-                "Provide non-empty text (and disable compress_indents if it "
-                "reduces everything to whitespace)."
-            )
-
         trainer = UnigramTrainer(
             target_vocab_size=target_vocab_size,
             seed_multiplier=seed_multiplier,
@@ -397,9 +385,50 @@ class CustomTokenizer:
             min_boundary_entropy=min_boundary_entropy,
             length_exponent=length_exponent,
             pruning_length_exponent=pruning_length_exponent,
+            streaming=streaming,
+            chunk_size_bytes=chunk_size_bytes,
         )
 
-        model = trainer.train(chunks, verbose=verbose)
+        if streaming:
+            def _stream_chunks() -> Iterable[str]:
+                produced = False
+                for doc in corpus:
+                    if compress_indents:
+                        doc = IndentationCompressor.compress_indents(doc)
+                    norm = normalizer.normalize(doc)
+                    for tok in pre_tokenizer.pre_tokenize(norm):
+                        produced = True
+                        yield tok
+                if not produced:
+                    raise ValueError(
+                        "Empty corpus: no pre-tokenized chunks were produced. "
+                        "Provide non-empty text (and disable compress_indents if it "
+                        "reduces everything to whitespace)."
+                    )
+
+            model = trainer.train(
+                _stream_chunks(),
+                verbose=verbose,
+                streaming=True,
+                chunk_size_bytes=chunk_size_bytes,
+            )
+        else:
+            chunks: List[str] = []
+            for doc in corpus:
+                if compress_indents:
+                    doc = IndentationCompressor.compress_indents(doc)
+                norm = normalizer.normalize(doc)
+                chunks.extend(pre_tokenizer.pre_tokenize(norm))
+
+            if not chunks:
+                raise ValueError(
+                    "Empty corpus: no pre-tokenized chunks were produced. "
+                    "Provide non-empty text (and disable compress_indents if it "
+                    "reduces everything to whitespace)."
+                )
+
+            model = trainer.train(chunks, verbose=verbose)
+
         return cls(normalizer=normalizer, pre_tokenizer=pre_tokenizer, model=model)
 
     def encode(

@@ -15,6 +15,7 @@ from .indentation_compressor import IndentationCompressor
 from .pre_tokenizer import Normalizer, PreToken, RegexPreTokenizer
 from .security_shield import SecurityShield
 from .seed_builder import SeedToken, SeedVocabularyBuilder
+from .streaming_counter import DiskChunkCounter, StreamingChunkCounter
 from .streaming_decoder import StreamingDecoder
 from .tokenizer import CustomTokenizer, Token, TokenizationReport
 from .trie import PrefixTrie, TrieNode
@@ -87,6 +88,8 @@ __all__ = [
     "CrossEntropyMerging",
     "BPEModel",
     "BPETrainer",
+    "StreamingChunkCounter",
+    "DiskChunkCounter",
     "SecurityShield",
     "StreamingDecoder",
     "IndentationCompressor",

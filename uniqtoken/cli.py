@@ -123,13 +123,24 @@ def train_command(args: argparse.Namespace) -> int:
         if read_pbar is not None:
             read_pbar.close()
 
-    if not corpus:
+    is_streaming = getattr(args, "streaming", False)
+    chunk_size_bytes = getattr(args, "chunk_size_mb", 500) * 1024 * 1024
+
+    def _corpus_doc_stream():
+        for path in args.corpus:
+            p = Path(path)
+            with open(p, "r", encoding="utf-8", errors="replace") as f:
+                for line in f:
+                    if line:
+                        yield line
+
+    if not is_streaming and not corpus:
         print("Error: Corpus is empty.", file=sys.stderr)
         return 1
 
-    _print_msg(f"Training Caliper tokenizer on {len(corpus)} documents (Target Vocab: {args.vocab_size})...")
+    _print_msg(f"Training Caliper tokenizer on {len(args.corpus)} corpus files (Target Vocab: {args.vocab_size})...")
     tok = CustomTokenizer.train_from_corpus(
-        corpus=corpus,
+        corpus=_corpus_doc_stream() if is_streaming else corpus,
         target_vocab_size=args.vocab_size,
         ranking_strategy=args.ranking_strategy,
         adaptive_multiplier=args.adaptive_multiplier,
@@ -143,6 +154,8 @@ def train_command(args: argparse.Namespace) -> int:
         preset=args.preset,
         compress_indents=args.compress_indents,
         verbose=args.verbose,
+        streaming=is_streaming,
+        chunk_size_bytes=chunk_size_bytes,
     )
 
     if args.superbpe_merges > 0:
@@ -476,6 +489,17 @@ def build_parser() -> argparse.ArgumentParser:
     p_train.add_argument("--compress-indents", action="store_true", help="Enable whitespace indentation compression")
     p_train.add_argument("--no-byte-fallback", action="store_true", help="Disable UTF-8 byte fallback")
     p_train.add_argument("--no-progress", action="store_true", help="Disable dynamic progress indicators")
+    p_train.add_argument(
+        "--streaming",
+        action="store_true",
+        help="Enable disk-backed external chunk counter for TB-scale out-of-core training",
+    )
+    p_train.add_argument(
+        "--chunk-size-mb",
+        type=int,
+        default=500,
+        help="In-memory chunk buffer size in MB before spilling to disk (default: 500)",
+    )
     p_train.add_argument("-v", "--verbose", action="store_true", help="Verbose training progress output")
     p_train.set_defaults(func=train_command)
 

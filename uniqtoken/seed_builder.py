@@ -3,6 +3,7 @@ from __future__ import annotations
 import math
 import regex as _regex
 from collections import Counter, deque
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Deque, Dict, Iterable, List, Optional, Set, Tuple
 
@@ -142,7 +143,7 @@ class SeedVocabularyBuilder:
         """Issue #41: True for combining marks (Mn/Mc/Me), current-Unicode aware."""
         return _MARK_RE.match(char) is not None
 
-    def collect_base_alphabet(self, chunk_counts: Counter[str]) -> List[SeedToken]:
+    def collect_base_alphabet(self, chunk_counts: Counter[str] | Mapping[str, int]) -> List[SeedToken]:
         char_counts: Counter[str] = Counter()
         for chunk, count in chunk_counts.items():
             for char in chunk:
@@ -221,7 +222,7 @@ class SeedVocabularyBuilder:
             return min(default_max, 4)
         return default_max
 
-    def mine_ngrams(self, chunk_counts: Counter[str]) -> Counter[str]:
+    def mine_ngrams(self, chunk_counts: Counter[str] | Mapping[str, int]) -> Counter[str]:
         if self.min_boundary_entropy is not None:
             counts, _ = self.mine_ngrams_with_entropy(chunk_counts)
             return counts
@@ -229,18 +230,19 @@ class SeedVocabularyBuilder:
         # Reuse the module-level uniqtoken_core alias (imported as caliper_core);
         # importing the stale site-packages `caliper_core` here would bypass the
         # repo's own Rust core and break class-identity for shared types.
-        core = caliper_core if caliper_core is not None else None
-        if core is not None:
-            try:
-                if hasattr(core, "rust_mine_ngrams"):
-                    rust_res = core.rust_mine_ngrams(
-                        dict(chunk_counts),
-                        self.max_ngram_length,
-                        set(self.special_tokens) if self.special_tokens else None,
-                    )
-                    return Counter(rust_res)
-            except (ImportError, AttributeError, ValueError, TypeError):
-                pass
+        if not getattr(chunk_counts, "is_streaming", False):
+            core = caliper_core if caliper_core is not None else None
+            if core is not None:
+                try:
+                    if hasattr(core, "rust_mine_ngrams"):
+                        rust_res = core.rust_mine_ngrams(
+                            dict(chunk_counts),
+                            self.max_ngram_length,
+                            set(self.special_tokens) if self.special_tokens else None,
+                        )
+                        return Counter(rust_res)
+                except (ImportError, AttributeError, ValueError, TypeError):
+                    pass
         ngram_counts: Counter[str] = Counter()
         default_max = self.max_ngram_length
         for chunk, chunk_freq in chunk_counts.items():
@@ -258,7 +260,9 @@ class SeedVocabularyBuilder:
                     ngram_counts["".join(clusters[start:end])] += chunk_freq
         return ngram_counts
 
-    def mine_ngrams_with_entropy(self, chunk_counts: Counter[str]) -> Tuple[Counter[str], Dict[str, float]]:
+    def mine_ngrams_with_entropy(
+        self, chunk_counts: Counter[str] | Mapping[str, int]
+    ) -> Tuple[Counter[str], Dict[str, float]]:
         ngram_counts: Counter[str] = Counter()
         left_ctx: Dict[str, Counter[str]] = {}
         right_ctx: Dict[str, Counter[str]] = {}
@@ -436,12 +440,16 @@ class SeedVocabularyBuilder:
             )
 
     def build_seed_vocab(
-        self, pre_tokenized_chunks: Iterable[str], enforce_target_floor: bool = True
+        self, pre_tokenized_chunks: Iterable[str] | Mapping[str, int], enforce_target_floor: bool = True
     ) -> List[SeedToken]:
         """
         Assembles the complete Seed Vocabulary pool with script-stratified quota allocation.
         """
-        chunk_counts: Counter[str] = Counter(pre_tokenized_chunks)
+        chunk_counts: Counter[str] | Mapping[str, int]
+        if isinstance(pre_tokenized_chunks, Mapping):
+            chunk_counts = pre_tokenized_chunks
+        else:
+            chunk_counts = Counter(pre_tokenized_chunks)
         seen_tokens: Set[str] = set()
         seed_vocab: List[SeedToken] = []
 

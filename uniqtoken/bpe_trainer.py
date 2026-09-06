@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import heapq
 from collections import Counter, defaultdict
-from typing import Dict, List, Optional, Set, Tuple
+from collections.abc import Iterable, Mapping
+from typing import Dict, List, Optional, Set, Tuple, Union
 
 from .bpe_model import BPEModel
 from .byte_codec import ByteFallbackEngine
@@ -140,7 +141,9 @@ class BPETrainer:
         self.special_tokens = list(special_tokens or ["<|unk|>", "<|pad|>", "<|bos|>", "<|eos|>"])
         self.byte_fallback = byte_fallback
 
-    def train(self, chunks: List[str], verbose: bool = False) -> BPEModel:
+    def train(
+        self, chunks: Union[List[str], Iterable[str], Mapping[str, int]], verbose: bool = False
+    ) -> BPEModel:
         """
         Trains BPE merge ranks and vocabulary from pre-tokenized chunks.
         """
@@ -151,7 +154,10 @@ class BPETrainer:
                 vocab.add(ByteFallbackEngine.byte_to_token(b))
 
         # Count word frequencies and represent words as tuple of characters
-        word_counts = Counter(chunks)
+        if isinstance(chunks, Mapping):
+            word_counts = chunks
+        else:
+            word_counts = Counter(chunks)
         splits: Dict[str, List[str]] = {}
         for word in word_counts:
             char_list = list(word)

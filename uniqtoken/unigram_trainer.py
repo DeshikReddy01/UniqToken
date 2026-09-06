@@ -4,6 +4,7 @@ import math
 import os
 import time
 from collections import Counter
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
 
@@ -13,6 +14,7 @@ except ImportError:
     tqdm = None
 
 from .seed_builder import SeedToken, SeedVocabularyBuilder
+from .streaming_counter import StreamingChunkCounter
 from .trie import PrefixTrie
 from .unigram_lattice import UnigramLattice
 from .byte_codec import ByteFallbackEngine
@@ -341,6 +343,8 @@ class UnigramTrainer:
         length_exponent: float = 1.0,
         pruning_length_exponent: float = 0.0,
         show_progress: bool = True,
+        streaming: bool = False,
+        chunk_size_bytes: int = 500 * 1024 * 1024,
     ):
         """Initializes the Unigram EM and Iterative Likelihood Pruning Trainer.
 
@@ -394,12 +398,16 @@ class UnigramTrainer:
         self.length_exponent = length_exponent
         self.pruning_length_exponent = pruning_length_exponent
         self.show_progress = show_progress
+        self.streaming = streaming
+        self.chunk_size_bytes = chunk_size_bytes
 
     def train(
         self,
-        pre_tokenized_chunks: Iterable[str],
+        pre_tokenized_chunks: Iterable[str] | Mapping[str, int],
         verbose: bool = True,
         show_progress: Optional[bool] = None,
+        streaming: Optional[bool] = None,
+        chunk_size_bytes: Optional[int] = None,
     ) -> UnigramModel:
         """Runs the full EM training and pruning loop with convergence checks and beam pruning.
 
@@ -418,9 +426,41 @@ class UnigramTrainer:
             show_progress = False
         if tqdm is None:
             show_progress = False
+        if streaming is None:
+            streaming = self.streaming
+        if chunk_size_bytes is None:
+            chunk_size_bytes = self.chunk_size_bytes
 
-        # Step 1: Pre-aggregate chunk frequencies
-        chunk_counts = Counter(pre_tokenized_chunks)
+        # Step 1: Pre-aggregate chunk frequencies (in-memory Counter or disk-backed StreamingChunkCounter)
+        created_counter: Optional[StreamingChunkCounter] = None
+        if isinstance(pre_tokenized_chunks, Mapping):
+            chunk_counts = pre_tokenized_chunks
+            if hasattr(chunk_counts, "finalize") and callable(chunk_counts.finalize):
+                chunk_counts.finalize()
+        elif streaming:
+            created_counter = StreamingChunkCounter(chunk_size_bytes=chunk_size_bytes)
+            created_counter.update(pre_tokenized_chunks)
+            created_counter.finalize()
+            chunk_counts = created_counter
+        else:
+            chunk_counts = Counter(pre_tokenized_chunks)
+
+        try:
+            return self._train_with_counts(
+                chunk_counts=chunk_counts,
+                verbose=verbose,
+                show_progress=show_progress,
+            )
+        finally:
+            if created_counter is not None:
+                created_counter.close()
+
+    def _train_with_counts(
+        self,
+        chunk_counts: Mapping[str, int],
+        verbose: bool,
+        show_progress: bool,
+    ) -> UnigramModel:
 
         # Step 2: Build Seed Vocabulary
         seed_builder = SeedVocabularyBuilder(
