@@ -27,9 +27,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from uniqtoken.streaming_counter import StreamingChunkCounter
 
 
-def generate_synthetic_corpus(
-    num_tokens: int, vocab_size: int = 50_000
-) -> Generator[str, None, None]:
+def generate_synthetic_corpus(num_tokens: int, vocab_size: int = 50_000) -> Generator[str, None, None]:
     """Generates synthetic pre-tokenized chunks with Zipfian-like distribution."""
     for i in range(num_tokens):
         idx = int((i * 2654435761) % vocab_size)  # Knuth multiplicative hash for pseudo-random distribution

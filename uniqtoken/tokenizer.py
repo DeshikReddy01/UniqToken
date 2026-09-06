@@ -390,6 +390,7 @@ class CustomTokenizer:
         )
 
         if streaming:
+
             def _stream_chunks() -> Iterable[str]:
                 produced = False
                 for doc in corpus:

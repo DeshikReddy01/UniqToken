@@ -60,9 +60,7 @@ class StreamingCounterTests(unittest.TestCase):
 
             # most_common
             top2 = counter.most_common(2)
-            self.assertTrue(
-                top2 == [("banana", 6), ("apple", 3)] or top2 == [("banana", 6), ("date", 3)]
-            )
+            self.assertTrue(top2 == [("banana", 6), ("apple", 3)] or top2 == [("banana", 6), ("date", 3)])
 
     def test_spilling_and_k_way_merge(self):
         """Verify spilling with tiny chunk size and external k-way min-heap merge."""

@@ -141,9 +141,7 @@ class BPETrainer:
         self.special_tokens = list(special_tokens or ["<|unk|>", "<|pad|>", "<|bos|>", "<|eos|>"])
         self.byte_fallback = byte_fallback
 
-    def train(
-        self, chunks: Union[List[str], Iterable[str], Mapping[str, int]], verbose: bool = False
-    ) -> BPEModel:
+    def train(self, chunks: Union[List[str], Iterable[str], Mapping[str, int]], verbose: bool = False) -> BPEModel:
         """
         Trains BPE merge ranks and vocabulary from pre-tokenized chunks.
         """
