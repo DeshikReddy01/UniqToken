@@ -207,6 +207,23 @@ class CustomTokenizer:
         except (ValueError, TypeError, AttributeError):
             return None
 
+    def _encode_ids_native_batch(self, texts: Sequence[str]) -> Optional[List[List[int]]]:
+        """Batch-encode to token IDs via fused native pipeline (one FFI, Rayon across texts,
+        zero intermediate string allocations). Returns None whenever the caller must use the Python pipeline."""
+        kwargs = self._native_pipeline_kwargs()
+        if kwargs is None or not hasattr(_native_core, "rust_encode_text_native_ids_batch"):
+            return None
+        assert _native_core is not None
+        rust_trie = self.model._get_rust_trie()
+        if rust_trie is None:
+            return None
+        try:
+            return _native_core.rust_encode_text_native_ids_batch(
+                list(texts), rust_trie, self.model.byte_fallback, **kwargs
+            )
+        except (ValueError, TypeError, AttributeError):
+            return None
+
     def _apply_cross_word_merges(self, tokens: List[str], dropout_prob: float = 0.0) -> List[str]:
         """Greedily fuses adjacent tokens until no SuperBPE merge remains.
 
@@ -746,6 +763,30 @@ class CustomTokenizer:
         dropout_prob: float = 0.0,
     ) -> List[int]:
         """Encodes text to token IDs; ``dropout_prob`` behaves as in :meth:`encode`."""
+        if not isinstance(text, str):
+            raise TypeError(f"text must be a string, got {type(text).__name__}")
+        _validate_dropout_prob(dropout_prob)
+        if not text:
+            return []
+
+        native_kwargs = self._native_pipeline_kwargs()
+        if (
+            native_kwargs is not None
+            and dropout_prob == 0.0
+            and allowed_special == "none"
+            and disallowed_special_action == "escape"
+            and hasattr(_native_core, "rust_encode_text_native_ids")
+        ):
+            assert _native_core is not None
+            rust_trie = self.model._get_rust_trie()
+            if rust_trie is not None:
+                try:
+                    return _native_core.rust_encode_text_native_ids(
+                        text, rust_trie, self.model.byte_fallback, **native_kwargs
+                    )
+                except (ValueError, TypeError, AttributeError):
+                    pass  # control-token syntax or fallback
+
         tokens = self.encode(
             text,
             allowed_special=allowed_special,
@@ -846,6 +887,18 @@ class CustomTokenizer:
             return []
         if num_workers is not None and num_workers < 1:
             raise ValueError(f"num_workers must be >= 1 (or None), got {num_workers}")
+
+        # Fused native batch: one FFI + Rayon across texts
+        if (
+            allowed_special == "none"
+            and disallowed_special_action == "escape"
+            and (num_workers is None or num_workers > 1)
+            and dropout_prob == 0.0
+        ):
+            native_tokens = self._encode_tokens_native_batch(texts)
+            if native_tokens is not None:
+                return native_tokens
+
         if len(texts) <= 64 or num_workers == 1:
             return [
                 self.encode(
@@ -892,15 +945,18 @@ class CustomTokenizer:
         if num_workers is not None and num_workers < 1:
             raise ValueError(f"num_workers must be >= 1 (or None), got {num_workers}")
 
-        # Fused native batch: one FFI + Rayon. Only when the whole batch can be
-        # proven equivalent to the per-text Python path (gates below). Skipped
-        # when dropout is active: the native core cannot reproduce Python's RNG.
+        # Fused native batch: one FFI + Rayon directly to token IDs with zero intermediate string allocations.
+        # Only when the whole batch can be proven equivalent to the per-text Python path (gates below).
         if (
             allowed_special == "none"
             and disallowed_special_action == "escape"
             and (num_workers is None or num_workers > 1)
             and dropout_prob == 0.0
         ):
+            native_ids = self._encode_ids_native_batch(texts)
+            if native_ids is not None:
+                return native_ids
+
             native_tokens = self._encode_tokens_native_batch(texts)
             if native_tokens is not None:
                 token_to_id = self.model.token_to_id

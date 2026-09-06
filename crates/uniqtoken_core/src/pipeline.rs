@@ -181,7 +181,7 @@ fn snap_spans_to_graphemes(text: &str, spans: &[(usize, usize)]) -> Vec<(usize, 
 }
 
 #[cfg(feature = "python")]
-fn snapped_pretokens(text: &str, re: &Regex) -> Vec<String> {
+pub(crate) fn snapped_pretokens(text: &str, re: &Regex) -> Vec<String> {
     let spans: Vec<(usize, usize)> = re.find_iter(text).map(|m| (m.start(), m.end())).collect();
     snap_spans_to_graphemes(text, &spans)
         .into_iter()
@@ -424,6 +424,134 @@ pub fn rust_encode_text_native_batch(
             .par_iter()
             .map(|text| {
                 encode_text_native_inner(
+                    text,
+                    trie,
+                    byte_fallback,
+                    space_char,
+                    normalize_unicode,
+                    normalize_unicode_spaces,
+                    normalize_punctuation,
+                    lowercase,
+                    collapse_whitespaces,
+                    strip_whitespace,
+                )
+            })
+            .collect()
+    })
+}
+
+#[allow(clippy::too_many_arguments)]
+#[cfg(feature = "python")]
+fn encode_text_native_ids_inner(
+    text: &str,
+    trie: &RustPrefixTrie,
+    byte_fallback: bool,
+    space_char: char,
+    normalize_unicode: bool,
+    normalize_unicode_spaces: bool,
+    normalize_punctuation: bool,
+    lowercase: bool,
+    collapse_whitespaces: bool,
+    strip_whitespace: bool,
+) -> CoreResult<Vec<u32>> {
+    native_security_gate(text)?;
+    let normalized = normalize_inner(
+        text,
+        space_char,
+        normalize_unicode,
+        normalize_unicode_spaces,
+        normalize_punctuation,
+        lowercase,
+        collapse_whitespaces,
+        strip_whitespace,
+    )?;
+    let re = get_full_pretok_regex();
+    let mut ids: Vec<u32> = Vec::new();
+    for chunk in snapped_pretokens(&normalized, re) {
+        let seg = decode_cached(chunk.as_str(), trie, byte_fallback).map_err(CoreError)?;
+        for (token, token_id, ..) in seg.iter() {
+            let id = token_id.ok_or_else(|| {
+                CoreError(format!("rust_encode_text_native_ids: decoded token {:?} has no integer ID", token))
+            })?;
+            ids.push(id);
+        }
+    }
+    Ok(ids)
+}
+
+/// Fused single-text encode to token IDs: normalize + full pre-tokenizer regex + Viterbi -> u32 IDs in ONE FFI call.
+#[cfg(feature = "python")]
+#[pyfunction]
+#[allow(clippy::too_many_arguments)]
+#[pyo3(signature = (text, trie, byte_fallback=true, space_char='\u{2581}', normalize_unicode=true, normalize_unicode_spaces=true, normalize_punctuation=false, lowercase=false, collapse_whitespaces=false, strip_whitespace=false))]
+pub fn rust_encode_text_native_ids(
+    text: &str,
+    trie: &RustPrefixTrie,
+    byte_fallback: bool,
+    space_char: char,
+    normalize_unicode: bool,
+    normalize_unicode_spaces: bool,
+    normalize_punctuation: bool,
+    lowercase: bool,
+    collapse_whitespaces: bool,
+    strip_whitespace: bool,
+) -> CoreResult<Vec<u32>> {
+    encode_text_native_ids_inner(
+        text,
+        trie,
+        byte_fallback,
+        space_char,
+        normalize_unicode,
+        normalize_unicode_spaces,
+        normalize_punctuation,
+        lowercase,
+        collapse_whitespaces,
+        strip_whitespace,
+    )
+}
+
+/// Fused batch encode to token IDs: one FFI + Rayon across texts directly returning Vec<Vec<u32>>.
+#[cfg(feature = "python")]
+#[pyfunction]
+#[allow(clippy::too_many_arguments)]
+#[pyo3(signature = (texts, trie, byte_fallback=true, space_char='\u{2581}', normalize_unicode=true, normalize_unicode_spaces=true, normalize_punctuation=false, lowercase=false, collapse_whitespaces=false, strip_whitespace=false))]
+pub fn rust_encode_text_native_ids_batch(
+    py: Python<'_>,
+    texts: Vec<String>,
+    trie: &RustPrefixTrie,
+    byte_fallback: bool,
+    space_char: char,
+    normalize_unicode: bool,
+    normalize_unicode_spaces: bool,
+    normalize_punctuation: bool,
+    lowercase: bool,
+    collapse_whitespaces: bool,
+    strip_whitespace: bool,
+) -> CoreResult<Vec<Vec<u32>>> {
+    if texts.len() < 32 {
+        return texts
+            .iter()
+            .map(|text| {
+                encode_text_native_ids_inner(
+                    text,
+                    trie,
+                    byte_fallback,
+                    space_char,
+                    normalize_unicode,
+                    normalize_unicode_spaces,
+                    normalize_punctuation,
+                    lowercase,
+                    collapse_whitespaces,
+                    strip_whitespace,
+                )
+            })
+            .collect();
+    }
+    py.allow_threads(|| {
+        texts
+            .par_iter()
+            .map(|text| {
+                encode_text_native_ids_inner(
                     text,
                     trie,
                     byte_fallback,

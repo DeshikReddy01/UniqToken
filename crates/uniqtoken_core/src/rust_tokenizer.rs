@@ -42,17 +42,13 @@ impl RustTokenizer {
     }
 
     fn encode(&self, text: &str) -> CoreResult<Vec<String>> {
-        // ponytail: single-pass norm→regex→viterbi, no Vec<String> chunks
         let norm = rust_normalize(text, self.space_char, true, true, false, false, false, false)?;
         let re = crate::pipeline::get_full_pretok_regex();
         let mut out = Vec::new();
-        for m in re.find_iter(&norm) {
-            let chunk = m.as_str();
-            let chars: Vec<char> = chunk.chars().collect();
-            let spans = crate::viterbi::viterbi_decode_chars(&chars, &self.trie, self.byte_fallback, None)
-                .map_err(CoreError)?;
-            for s in spans {
-                out.push(s.token);
+        for chunk in crate::pipeline::snapped_pretokens(&norm, re) {
+            let seg = crate::viterbi::decode_cached(&chunk, &self.trie, self.byte_fallback).map_err(CoreError)?;
+            for (token, ..) in seg.iter() {
+                out.push(token.clone());
             }
         }
         Ok(out)
@@ -64,13 +60,10 @@ impl RustTokenizer {
                 let norm = rust_normalize(text, self.space_char, true, true, false, false, false, false)?;
                 let re = crate::pipeline::get_full_pretok_regex();
                 let mut out = Vec::new();
-                for m in re.find_iter(&norm) {
-                    let chunk = m.as_str();
-                    let chars: Vec<char> = chunk.chars().collect();
-                    let spans = crate::viterbi::viterbi_decode_chars(&chars, &self.trie, self.byte_fallback, None)
-                        .map_err(CoreError)?;
-                    for s in spans {
-                        out.push(s.token);
+                for chunk in crate::pipeline::snapped_pretokens(&norm, re) {
+                    let seg = crate::viterbi::decode_cached(&chunk, &self.trie, self.byte_fallback).map_err(CoreError)?;
+                    for (token, ..) in seg.iter() {
+                        out.push(token.clone());
                     }
                 }
                 Ok(out)
@@ -82,15 +75,13 @@ impl RustTokenizer {
         let norm = rust_normalize(text, self.space_char, true, true, false, false, false, false)?;
         let re = crate::pipeline::get_full_pretok_regex();
         let mut out = Vec::new();
-        for m in re.find_iter(&norm) {
-            let chunk = m.as_str();
-            let chars: Vec<char> = chunk.chars().collect();
-            let spans = crate::viterbi::viterbi_decode_chars(&chars, &self.trie, self.byte_fallback, None)
-                .map_err(CoreError)?;
-            for s in spans {
-                out.push(s.token_id.ok_or_else(|| {
-                    CoreError(format!("decoded token {:?} has no integer ID", s.token))
-                })?);
+        for chunk in crate::pipeline::snapped_pretokens(&norm, re) {
+            let seg = crate::viterbi::decode_cached(&chunk, &self.trie, self.byte_fallback).map_err(CoreError)?;
+            for (token, token_id, ..) in seg.iter() {
+                let id = token_id.ok_or_else(|| {
+                    CoreError(format!("decoded token {:?} has no integer ID", token))
+                })?;
+                out.push(id);
             }
         }
         Ok(out)
@@ -102,15 +93,13 @@ impl RustTokenizer {
                 let norm = rust_normalize(text, self.space_char, true, true, false, false, false, false)?;
                 let re = crate::pipeline::get_full_pretok_regex();
                 let mut out = Vec::new();
-                for m in re.find_iter(&norm) {
-                    let chunk = m.as_str();
-                    let chars: Vec<char> = chunk.chars().collect();
-                    let spans = crate::viterbi::viterbi_decode_chars(&chars, &self.trie, self.byte_fallback, None)
-                        .map_err(CoreError)?;
-                    for s in spans {
-                        out.push(s.token_id.ok_or_else(|| {
-                            CoreError(format!("decoded token {:?} has no integer ID", s.token))
-                        })?);
+                for chunk in crate::pipeline::snapped_pretokens(&norm, re) {
+                    let seg = crate::viterbi::decode_cached(&chunk, &self.trie, self.byte_fallback).map_err(CoreError)?;
+                    for (token, token_id, ..) in seg.iter() {
+                        let id = token_id.ok_or_else(|| {
+                            CoreError(format!("decoded token {:?} has no integer ID", token))
+                        })?;
+                        out.push(id);
                     }
                 }
                 Ok(out)
