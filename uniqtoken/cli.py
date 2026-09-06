@@ -91,20 +91,20 @@ def train_command(args: argparse.Namespace) -> int:
         total_bytes += p.stat().st_size
 
     show_progress = (tqdm is not None) and not getattr(args, "no_progress", False)
-    read_pbar = None
-    if show_progress and total_bytes > 0:
-        read_pbar = tqdm(
-            total=total_bytes,
-            unit="B",
-            unit_scale=True,
-            unit_divisor=1024,
-            desc="Reading/Processing corpus",
-            dynamic_ncols=True,
-            leave=True,
-        )
 
     corpus: List[str] = []
     if not is_streaming:
+        read_pbar = None
+        if show_progress and total_bytes > 0:
+            read_pbar = tqdm(
+                total=total_bytes,
+                unit="B",
+                unit_scale=True,
+                unit_divisor=1024,
+                desc="Reading/Processing corpus",
+                dynamic_ncols=True,
+                leave=True,
+            )
         start_time = time.perf_counter()
         bytes_read = 0
 

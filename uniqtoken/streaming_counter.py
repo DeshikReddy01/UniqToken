@@ -491,9 +491,9 @@ class StreamingChunkCounter(Mapping[str, int]):
         Finalizes first (see class docstring): reads observe total counts,
         never buffer-only partials.
         """
+        self._ensure_open()
         if not isinstance(key, str):
             return 0
-        self._ensure_open()
         self.finalize()
         cnt = self._lookup_count(key)
         return cnt if cnt is not None else 0
@@ -503,18 +503,18 @@ class StreamingChunkCounter(Mapping[str, int]):
 
         Finalizes first (see class docstring).
         """
+        self._ensure_open()
         if not isinstance(key, str):
             return default
-        self._ensure_open()
         self.finalize()
         cnt = self._lookup_count(key)
         return cnt if cnt is not None else default
 
     def __contains__(self, key: object) -> bool:
         """Returns True if ``key`` has occurrence >= 1. Finalizes first (see class docstring)."""
+        self._ensure_open()
         if not isinstance(key, str):
             return False
-        self._ensure_open()
         self.finalize()
         return self._lookup_count(key) is not None
 

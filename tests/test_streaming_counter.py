@@ -321,6 +321,13 @@ class StreamingCounterTests(unittest.TestCase):
             lambda: counter.__setitem__("world", 1),
             lambda: counter.finalize(),
             lambda: counter["hello"],
+            lambda: counter[None],  # type: ignore[index]
+            lambda: counter.get("hello"),
+            lambda: counter.get(None),  # type: ignore[arg-type]
+            lambda: "hello" in counter,
+            lambda: None in counter,
+            lambda: len(counter),
+            lambda: list(counter),
         ):
             with self.assertRaises(RuntimeError):
                 op()
