@@ -6,7 +6,7 @@ import random
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Literal, Optional, Sequence, Set, Tuple, Union
+from typing import Any, Dict, Iterable, List, Literal, Optional, Sequence, Set, Tuple, Union
 
 from .bpe_model import BPEModel
 from .byte_codec import ByteFallbackEngine, validate_dropout_prob as _validate_dropout_prob

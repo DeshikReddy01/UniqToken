@@ -20,7 +20,7 @@ import sys
 import tempfile
 import weakref
 from collections import Counter
-from collections.abc import Iterator, Mapping
+from collections.abc import ItemsView, Iterator, Mapping, ValuesView
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
 
@@ -109,6 +109,49 @@ class _BinaryRunReader:
         self.close()
 
 
+class _ChunkItemsView(ItemsView[str, int]):
+    """ItemsView implementation that streams records sequentially from disk."""
+
+    def __init__(self, counter: StreamingChunkCounter) -> None:
+        self._counter = counter
+
+    def __len__(self) -> int:
+        return len(self._counter)
+
+    def __contains__(self, item: object) -> bool:
+        if not isinstance(item, tuple) or len(item) != 2:
+            return False
+        k, v = item
+        if not isinstance(k, str) or not isinstance(v, int):
+            return False
+        return self._counter.get(k) == v
+
+    def __iter__(self) -> Iterator[Tuple[str, int]]:
+        return self._counter._iter_items()
+
+
+class _ChunkValuesView(ValuesView[int]):
+    """ValuesView implementation that streams frequency counts from disk."""
+
+    def __init__(self, counter: StreamingChunkCounter) -> None:
+        self._counter = counter
+
+    def __len__(self) -> int:
+        return len(self._counter)
+
+    def __contains__(self, value: object) -> bool:
+        if not isinstance(value, int):
+            return False
+        for v in self:
+            if v == value:
+                return True
+        return False
+
+    def __iter__(self) -> Iterator[int]:
+        for _, count in self._counter._iter_items():
+            yield count
+
+
 class StreamingChunkCounter(Mapping[str, int]):
     """Disk-backed chunk counter for out-of-core corpus aggregation.
 
@@ -160,9 +203,7 @@ class StreamingChunkCounter(Mapping[str, int]):
         self._total_frequency = 0
         self._sparse_index: List[Tuple[str, int]] = []
         self._closed = False
-        _ACTIVE_COUNTERS[id(self)] = weakref.ref(
-            self, lambda r, k=id(self): _ACTIVE_COUNTERS.pop(k, None)
-        )
+        _ACTIVE_COUNTERS[id(self)] = weakref.ref(self)
 
     @property
     def is_streaming(self) -> bool:
@@ -435,10 +476,10 @@ class StreamingChunkCounter(Mapping[str, int]):
 
     def __iter__(self) -> Iterator[str]:
         """Yields chunks in sorted order directly from disk."""
-        for token, _ in self.items():
+        for token, _ in self._iter_items():
             yield token
 
-    def items(self) -> Iterator[Tuple[str, int]]:
+    def _iter_items(self) -> Iterator[Tuple[str, int]]:
         """Yields (chunk, count) pairs in sorted order directly from disk with O(1) RAM."""
         self.finalize()
         if not self._merged_file or not os.path.exists(self._merged_file):
@@ -454,10 +495,13 @@ class StreamingChunkCounter(Mapping[str, int]):
                 token = token_bytes.decode("utf-8")
                 yield token, count
 
-    def values(self) -> Iterator[int]:
+    def items(self) -> ItemsView[str, int]:
+        """Yields (chunk, count) pairs in sorted order directly from disk with O(1) RAM."""
+        return _ChunkItemsView(self)
+
+    def values(self) -> ValuesView[int]:
         """Yields frequency counts in sorted chunk order."""
-        for _, count in self.items():
-            yield count
+        return _ChunkValuesView(self)
 
     def most_common(self, n: Optional[int] = None) -> List[Tuple[str, int]]:
         """Returns the n most common chunks and their counts."""
@@ -465,8 +509,8 @@ class StreamingChunkCounter(Mapping[str, int]):
         if n is not None:
             if n <= 0:
                 return []
-            return heapq.nlargest(n, self.items(), key=lambda x: x[1])
-        return sorted(self.items(), key=lambda x: (-x[1], x[0]))
+            return heapq.nlargest(n, self._iter_items(), key=lambda x: x[1])
+        return sorted(self._iter_items(), key=lambda x: (-x[1], x[0]))
 
     def to_counter(self) -> Counter[str]:
         """Materializes in-memory collections.Counter (only for debugging or small runs)."""

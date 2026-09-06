@@ -435,8 +435,9 @@ class UnigramTrainer:
         created_counter: Optional[StreamingChunkCounter] = None
         if isinstance(pre_tokenized_chunks, Mapping):
             chunk_counts = pre_tokenized_chunks
-            if hasattr(chunk_counts, "finalize") and callable(chunk_counts.finalize):
-                chunk_counts.finalize()
+            finalize_fn = getattr(chunk_counts, "finalize", None)
+            if callable(finalize_fn):
+                finalize_fn()
         elif streaming:
             created_counter = StreamingChunkCounter(chunk_size_bytes=chunk_size_bytes)
             created_counter.update(pre_tokenized_chunks)
