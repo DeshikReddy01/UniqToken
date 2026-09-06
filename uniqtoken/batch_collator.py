@@ -89,11 +89,14 @@ class BatchCollator:
         unk_id = self.tokenizer.model.token_to_id.get(self.tokenizer.model.unk_token, 0)
 
         # Native fused batch path: one FFI for normalize+pre-tokenize+Viterbi
-        # across all texts (see CustomTokenizer._encode_tokens_native_batch).
+        # across all texts directly to IDs (see CustomTokenizer._encode_ids_native_batch).
         # Only used when the native pipeline is provably identical to the
         # per-text Python path and neither sampling nor dropout is requested.
+        native_ids = self.tokenizer._encode_ids_native_batch(texts) if (not sample and dropout_prob == 0.0) else None
         native_tokens = (
-            self.tokenizer._encode_tokens_native_batch(texts) if (not sample and dropout_prob == 0.0) else None
+            self.tokenizer._encode_tokens_native_batch(texts)
+            if (native_ids is None and not sample and dropout_prob == 0.0)
+            else None
         )
 
         # Keep this path identical to tokenizer.encode/sample, including
@@ -101,13 +104,18 @@ class BatchCollator:
         # merges. Native trie decoding has a different contract for these
         # transformations and can silently produce divergent IDs.
         for idx, text in enumerate(texts):
-            if native_tokens is not None:
+            if native_ids is not None:
+                ids = list(native_ids[idx])
+                tokens = [self.tokenizer.model.id_to_token.get(i, self.tokenizer.model.unk_token) for i in ids]
+            elif native_tokens is not None:
                 tokens = native_tokens[idx]
+                ids = [self.tokenizer.model.token_to_id.get(t, unk_id) for t in tokens]
             elif sample:
                 tokens = self.tokenizer.sample(text, alpha=alpha, dropout_prob=dropout_prob)
+                ids = [self.tokenizer.model.token_to_id.get(t, unk_id) for t in tokens]
             else:
                 tokens = self.tokenizer.encode(text, dropout_prob=dropout_prob)
-            ids = [self.tokenizer.model.token_to_id.get(t, unk_id) for t in tokens]
+                ids = [self.tokenizer.model.token_to_id.get(t, unk_id) for t in tokens]
 
             # Truncate content FIRST (reserving room for specials), so BOS/EOS
             # survive truncation like HF convention.
