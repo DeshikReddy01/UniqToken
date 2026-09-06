@@ -113,6 +113,7 @@ class _ChunkItemsView(ItemsView[str, int]):
     """ItemsView implementation that streams records sequentially from disk."""
 
     def __init__(self, counter: StreamingChunkCounter) -> None:
+        super().__init__(counter)
         self._counter = counter
 
     def __len__(self) -> int:
@@ -134,6 +135,7 @@ class _ChunkValuesView(ValuesView[int]):
     """ValuesView implementation that streams frequency counts from disk."""
 
     def __init__(self, counter: StreamingChunkCounter) -> None:
+        super().__init__(counter)
         self._counter = counter
 
     def __len__(self) -> int:
